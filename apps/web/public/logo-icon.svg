@@ -1,0 +1,13 @@
+<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shopping list icon">
+  <defs>
+    <linearGradient id="shopping-logo-gradient-icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9" />
+      <stop offset="100%" stop-color="#60a5fa" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="40" height="40" rx="12" fill="none" stroke="url(#shopping-logo-gradient-icon)" stroke-width="2" />
+  <path d="M13 15.5H31" stroke="#bae6fd" stroke-width="2" stroke-linecap="round" />
+  <path d="M13 22H31" stroke="#bae6fd" stroke-width="2" stroke-linecap="round" />
+  <path d="M13 28.5H23" stroke="#bae6fd" stroke-width="2" stroke-linecap="round" />
+  <path d="M25 29L27.5 31.5L32 27" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
