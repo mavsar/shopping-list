@@ -175,9 +175,16 @@ export function Button({
   const resolvedColor: ButtonColor = color ?? "gradient";
   const resolvedAppearance: ButtonAppearance = appearance ?? "full";
   const isGradientFull = resolvedColor === "gradient" && resolvedAppearance === "full";
+  type IconElementProps = {
+    animate?: boolean | string;
+    animation?: string;
+    animateOnHover?: boolean | string;
+  };
   const resolvedIcon = isValidElement(icon)
-    ? cloneElement(icon as ReactElement<{ animate?: boolean }>, {
-        animate: isButtonHovered || Boolean((icon as ReactElement<{ animate?: boolean }>).props.animate)
+    ? cloneElement(icon as ReactElement<IconElementProps>, {
+        animate: (!isDisabled && isButtonHovered) || Boolean((icon as ReactElement<IconElementProps>).props.animate),
+        animateOnHover: false,
+        animation: (icon as ReactElement<IconElementProps>).props.animation ?? "default"
       })
     : icon;
 

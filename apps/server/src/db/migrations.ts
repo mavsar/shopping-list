@@ -95,6 +95,23 @@ const migrations: Migration[] = [
 
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username);
     `
+  },
+  {
+    name: "004_list_item_note",
+    sql: `
+      ALTER TABLE list_items ADD COLUMN note TEXT;
+    `
+  },
+  {
+    name: "005_items_category",
+    sql: `
+      ALTER TABLE items ADD COLUMN category TEXT NOT NULL DEFAULT 'other'
+      CHECK(category IN (
+        'vegetables', 'fruit', 'bread', 'dairy', 'meat', 'fish',
+        'sweets', 'chocolate', 'flour_baking', 'canned', 'beverages',
+        'frozen', 'pantry', 'other'
+      ));
+    `
   }
 ];
 

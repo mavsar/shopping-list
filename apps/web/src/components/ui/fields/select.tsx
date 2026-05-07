@@ -2,12 +2,12 @@ import type { SelectHTMLAttributes } from "react";
 import { cva, cx } from "class-variance-authority";
 
 const selectClassName = cva(
-  "w-full appearance-none rounded-2xl border border-white/20 bg-slate-950/45 px-3 py-2 pr-9 text-slate-50 backdrop-blur-sm outline-none transition focus:border-cyan-300/75 focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-default disabled:opacity-60",
+  "w-full appearance-none rounded-2xl border border-white/20 bg-slate-950/45 px-3 py-2 pr-9 text-slate-50 backdrop-blur-sm outline-none transition focus:border-cyan-300/75 focus:ring-1 focus:ring-inset focus:ring-cyan-300/30 disabled:cursor-default disabled:opacity-60",
   {
     variants: {
       size: {
-        md: "text-sm",
-        lg: "px-4 py-2.5 pr-10 text-base"
+        md: "h-10 text-sm",
+        lg: "h-12 px-4 py-2.5 pr-10 text-base"
       },
       invalid: {
         true: "border-rose-300/65 focus:border-rose-300/75 focus:ring-rose-300/35",

@@ -7,6 +7,7 @@ import { Plus } from "../components/animate-ui/icons/plus";
 import { SlidersVertical } from "../components/animate-ui/icons/sliders-vertical";
 import { AppHeader } from "../components/AppHeader";
 import { Button, Dialog, H1, Input } from "../components/ui";
+import { toListSlug } from "../domain/list-slug";
 import type { AuthUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
 
@@ -206,7 +207,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             <>
               <Button
                 type="button"
-                icon={<Plus animateOnHover />}
+                icon={<Plus />}
                 onClick={() => {
                   setNewListName("");
                   setCreateListError("");
@@ -220,7 +221,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                   color="white"
                   appearance="outline"
                   type="button"
-                  icon={<SlidersVertical animateOnHover />}
+                  icon={<SlidersVertical animation="default" />}
                   iconOnly
                   aria-label="Admin"
                   title="Admin"
@@ -259,7 +260,16 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 transition={{ duration: 0.25 }}
                 key={list.id}
                 whileHover={{ borderColor: "rgba(186,230,253,0.55)" }}
-                className="group relative flex items-center justify-between gap-2 rounded-2xl border border-white/12 bg-slate-900/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_rgba(2,8,23,0.3)] backdrop-blur-xl transition"
+                className="group relative flex cursor-pointer items-center justify-between gap-2 rounded-2xl border border-white/12 bg-slate-900/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_rgba(2,8,23,0.3)] backdrop-blur-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+                onClick={() => navigate(`/lists/${toListSlug(list.name)}`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate(`/lists/${toListSlug(list.name)}`);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 <div>
                   <p className="m-0 text-base font-semibold text-slate-50">{list.name}</p>
@@ -270,7 +280,10 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                     color="white"
                     appearance="outline"
                     type="button"
-                    onClick={() => beginEditList(list)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      beginEditList(list);
+                    }}
                     disabled={deleteListLoadingId === list.id}
                   >
                     Edit
@@ -279,7 +292,10 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                     color="danger"
                     appearance="outline"
                     type="button"
-                    onClick={() => beginDeleteListConfirmation(list.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      beginDeleteListConfirmation(list.id);
+                    }}
                     disabled={deleteListLoadingId === list.id}
                   >
                     Delete
@@ -313,7 +329,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               type="submit"
               form="create-list-form"
               disabled={createListLoading}
-              icon={<CheckCheck animateOnHover />}
+              icon={<CheckCheck animation="default" />}
             >
               {createListLoading ? "Saving..." : "Save"}
             </Button>

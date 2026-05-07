@@ -2,7 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
-import { normalizeTitle, unitValues } from "../domain/items.js";
+import { inferCategoryFromTitle, itemCategoryValues } from "../domain/item-category.js";
+import { formatItemTitle, normalizeTitle, unitValues } from "../domain/items.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
 import { parseId } from "../utils/ids.js";
 
@@ -16,10 +17,18 @@ const addMemberSchema = z.object({
   role: z.enum(["owner", "editor", "viewer"]).default("editor")
 });
 
+type CategoryEnum = (typeof itemCategoryValues)[number];
+
+const itemCategorySchema = z.enum(itemCategoryValues as unknown as [CategoryEnum, ...CategoryEnum[]]);
+
 const createListItemSchema = z.object({
   title: z.string().trim().min(1).max(200),
   quantity: z.number().positive().max(9999).default(1),
-  unit: z.enum(unitValues).default("pcs")
+  unit: z.enum(unitValues).default("pcs"),
+  note: z.string().trim().max(500).optional(),
+  category: itemCategorySchema.optional(),
+  imageUrl: z.string().trim().url().max(1000).optional(),
+  sourceUrl: z.string().trim().url().max(1000).optional()
 });
 
 const listItemsQuerySchema = z.object({
@@ -28,8 +37,13 @@ const listItemsQuerySchema = z.object({
 
 const patchListItemSchema = z.object({
   status: z.enum(["active", "completed", "removed"]).optional(),
+  title: z.string().trim().min(1).max(200).optional(),
   quantity: z.number().positive().max(9999).optional(),
-  unit: z.enum(unitValues).optional()
+  unit: z.enum(unitValues).optional(),
+  note: z.string().trim().max(500).optional(),
+  category: itemCategorySchema.optional(),
+  imageUrl: z.string().trim().url().max(1000).optional(),
+  sourceUrl: z.string().trim().url().max(1000).optional()
 });
 
 export const listsRouter = Router();
@@ -63,6 +77,40 @@ listsRouter.get("/", requireAuth, (_req, res) => {
     .all(authUser.id);
 
   return res.json({ lists });
+});
+
+listsRouter.get("/:listId", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const listId = typeof req.params.listId === "string" ? parseId(req.params.listId) : null;
+  if (!listId) {
+    return res.status(400).json({ error: "Invalid listId" });
+  }
+
+  const role = getListRole(listId, authUser.id);
+  if (!role) {
+    return res.status(403).json({ error: "You are not a member of this list" });
+  }
+
+  const list = sqlite
+    .prepare(
+      `
+      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.created_at AS createdAt, l.updated_at AS updatedAt
+      FROM shopping_lists l
+      WHERE l.id = ?
+      LIMIT 1
+      `
+    )
+    .get(listId);
+
+  if (!list) {
+    return res.status(404).json({ error: "List not found" });
+  }
+
+  return res.json({ list });
 });
 
 listsRouter.post("/", requireAuth, (req, res) => {
@@ -259,7 +307,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
     status === "all"
       ? sqlite.prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.list_id = ?
@@ -268,7 +316,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
         )
       : sqlite.prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.list_id = ? AND li.status = ?
@@ -314,7 +362,8 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
   }
 
   const payload = parsed.data;
-  const normalizedTitle = normalizeTitle(payload.title);
+  const formattedTitle = formatItemTitle(payload.title);
+  const normalizedTitle = normalizeTitle(formattedTitle);
 
   const assignItem = sqlite.transaction(() => {
     let createdItem = false;
@@ -326,10 +375,21 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
 
     if (existingItem) {
       itemId = existingItem.id;
+      if (payload.imageUrl && !existingItem.imageUrl) {
+        sqlite
+          .prepare("UPDATE items SET image_url = ?, source_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+          .run(payload.imageUrl, payload.sourceUrl ?? null, itemId);
+      }
+      if (payload.category) {
+        sqlite.prepare("UPDATE items SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(payload.category, itemId);
+      }
     } else {
+      const resolvedCategory = payload.category ?? inferCategoryFromTitle(formattedTitle);
       const itemInsert = sqlite
-        .prepare("INSERT INTO items (normalized_title, title) VALUES (?, ?)")
-        .run(normalizedTitle, payload.title);
+        .prepare(
+          "INSERT INTO items (normalized_title, title, image_url, source_url, category) VALUES (?, ?, ?, ?, ?)"
+        )
+        .run(normalizedTitle, formattedTitle, payload.imageUrl ?? null, payload.sourceUrl ?? null, resolvedCategory);
 
       itemId = Number(itemInsert.lastInsertRowid);
       createdItem = true;
@@ -342,14 +402,14 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
     if (activeListItem) {
       sqlite
         .prepare(
-          "UPDATE list_items SET quantity = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
-        .run(activeListItem.quantity + payload.quantity, payload.unit, activeListItem.id);
+        .run(activeListItem.quantity + payload.quantity, payload.unit, payload.note ?? null, activeListItem.id);
 
       const listItem = sqlite
         .prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.id = ?
@@ -369,14 +429,14 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
     if (historicalListItem) {
       sqlite
         .prepare(
-          "UPDATE list_items SET quantity = ?, unit = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
-        .run(payload.quantity, payload.unit, historicalListItem.id);
+        .run(payload.quantity, payload.unit, payload.note ?? null, historicalListItem.id);
 
       const listItem = sqlite
         .prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.id = ?
@@ -388,13 +448,13 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
     }
 
     const listItemInsert = sqlite
-      .prepare("INSERT INTO list_items (list_id, item_id, quantity, unit) VALUES (?, ?, ?, ?)")
-      .run(listId, itemId, payload.quantity, payload.unit);
+      .prepare("INSERT INTO list_items (list_id, item_id, quantity, unit, note) VALUES (?, ?, ?, ?, ?)")
+      .run(listId, itemId, payload.quantity, payload.unit, payload.note ?? null);
 
     const listItem = sqlite
       .prepare(
         `
-        SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status
+        SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
         FROM list_items li
         JOIN items i ON i.id = li.item_id
         WHERE li.id = ?
@@ -431,7 +491,16 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
   }
 
   const payload = parsed.data;
-  if (!payload.status && payload.quantity === undefined && !payload.unit) {
+  if (
+    !payload.status &&
+    payload.title === undefined &&
+    payload.quantity === undefined &&
+    !payload.unit &&
+    payload.note === undefined &&
+    payload.category === undefined &&
+    payload.imageUrl === undefined &&
+    payload.sourceUrl === undefined
+  ) {
     return res.status(400).json({ error: "At least one field to update is required" });
   }
 
@@ -452,6 +521,52 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
     return res.status(403).json({ error: "Viewers cannot modify list items" });
   }
 
+  if (
+    payload.title !== undefined ||
+    payload.category !== undefined ||
+    payload.imageUrl !== undefined ||
+    payload.sourceUrl !== undefined
+  ) {
+    const itemUpdateSegments: string[] = [];
+    const itemUpdateArgs: Array<string> = [];
+
+    if (payload.title !== undefined) {
+      const formattedTitle = formatItemTitle(payload.title);
+      itemUpdateSegments.push("title = ?", "normalized_title = ?");
+      itemUpdateArgs.push(formattedTitle, normalizeTitle(formattedTitle));
+    }
+    if (payload.category !== undefined) {
+      itemUpdateSegments.push("category = ?");
+      itemUpdateArgs.push(payload.category);
+    }
+    if (payload.imageUrl !== undefined) {
+      itemUpdateSegments.push("image_url = ?");
+      itemUpdateArgs.push(payload.imageUrl);
+    }
+    if (payload.sourceUrl !== undefined) {
+      itemUpdateSegments.push("source_url = ?");
+      itemUpdateArgs.push(payload.sourceUrl);
+    }
+
+    try {
+      sqlite
+        .prepare(
+          `
+          UPDATE items
+          SET ${itemUpdateSegments.join(", ")}, updated_at = CURRENT_TIMESTAMP
+          WHERE id = (SELECT item_id FROM list_items WHERE id = ? AND list_id = ?)
+          `
+        )
+        .run(...itemUpdateArgs, listItemId, listId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      if (message.includes("UNIQUE constraint failed: items.normalized_title")) {
+        return res.status(409).json({ error: "An item with this title already exists." });
+      }
+      return res.status(500).json({ error: message });
+    }
+  }
+
   sqlite
     .prepare(
       `
@@ -460,16 +575,17 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
         status = COALESCE(?, status),
         quantity = COALESCE(?, quantity),
         unit = COALESCE(?, unit),
+        note = COALESCE(?, note),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND list_id = ?
       `
     )
-    .run(payload.status ?? null, payload.quantity ?? null, payload.unit ?? null, listItemId, listId);
+    .run(payload.status ?? null, payload.quantity ?? null, payload.unit ?? null, payload.note ?? null, listItemId, listId);
 
   const listItem = sqlite
     .prepare(
       `
-      SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, li.quantity, li.unit, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+      SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
       FROM list_items li
       JOIN items i ON i.id = li.item_id
       WHERE li.id = ?

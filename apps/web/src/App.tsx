@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 
 import { AppShell } from "./layouts/AppShell";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { ListDetailsPage } from "./pages/ListDetailsPage";
 import { ListsPage } from "./pages/ListsPage";
 import { LoginPage } from "./pages/LoginPage";
 import type { AuthUser } from "./types/auth";
@@ -15,6 +16,7 @@ export default function App() {
   const [token, setToken] = useState<string>(() => localStorage.getItem(tokenStorageKey) ?? "");
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState<boolean>(() => Boolean(localStorage.getItem(tokenStorageKey)));
 
   const authHeaders = useMemo(
     () => ({
@@ -26,10 +28,12 @@ export default function App() {
   useEffect(() => {
     if (!token) {
       setAuthUser(null);
+      setAuthChecking(false);
       return;
     }
 
     async function loadMe() {
+      setAuthChecking(true);
       try {
         const response = await fetch("/api/auth/me", {
           headers: authHeaders
@@ -40,6 +44,7 @@ export default function App() {
           localStorage.removeItem(tokenStorageKey);
           setAuthUser(null);
           setAuthError("Session expired.");
+          setAuthChecking(false);
           return;
         }
 
@@ -47,6 +52,8 @@ export default function App() {
         setAuthUser(payload.user);
       } catch {
         setAuthError("Unable to reach backend API.");
+      } finally {
+        setAuthChecking(false);
       }
     }
 
@@ -58,6 +65,7 @@ export default function App() {
     localStorage.setItem(tokenStorageKey, newToken);
     setAuthUser(user);
     setAuthError("");
+    setAuthChecking(false);
   }
 
   async function handleLogout() {
@@ -73,6 +81,7 @@ export default function App() {
     localStorage.removeItem(tokenStorageKey);
     setToken("");
     setAuthUser(null);
+    setAuthChecking(false);
   }
 
   return (
@@ -89,7 +98,9 @@ export default function App() {
             <Route
               path="/login"
               element={
-                authUser ? (
+                authChecking ? (
+                  <p className="mb-2 mt-0 text-sm text-slate-300">Checking session...</p>
+                ) : authUser ? (
                   <Navigate to="/" replace />
                 ) : (
                   <>
@@ -102,7 +113,9 @@ export default function App() {
             <Route
               path="/"
               element={
-                authUser ? (
+                authChecking ? (
+                  <p className="text-slate-300">Checking session...</p>
+                ) : authUser ? (
                   <ListsPage token={token} authUser={authUser} onLogout={handleLogout} />
                 ) : (
                   <Navigate to="/login" replace />
@@ -112,10 +125,24 @@ export default function App() {
             <Route
               path="/admin/users"
               element={
-                authUser?.isAdmin ? (
+                authChecking ? (
+                  <p className="text-slate-300">Checking session...</p>
+                ) : authUser?.isAdmin ? (
                   <AdminUsersPage token={token} authUser={authUser} onLogout={handleLogout} />
                 ) : (
                   <Navigate to={authUser ? "/" : "/login"} replace />
+                )
+              }
+            />
+            <Route
+              path="/lists/:listSlug"
+              element={
+                authChecking ? (
+                  <p className="text-slate-300">Checking session...</p>
+                ) : authUser ? (
+                  <ListDetailsPage token={token} authUser={authUser} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/login" replace />
                 )
               }
             />
