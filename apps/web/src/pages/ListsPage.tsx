@@ -33,7 +33,6 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   const [updateListError, setUpdateListError] = useState("");
 
   const [deleteConfirmListId, setDeleteConfirmListId] = useState<number | null>(null);
-  const [deleteConfirmListName, setDeleteConfirmListName] = useState("");
   const [deleteListLoadingId, setDeleteListLoadingId] = useState<number | null>(null);
   const [deleteListError, setDeleteListError] = useState("");
 
@@ -108,7 +107,6 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
   function beginEditList(list: ShoppingList) {
     setDeleteConfirmListId(null);
-    setDeleteConfirmListName("");
     setDeleteListError("");
     setEditingListId(list.id);
     setEditingListName(list.name);
@@ -123,13 +121,11 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
   function beginDeleteListConfirmation(listId: number) {
     setDeleteConfirmListId(listId);
-    setDeleteConfirmListName("");
     setDeleteListError("");
   }
 
   function cancelDeleteListConfirmation() {
     setDeleteConfirmListId(null);
-    setDeleteConfirmListName("");
     setDeleteListError("");
   }
 
@@ -170,11 +166,6 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   }
 
   async function handleDeleteList(list: ShoppingList) {
-    if (deleteConfirmListName !== list.name) {
-      setDeleteListError("Type the exact list name to confirm deletion.");
-      return;
-    }
-
     const listId = list.id;
     setDeleteListLoadingId(listId);
     setDeleteListError("");
@@ -398,7 +389,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         description={
           deleteConfirmList ? (
             <>
-              Type <strong>{deleteConfirmList.name}</strong> to permanently delete this list.
+              You are about to permanently delete <strong>{deleteConfirmList.name}</strong>. This action cannot be undone.
             </>
           ) : undefined
         }
@@ -410,7 +401,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 appearance="outline"
                 type="button"
                 onClick={() => void handleDeleteList(deleteConfirmList)}
-                disabled={deleteListLoadingId === deleteConfirmList.id || deleteConfirmListName !== deleteConfirmList.name}
+                disabled={deleteListLoadingId === deleteConfirmList.id}
               >
                 {deleteListLoadingId === deleteConfirmList.id ? "Deleting..." : "Confirm delete"}
               </Button>
@@ -422,14 +413,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         }
       >
         {deleteConfirmList ? (
-          <div className="grid gap-2">
-            <Input
-              value={deleteConfirmListName}
-              onChange={(event) => setDeleteConfirmListName(event.target.value)}
-              placeholder={deleteConfirmList.name}
-            />
-            {deleteListError ? <p className="m-0 text-xs text-rose-200">{deleteListError}</p> : null}
-          </div>
+          deleteListError ? <p className="m-0 text-xs text-rose-200">{deleteListError}</p> : null
         ) : null}
       </Dialog>
     </>
