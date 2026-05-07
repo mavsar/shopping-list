@@ -1,0 +1,16 @@
+services:
+  shopping-list:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shopping-list:latest
+    container_name: shopping-list
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_PATH=/app/data/shopping-list.db
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
