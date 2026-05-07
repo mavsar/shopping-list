@@ -1,0 +1,73 @@
+name: shopping-list
+services:
+  shopping-list:
+    build:
+      context: /DATA/AppData/shopping-list
+      dockerfile: Dockerfile
+    image: shopping-list:0.1.0
+    container_name: shopping-list
+    environment:
+      NODE_ENV: production
+      PORT: "5173"
+      DATABASE_PATH: /app/data/shopping-list.db
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Admin}
+    ports:
+      - target: 5173
+        published: "5173"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/data
+        target: /app/data
+    restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: BOOTSTRAP_ADMIN_USERNAME
+          description:
+            en_US: Initial admin username.
+        - container: BOOTSTRAP_ADMIN_PASSWORD
+          description:
+            en_US: Initial admin password. Change after first login.
+        - container: BOOTSTRAP_ADMIN_NAME
+          description:
+            en_US: Initial admin display name.
+      ports:
+        - container: "5173"
+          description:
+            en_US: Shopping List web UI.
+      volumes:
+        - container: /app/data
+          description:
+            en_US: Persistent SQLite database storage.
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+    - arm
+  main: shopping-list
+  author: Primoz
+  category: Utilities
+  description:
+    en_US: Self-hosted shopping list app with list collaboration and item tracking.
+  developer: Primoz
+  icon: https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f6d2.png
+  screenshot_link: []
+  tagline:
+    en_US: Self-hosted shopping list for CasaOS.
+  thumbnail: ""
+  tips:
+    before_install:
+      en_US: |
+        This package builds from local source at `/DATA/AppData/shopping-list`.
+        Clone your repository there before installing.
+
+        Default login (if unchanged):
+        - username: `admin`
+        - password: `admin12345`
+  title:
+    en_US: Shopping List
+  index: /
+  port_map: "5173"
