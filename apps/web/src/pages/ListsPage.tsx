@@ -290,7 +290,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           </motion.ul>
         ) : null}
       </motion.section>
-      <div className="fixed right-5 bottom-5 z-40">
+      <div className="fixed right-8 bottom-8 z-40">
         <Button
           type="button"
           icon={<Plus animateOnHover />}

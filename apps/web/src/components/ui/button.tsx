@@ -26,7 +26,7 @@ const buttonClassName = cva(
         xs: "h-6 px-2 text-xs",
         sm: "h-8 px-3 text-xs",
         md: "h-10 px-4 text-sm",
-        lg: "h-12 px-6 text-base"
+        lg: "h-16 px-8 text-base"
       },
       stretch: {
         true: "w-full",
@@ -56,7 +56,7 @@ const buttonClassName = cva(
       {
         size: "lg",
         iconOnly: true,
-        className: "h-12 w-12"
+        className: "h-16 w-16"
       },
       {
         color: "gradient",
@@ -141,7 +141,7 @@ const buttonIconClassName = cva("inline-flex shrink-0 items-center justify-cente
       xs: "[&_svg]:size-4 [&_.lord-icon-wrapper]:size-4",
       sm: "[&_svg]:size-5 [&_.lord-icon-wrapper]:size-5",
       md: "[&_svg]:size-6 [&_.lord-icon-wrapper]:size-6",
-      lg: "[&_svg]:size-7 [&_.lord-icon-wrapper]:size-7"
+      lg: "[&_svg]:size-10 [&_.lord-icon-wrapper]:size-10"
     }
   },
   defaultVariants: {

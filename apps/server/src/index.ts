@@ -16,7 +16,7 @@ import { usersRouter } from "./routes/users.js";
 ensureBootstrapAdmin();
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3100);
 
 app.use(cors());
 app.use(express.json());

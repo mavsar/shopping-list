@@ -1,7 +1,7 @@
 name: shopping-list
 services:
   shopping-list:
-    image: ghcr.io/mavsar/shopping-list:v1.0.10
+    image: ghcr.io/mavsar/shopping-list:v1.0.11
     pull_policy: always
     container_name: shopping-list
     environment:

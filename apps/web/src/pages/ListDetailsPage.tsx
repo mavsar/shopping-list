@@ -1138,7 +1138,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           ) : null}
           {updatingItemError ? <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p> : null}
         </section>
-        <div className="fixed right-5 bottom-5 z-40">
+        <div className="fixed right-8 bottom-8 z-40">
           <Button
             type="button"
             icon={<Plus animateOnHover />}
