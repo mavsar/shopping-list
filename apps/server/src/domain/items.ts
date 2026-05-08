@@ -1,4 +1,26 @@
-export const unitValues = ["kg", "g", "L", "dl", "pcs"] as const;
+export const unitValues = [
+  "kos",
+  "g",
+  "dag",
+  "kg",
+  "ml",
+  "dl",
+  "l",
+  "zlicka",
+  "zlica",
+  "skodelica",
+  "paket",
+  "zavoj",
+  "vrecka",
+  "steklenica",
+  "plocevinka",
+  "kozarec",
+  "strok",
+  "sopek",
+  "scepec",
+  "pcs",
+  "L"
+] as const;
 
 export type ItemUnit = (typeof unitValues)[number];
 

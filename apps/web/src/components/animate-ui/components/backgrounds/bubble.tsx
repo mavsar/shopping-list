@@ -131,7 +131,7 @@ function BubbleBackground({
         className="absolute top-0 left-0 w-0 h-0"
       >
         <defs>
-          <filter id="goo">
+          <filter id="goo-mobile-safe" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur
               in="SourceGraphic"
               stdDeviation="16"
@@ -150,7 +150,7 @@ function BubbleBackground({
 
       <div
         className="absolute inset-0"
-        style={{ filter: 'url(#goo) blur(40px)' }}
+        style={{ filter: 'url(#goo-mobile-safe) blur(40px)' }}
       >
         <motion.div
           className="absolute rounded-full size-[80%] top-[10%] left-[10%] mix-blend-hard-light bg-[radial-gradient(circle_at_center,rgba(var(--first-color),0.8)_0%,rgba(var(--first-color),0)_50%)]"

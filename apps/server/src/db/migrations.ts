@@ -153,6 +153,43 @@ const migrations: Migration[] = [
 
       PRAGMA foreign_keys = ON;
     `
+  },
+  {
+    name: "007_expand_list_item_units",
+    sql: `
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE IF NOT EXISTS list_items_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        item_id INTEGER NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit TEXT NOT NULL CHECK(unit IN (
+          'kos', 'g', 'dag', 'kg', 'ml', 'dl', 'l',
+          'zlicka', 'zlica', 'skodelica', 'paket', 'zavoj',
+          'vrecka', 'steklenica', 'plocevinka', 'kozarec',
+          'strok', 'sopek', 'scepec', 'pcs', 'L'
+        )),
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed', 'removed')),
+        note TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(list_id) REFERENCES shopping_lists(id) ON DELETE CASCADE,
+        FOREIGN KEY(item_id) REFERENCES items(id) ON DELETE RESTRICT
+      );
+
+      INSERT INTO list_items_new (id, list_id, item_id, quantity, unit, status, note, created_at, updated_at)
+      SELECT id, list_id, item_id, quantity, unit, status, note, created_at, updated_at
+      FROM list_items;
+
+      DROP TABLE list_items;
+      ALTER TABLE list_items_new RENAME TO list_items;
+
+      CREATE INDEX IF NOT EXISTS idx_list_items_list_id_status ON list_items(list_id, status);
+      CREATE INDEX IF NOT EXISTS idx_list_items_item_id ON list_items(item_id);
+
+      PRAGMA foreign_keys = ON;
+    `
   }
 ];
 
@@ -173,8 +210,8 @@ export function runMigrations(sqlite: Database.Database): void {
       continue;
     }
 
-    if (migration.name === "006_items_category_eggs_split") {
-      // This migration rebuilds `items` table; run outside transaction so foreign key pragma can take effect.
+    if (migration.name === "006_items_category_eggs_split" || migration.name === "007_expand_list_item_units") {
+      // These migrations rebuild tables; run outside transaction so foreign key pragma can take effect.
       sqlite.exec("PRAGMA foreign_keys = OFF;");
       try {
         sqlite.exec(migration.sql);

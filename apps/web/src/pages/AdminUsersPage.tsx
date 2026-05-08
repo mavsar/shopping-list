@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Checkbox, Dialog, Input, Label, Select } from "../components/ui";
+import { Button, Card, Checkbox, Dialog, Input, Label, Loader, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 
 type AdminUsersPageProps = {
@@ -12,6 +12,35 @@ type AdminUsersPageProps = {
   authUser: AuthUser;
   onLogout: () => Promise<void>;
 };
+
+type DialogFormFooterActionsProps = {
+  formId: string;
+  submitLabel: string;
+  loadingSubmitLabel: string;
+  loading: boolean;
+  onCancel: () => void;
+  cancelLabel?: string;
+};
+
+function DialogFormFooterActions({
+  formId,
+  submitLabel,
+  loadingSubmitLabel,
+  loading,
+  onCancel,
+  cancelLabel = "Cancel"
+}: DialogFormFooterActionsProps) {
+  return (
+    <>
+      <Button type="submit" form={formId} disabled={loading}>
+        {loading ? loadingSubmitLabel : submitLabel}
+      </Button>
+      <Button color="white" appearance="outline" type="button" onClick={onCancel} disabled={loading}>
+        {cancelLabel}
+      </Button>
+    </>
+  );
+}
 
 export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProps) {
   const navigate = useNavigate();
@@ -232,42 +261,36 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
 
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <AppHeader
-          title="Shopping List Admin"
-          actions={
-            <>
-              <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
-                App
-              </Button>
-              <Button
-                color="white"
-                appearance="outline"
-                type="button"
-                icon={<LogOut animateOnHover />}
-                iconOnly
-                aria-label="Logout"
-                title="Logout"
-                onClick={() => void onLogout()}
-              />
-            </>
-          }
-        />
-      </motion.div>
+      <AppHeader
+        title="Shopping List Admin"
+        actions={
+          <>
+            <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
+              App
+            </Button>
+            <Button
+              color="white"
+              appearance="outline"
+              type="button"
+              icon={<LogOut animateOnHover />}
+              iconOnly
+              aria-label="Logout"
+              title="Logout"
+              onClick={() => void onLogout()}
+            />
+          </>
+        }
+      />
 
       <section className="mt-6">
         <motion.article
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.18, duration: 0.42 }}
-          className="relative"
+          className="relative min-h-[12rem]"
         >
           <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Users</h2>
-          {usersLoading ? <p className="text-slate-300">Loading users...</p> : null}
+          {usersLoading ? <Loader placement="overlay" label="Loading users..." /> : null}
           {usersError ? <p className="m-0 text-sm text-rose-300">{usersError}</p> : null}
           {!usersLoading && !usersError ? (
             <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
@@ -278,43 +301,46 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.25 }}
                   key={user.id}
-                  whileHover={{ borderColor: "rgba(186,230,253,0.55)" }}
-                  className="group flex items-center justify-between gap-2 rounded-2xl border border-white/16 bg-slate-900/20 p-4 backdrop-blur-lg transition"
+                  className="list-none"
                 >
-                  <div>
-                    <p className="m-0 text-base font-semibold text-slate-50">{user.username}</p>
-                    <p className="m-0 text-sm text-slate-300">
-                      {user.name}
-                      {user.email ? ` - ${user.email}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
-                      {user.isAdmin ? "admin" : "user"}
-                    </Label>
-                    <Button
-                      color="white"
-                      appearance="outline"
-                      type="button"
-                      icon={<Edit animateOnHover />}
-                      iconOnly
-                      aria-label={`Edit ${user.username}`}
-                      title={`Edit ${user.username}`}
-                      onClick={() => beginEditUser(user)}
-                      disabled={deleteUserLoadingId === user.id}
-                    />
-                    <Button
-                      color="danger"
-                      appearance="outline"
-                      type="button"
-                      icon={<Trash2 animateOnHover />}
-                      iconOnly
-                      aria-label={`Delete ${user.username}`}
-                      title={`Delete ${user.username}`}
-                      onClick={() => beginDeleteUserConfirmation(user.id)}
-                      disabled={deleteUserLoadingId === user.id}
-                    />
-                  </div>
+                  <Card interactive>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="m-0 text-base font-semibold text-slate-50">{user.username}</p>
+                        <p className="m-0 text-sm text-slate-300">
+                          {user.name}
+                          {user.email ? ` - ${user.email}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
+                          {user.isAdmin ? "admin" : "user"}
+                        </Label>
+                        <Button
+                          color="white"
+                          appearance="outline"
+                          type="button"
+                          icon={<Edit animateOnHover />}
+                          iconOnly
+                          aria-label={`Edit ${user.username}`}
+                          title={`Edit ${user.username}`}
+                          onClick={() => beginEditUser(user)}
+                          disabled={deleteUserLoadingId === user.id}
+                        />
+                        <Button
+                          color="danger"
+                          appearance="outline"
+                          type="button"
+                          icon={<Trash2 animateOnHover />}
+                          iconOnly
+                          aria-label={`Delete ${user.username}`}
+                          title={`Delete ${user.username}`}
+                          onClick={() => beginDeleteUserConfirmation(user.id)}
+                          disabled={deleteUserLoadingId === user.id}
+                        />
+                      </div>
+                    </div>
+                  </Card>
                 </motion.li>
               ))}
             </motion.ul>
@@ -345,8 +371,17 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         }}
         size="sm"
         title="Edit user"
+        footer={
+          <DialogFormFooterActions
+            formId="edit-user-form"
+            submitLabel="Save"
+            loadingSubmitLabel="Saving..."
+            loading={updateUserLoading}
+            onCancel={cancelEditUser}
+          />
+        }
       >
-        <form className="grid gap-3" onSubmit={handleUpdateUser}>
+        <form id="edit-user-form" className="grid gap-3" onSubmit={handleUpdateUser}>
           <label className="grid gap-1 text-sm text-slate-200">
             Username
             <Input
@@ -382,14 +417,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             Admin user
           </Checkbox>
           {updateUserError ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
-          <div className="flex gap-2">
-            <Button type="submit" disabled={updateUserLoading}>
-              {updateUserLoading ? "Saving..." : "Save"}
-            </Button>
-            <Button color="white" appearance="outline" type="button" onClick={cancelEditUser} disabled={updateUserLoading}>
-              Cancel
-            </Button>
-          </div>
         </form>
       </Dialog>
       <Dialog
@@ -402,8 +429,17 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         }}
         size="sm"
         title="Add new user"
+        footer={
+          <DialogFormFooterActions
+            formId="create-user-form"
+            submitLabel="Create user"
+            loadingSubmitLabel="Creating..."
+            loading={createUserLoading}
+            onCancel={() => setCreateUserDialogOpen(false)}
+          />
+        }
       >
-        <form className="grid gap-3" onSubmit={handleCreateUser}>
+        <form id="create-user-form" className="grid gap-3" onSubmit={handleCreateUser}>
           <label className="grid gap-1 text-sm text-slate-200">
             Username
             <Input
@@ -442,14 +478,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           <Checkbox checked={newIsAdmin} onChange={(event) => setNewIsAdmin(event.target.checked)}>
             Grant admin rights
           </Checkbox>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={createUserLoading}>
-              {createUserLoading ? "Creating..." : "Create user"}
-            </Button>
-            <Button color="white" appearance="outline" type="button" onClick={() => setCreateUserDialogOpen(false)}>
-              Cancel
-            </Button>
-          </div>
           {createUserError ? <p className="m-0 text-sm text-rose-300">{createUserError}</p> : null}
         </form>
       </Dialog>

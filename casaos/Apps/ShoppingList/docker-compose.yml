@@ -1,7 +1,7 @@
 name: shopping-list
 services:
   shopping-list:
-    image: ghcr.io/mavsar/shopping-list:v1.0.0
+    image: ghcr.io/mavsar/shopping-list:v1.0.4
     pull_policy: always
     container_name: shopping-list
     environment:
@@ -51,7 +51,7 @@ x-casaos:
   description:
     en_US: Self-hosted shopping list app with list collaboration and item tracking.
   developer: Primoz
-  icon: https://raw.githubusercontent.com/mavsar/shopping-list/main/casaos/Apps/ShoppingList/icon.png
+  icon: https://raw.githubusercontent.com/mavsar/shopping-list/main/apps/web/public/logo-icon.png
   screenshot_link: []
   tagline:
     en_US: Self-hosted shopping list for CasaOS.

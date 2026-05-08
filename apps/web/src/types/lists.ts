@@ -8,9 +8,80 @@ export type ShoppingList = {
   updatedAt: string;
 };
 
-export const itemUnitValues = ["kg", "g", "L", "dl", "pcs"] as const;
+export const itemUnitValues = [
+  "kos",
+  "g",
+  "dag",
+  "kg",
+  "ml",
+  "dl",
+  "l",
+  "zlicka",
+  "zlica",
+  "skodelica",
+  "paket",
+  "zavoj",
+  "vrecka",
+  "steklenica",
+  "plocevinka",
+  "kozarec",
+  "strok",
+  "sopek",
+  "scepec",
+  "pcs",
+  "L"
+] as const;
 
 export type ShoppingItemUnit = (typeof itemUnitValues)[number];
+export type ShoppingItemUnitSelectValue = Exclude<ShoppingItemUnit, "pcs" | "L">;
+
+export const itemUnitSelectValues: ShoppingItemUnitSelectValue[] = [
+  "kos",
+  "g",
+  "dag",
+  "kg",
+  "ml",
+  "dl",
+  "l"
+];
+
+export const itemUnitLabels: Record<ShoppingItemUnit, string> = {
+  kos: "kos",
+  g: "g",
+  dag: "dag",
+  kg: "kg",
+  ml: "ml",
+  dl: "dl",
+  l: "l",
+  zlicka: "čajna žlička",
+  zlica: "jedilna žlica",
+  skodelica: "skodelica",
+  paket: "paket",
+  zavoj: "zavoj",
+  vrecka: "vrečka",
+  steklenica: "steklenica",
+  plocevinka: "pločevinka",
+  kozarec: "kozarec",
+  strok: "strok",
+  sopek: "šopek",
+  scepec: "ščepec",
+  pcs: "kos",
+  L: "l"
+};
+
+export function getItemUnitLabel(unit: ShoppingItemUnit): string {
+  return itemUnitLabels[unit];
+}
+
+export function normalizeShoppingItemUnit(unit: ShoppingItemUnit): ShoppingItemUnitSelectValue {
+  if (unit === "pcs") {
+    return "kos";
+  }
+  if (unit === "L") {
+    return "l";
+  }
+  return unit;
+}
 
 export type ShoppingListItem = {
   id: number;

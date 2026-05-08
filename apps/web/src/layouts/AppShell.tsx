@@ -4,7 +4,7 @@ import { BubbleBackground } from "../components/animate-ui/components/background
 
 export function AppShell({ children }: PropsWithChildren) {
   return (
-    <main className="relative h-[100dvh] min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain">
+    <main className="relative h-[100dvh] h-[100svh] min-h-0 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-[env(safe-area-inset-bottom)]">
       <BubbleBackground
         interactive={false}
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(165deg,rgba(9,16,24,0.94),rgba(15,23,42,0.97))]"

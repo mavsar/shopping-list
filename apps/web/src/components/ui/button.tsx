@@ -23,6 +23,7 @@ const buttonClassName = cva(
         transparent: ""
       },
       size: {
+        xs: "h-6 px-2 text-xs",
         sm: "h-8 px-3 text-xs",
         md: "h-10 px-4 text-sm",
         lg: "h-12 px-6 text-base"
@@ -37,6 +38,11 @@ const buttonClassName = cva(
       }
     },
     compoundVariants: [
+      {
+        size: "xs",
+        iconOnly: true,
+        className: "h-6 w-6"
+      },
       {
         size: "sm",
         iconOnly: true,
@@ -132,6 +138,7 @@ const buttonForegroundClassName = cva("relative z-10");
 const buttonIconClassName = cva("inline-flex shrink-0 items-center justify-center", {
   variants: {
     size: {
+      xs: "[&_svg]:size-4 [&_.lord-icon-wrapper]:size-4",
       sm: "[&_svg]:size-5 [&_.lord-icon-wrapper]:size-5",
       md: "[&_svg]:size-6 [&_.lord-icon-wrapper]:size-6",
       lg: "[&_svg]:size-7 [&_.lord-icon-wrapper]:size-7"
@@ -146,7 +153,7 @@ type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
   children?: ReactNode;
   color?: ButtonColor;
   appearance?: ButtonAppearance;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
   stretch?: boolean;
   tapScale?: number;
   icon?: ReactNode;

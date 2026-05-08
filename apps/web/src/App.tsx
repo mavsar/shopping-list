@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
 import { useLocation } from "react-router-dom";
 
 import { AppShell } from "./layouts/AppShell";
@@ -86,70 +85,60 @@ export default function App() {
 
   return (
     <AppShell>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={location.pathname}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.28, ease: "easeOut" }}
-        >
-          <Routes location={location}>
-            <Route
-              path="/login"
-              element={
-                authChecking ? (
-                  <p className="mb-2 mt-0 text-sm text-slate-300">Checking session...</p>
-                ) : authUser ? (
-                  <Navigate to="/" replace />
-                ) : (
-                  <>
-                    {authError ? <p className="mb-2 mt-0 text-sm text-rose-300">{authError}</p> : null}
-                    <LoginPage onLoginSuccess={handleLoginSuccess} />
-                  </>
-                )
-              }
-            />
-            <Route
-              path="/"
-              element={
-                authChecking ? (
-                  <p className="text-slate-300">Checking session...</p>
-                ) : authUser ? (
-                  <ListsPage token={token} authUser={authUser} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route
-              path="/admin/users"
-              element={
-                authChecking ? (
-                  <p className="text-slate-300">Checking session...</p>
-                ) : authUser?.isAdmin ? (
-                  <AdminUsersPage token={token} authUser={authUser} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to={authUser ? "/" : "/login"} replace />
-                )
-              }
-            />
-            <Route
-              path="/lists/:listSlug"
-              element={
-                authChecking ? (
-                  <p className="text-slate-300">Checking session...</p>
-                ) : authUser ? (
-                  <ListDetailsPage token={token} authUser={authUser} onLogout={handleLogout} />
-                ) : (
-                  <Navigate to="/login" replace />
-                )
-              }
-            />
-            <Route path="*" element={<Navigate to={authUser ? "/" : "/login"} replace />} />
-          </Routes>
-        </motion.div>
-      </AnimatePresence>
+      <Routes location={location}>
+        <Route
+          path="/login"
+          element={
+            authChecking ? (
+              <p className="mb-2 mt-0 text-sm text-slate-300">Checking session...</p>
+            ) : authUser ? (
+              <Navigate to="/" replace />
+            ) : (
+              <>
+                {authError ? <p className="mb-2 mt-0 text-sm text-rose-300">{authError}</p> : null}
+                <LoginPage onLoginSuccess={handleLoginSuccess} />
+              </>
+            )
+          }
+        />
+        <Route
+          path="/"
+          element={
+            authChecking ? (
+              <p className="text-slate-300">Checking session...</p>
+            ) : authUser ? (
+              <ListsPage token={token} authUser={authUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            authChecking ? (
+              <p className="text-slate-300">Checking session...</p>
+            ) : authUser?.isAdmin ? (
+              <AdminUsersPage token={token} authUser={authUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to={authUser ? "/" : "/login"} replace />
+            )
+          }
+        />
+        <Route
+          path="/lists/:listSlug"
+          element={
+            authChecking ? (
+              <p className="text-slate-300">Checking session...</p>
+            ) : authUser ? (
+              <ListDetailsPage token={token} authUser={authUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to={authUser ? "/" : "/login"} replace />} />
+      </Routes>
     </AppShell>
   );
 }

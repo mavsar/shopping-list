@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Dialog, Input } from "../components/ui";
+import { Button, Card, Dialog, Input, Loader } from "../components/ui";
 import { toListSlug } from "../domain/list-slug";
 import type { AuthUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
@@ -195,39 +195,33 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <AppHeader
-          title="Shopping Lists"
-          actions={
-            <>
-              {authUser.isAdmin ? (
-                <Button
-                  color="white"
-                  appearance="outline"
-                  type="button"
-                  icon={<SettingsCog animation="default" />}
-                  iconOnly
-                  aria-label="Admin"
-                  title="Admin"
-                  onClick={() => navigate("/admin/users")}
-                />
-              ) : null}
-            </>
-          }
-        />
-      </motion.div>
+      <AppHeader
+        title="Shopping Lists"
+        actions={
+          <>
+            {authUser.isAdmin ? (
+              <Button
+                color="white"
+                appearance="outline"
+                type="button"
+                icon={<SettingsCog animation="default" />}
+                iconOnly
+                aria-label="Admin"
+                title="Admin"
+                onClick={() => navigate("/admin/users")}
+              />
+            ) : null}
+          </>
+        }
+      />
 
       <motion.section
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.12, duration: 0.42 }}
-        className="relative mt-6"
+        className="relative mt-6 min-h-[12rem]"
       >
-        {listsLoading ? <p className="text-slate-300">Loading lists...</p> : null}
+        {listsLoading ? <Loader placement="overlay" label="Loading lists..." /> : null}
         {listsError ? <p className="m-0 text-sm text-rose-300">{listsError}</p> : null}
         {!listsLoading && !listsError ? (
           <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
@@ -238,8 +232,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.25 }}
                 key={list.id}
-                whileHover={{ borderColor: "rgba(186,230,253,0.55)" }}
-                className="group relative flex cursor-pointer items-center justify-between gap-2 rounded-2xl border border-white/12 bg-slate-900/20 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_24px_rgba(2,8,23,0.3)] backdrop-blur-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+                className="group cursor-pointer focus-visible:outline-none"
                 onClick={() => navigate(`/lists/${toListSlug(list.name)}`)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -250,39 +243,43 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 role="button"
                 tabIndex={0}
               >
-                <div>
-                  <p className="m-0 text-xl font-semibold text-slate-50">{list.name}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    color="white"
-                    appearance="outline"
-                    type="button"
-                    icon={<Edit animateOnHover />}
-                    iconOnly
-                    aria-label={`Edit ${list.name}`}
-                    title={`Edit ${list.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      beginEditList(list);
-                    }}
-                    disabled={deleteListLoadingId === list.id}
-                  />
-                  <Button
-                    color="danger"
-                    appearance="outline"
-                    type="button"
-                    icon={<Trash2 animateOnHover />}
-                    iconOnly
-                    aria-label={`Delete ${list.name}`}
-                    title={`Delete ${list.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      beginDeleteListConfirmation(list.id);
-                    }}
-                    disabled={deleteListLoadingId === list.id}
-                  />
-                </div>
+                <Card interactive>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="m-0 text-xl font-semibold text-slate-50">{list.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        color="white"
+                        appearance="outline"
+                        type="button"
+                        icon={<Edit animateOnHover />}
+                        iconOnly
+                        aria-label={`Edit ${list.name}`}
+                        title={`Edit ${list.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          beginEditList(list);
+                        }}
+                        disabled={deleteListLoadingId === list.id}
+                      />
+                      <Button
+                        color="danger"
+                        appearance="outline"
+                        type="button"
+                        icon={<Trash2 animateOnHover />}
+                        iconOnly
+                        aria-label={`Delete ${list.name}`}
+                        title={`Delete ${list.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          beginDeleteListConfirmation(list.id);
+                        }}
+                        disabled={deleteListLoadingId === list.id}
+                      />
+                    </div>
+                  </div>
+                </Card>
               </motion.li>
             ))}
             {!lists.length ? (

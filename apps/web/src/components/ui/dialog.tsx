@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { cva } from "class-variance-authority";
+import { cva, cx } from "class-variance-authority";
 import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "../lordicon/icons";
@@ -80,27 +80,38 @@ export function Dialog({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto overscroll-contain p-4"
+          className="fixed inset-0 z-50 grid place-items-center overflow-hidden overscroll-contain p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
+          onClick={
+            closeOnOverlayClick
+              ? (event) => {
+                  if (event.target === event.currentTarget) {
+                    onOpenChange(false);
+                  }
+                }
+              : undefined
+          }
         >
-          <motion.button
-            aria-label="Close dialog"
-            type="button"
-            className="absolute inset-0"
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
             initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
             animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
             exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
             transition={{ duration: 0.24, ease: "easeOut" }}
             style={{ backgroundColor: "rgba(2, 6, 23, 0.55)", WebkitBackdropFilter: "blur(8px)" }}
-            onClick={closeOnOverlayClick ? () => onOpenChange(false) : undefined}
           />
           <motion.section
             role="dialog"
             aria-modal="true"
-            className={`${dialogPanelClassName({ size })} ${fullHeight ? "h-[calc(100dvh-2rem)]" : "max-h-[calc(100dvh-2rem)]"} flex flex-col`}
+            className={cx(
+              dialogPanelClassName({ size }),
+              fullHeight ? "h-[calc(100dvh-2rem)] h-[calc(100svh-2rem)]" : "max-h-[calc(100dvh-2rem)] max-h-[calc(100svh-2rem)]",
+              "flex flex-col overflow-hidden"
+            )}
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -120,8 +131,12 @@ export function Dialog({
             />
             <h3 className="pr-10 text-xl font-semibold text-slate-50">{title}</h3>
             {description ? <p className="mt-2 text-sm text-slate-200/90">{description}</p> : null}
-            {children ? <div className="mt-4 min-h-0 flex-1 overflow-y-auto">{children}</div> : null}
-            {footer ? <div className="mt-4 flex flex-wrap gap-2">{footer}</div> : null}
+            {children ? (
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y [-webkit-overflow-scrolling:touch]">
+                {children}
+              </div>
+            ) : null}
+            {footer ? <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">{footer}</div> : null}
           </motion.section>
         </motion.div>
       ) : null}

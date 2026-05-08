@@ -31,7 +31,7 @@ const itemImageUrlSchema = z
 const createListItemSchema = z.object({
   title: z.string().trim().min(1).max(200),
   quantity: z.number().positive().max(9999).default(1),
-  unit: z.enum(unitValues).default("pcs"),
+  unit: z.enum(unitValues).default("kos"),
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
   imageUrl: itemImageUrlSchema.optional(),
