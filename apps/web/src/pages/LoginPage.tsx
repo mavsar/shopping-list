@@ -48,7 +48,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   }
 
   return (
-    <section className="grid min-h-[78vh] grid-cols-1 items-center">
+    <section className="grid min-h-[100lvh] grid-cols-1 items-center">
       <motion.form
         initial={{ opacity: 0, x: 14, y: 10 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
