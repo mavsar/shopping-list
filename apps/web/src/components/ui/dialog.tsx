@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { cva } from "class-variance-authority";
 import { type ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X } from "../animate-ui/icons/x";
+import { X } from "../lordicon/icons";
 import { Button } from "./button";
 
 const dialogPanelClassName = cva(

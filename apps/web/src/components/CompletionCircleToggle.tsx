@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check as LucideCheck } from "lucide-react";
 import { cx } from "class-variance-authority";
-import { AnimateIcon } from "./animate-ui/icons/icon";
-
-const MotionCheck = motion.create(LucideCheck);
+import { LordIcon } from "./lordicon/lord-icon";
 
 const SPARKLE_COUNT = 10;
 const EMERALD_FILL = "rgb(16 185 129)";
@@ -39,7 +36,7 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
   }, [sparkleBurst]);
 
   const controlSizeClass = size === "sm" ? "h-6 w-6" : "h-10 w-10";
-  const checkSizeClass = size === "sm" ? "size-[12px]" : "size-[18px]";
+  const checkSize = size === "sm" ? 14 : 18;
   const sparkleDistanceBase = size === "sm" ? 14 : 22;
 
   return (
@@ -83,25 +80,28 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
           {!completed && isHovered ? (
             <motion.span
               key="hover-check"
-              className="absolute"
+              className="absolute inset-0 flex items-center justify-center"
               initial={{ opacity: 0, scale: 0.75 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.75 }}
               transition={{ duration: 0.14, ease: "easeOut" }}
             >
-              <AnimateIcon animate animation="path-draw">
-                <LucideCheck size={size === "sm" ? 12 : 14} className="text-white/70" aria-hidden />
-              </AnimateIcon>
+              <LordIcon
+                src="/lordicon/check.json"
+                trigger="in"
+                animateOnHover={false}
+                size={checkSize}
+                colors="primary:#ffffff,secondary:#ffffff"
+                stroke="bold"
+              />
             </motion.span>
           ) : null}
         </AnimatePresence>
         <AnimatePresence mode="wait">
           {completed ? (
-            <MotionCheck
+            <motion.span
               key="done"
-              className={checkSizeClass}
-              strokeWidth={2.75}
-              aria-hidden
+              className="absolute inset-0 flex items-center justify-center"
               initial={{ opacity: 0, scale: 0.15, rotate: -58 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
               transition={{
@@ -115,7 +115,16 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
                 rotate: 24,
                 transition: { duration: 0.14 }
               }}
-            />
+            >
+              <LordIcon
+                src="/lordicon/check.json"
+                trigger="in"
+                animateOnHover={false}
+                size={checkSize}
+                colors="primary:#ffffff,secondary:#ffffff"
+                stroke="bold"
+              />
+            </motion.span>
           ) : null}
         </AnimatePresence>
       </motion.button>

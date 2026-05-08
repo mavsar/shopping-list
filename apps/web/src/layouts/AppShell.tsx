@@ -1,12 +1,11 @@
 import type { PropsWithChildren } from "react";
 import { motion } from "motion/react";
 
-import { GradientBackground } from "@/components/animate-ui/components/backgrounds/gradient";
-
 export function AppShell({ children }: PropsWithChildren) {
   return (
     <main className="relative min-h-screen overflow-hidden">
-      <GradientBackground className="pointer-events-none absolute inset-0 z-0 opacity-40" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.20),_transparent_45%),radial-gradient(circle_at_80%_20%,_rgba(168,85,247,0.18),_transparent_42%),linear-gradient(160deg,rgba(15,23,42,0.85),rgba(30,41,59,0.92))]" />
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-35 [background-image:radial-gradient(rgba(255,255,255,0.22)_1px,transparent_1px)] [background-size:3px_3px]" />
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <motion.div
           className="absolute -left-24 top-8 h-72 w-72 rounded-full bg-violet-500/30 blur-3xl"

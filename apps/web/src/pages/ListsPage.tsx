@@ -1,14 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { PenLine } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { CheckCheck } from "../components/animate-ui/icons/check-check";
-import { Plus } from "../components/animate-ui/icons/plus";
-import { SlidersVertical } from "../components/animate-ui/icons/sliders-vertical";
-import { Trash2 } from "../components/animate-ui/icons/trash-2";
+import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { AnimateIcon } from "../components/animate-ui/icons/icon";
 import { Button, Dialog, H1, Input } from "../components/ui";
 import { toListSlug } from "../domain/list-slug";
 import type { AuthUser } from "../types/auth";
@@ -224,7 +219,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                   color="white"
                   appearance="outline"
                   type="button"
-                  icon={<SlidersVertical animation="default" />}
+                  icon={<SettingsCog animation="default" />}
                   iconOnly
                   aria-label="Admin"
                   title="Admin"
@@ -283,11 +278,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                     color="white"
                     appearance="outline"
                     type="button"
-                    icon={
-                      <AnimateIcon animation="path-draw">
-                        <PenLine />
-                      </AnimateIcon>
-                    }
+                    icon={<Edit animateOnHover />}
                     iconOnly
                     aria-label={`Edit ${list.name}`}
                     title={`Edit ${list.name}`}

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { motion } from "motion/react";
 
+import { Login } from "../components/lordicon/icons";
 import { Button, Input } from "../components/ui";
 import type { AuthResponse } from "../types/auth";
 
@@ -76,7 +77,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
             required
           />
         </label>
-        <Button type="submit" disabled={loginLoading} stretch>
+        <Button type="submit" disabled={loginLoading} stretch icon={<Login animateOnHover />}>
           {loginLoading ? "Logging in..." : "Log In"}
         </Button>
         {authError ? <p className="m-0 text-sm text-rose-300">{authError}</p> : null}

@@ -92,9 +92,7 @@ Override with environment variables:
 - Routed pages are implemented with `react-router-dom`.
 - `GET /login`: admin/user login page.
 - `GET /admin/users`: admin user management (list users + create user).
-- Frontend includes Animate UI open-code components adapted from animate-ui.com:
-  - animated stars background
-  - animated gradient background
+- Frontend animated icons are standardized on Lordicon JSON Lottie (`https://lordicon.com/`) rendered via `<lord-icon>` web component.
 
 `POST /api/lists/:listId/items` already implements smart behavior:
 - if item title exists globally, it reuses that item

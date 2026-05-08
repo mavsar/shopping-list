@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import type { HTMLMotionProps } from "motion/react";
-import { cloneElement, isValidElement, useState } from "react";
+import { cloneElement, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { cva, cx } from "class-variance-authority";
 
@@ -132,9 +132,9 @@ const buttonForegroundClassName = cva("relative z-10");
 const buttonIconClassName = cva("inline-flex shrink-0 items-center justify-center", {
   variants: {
     size: {
-      sm: "[&_svg]:size-3.5",
-      md: "[&_svg]:size-4",
-      lg: "[&_svg]:size-5"
+      sm: "[&_svg]:size-5 [&_.lord-icon-wrapper]:size-5",
+      md: "[&_svg]:size-6 [&_.lord-icon-wrapper]:size-6",
+      lg: "[&_svg]:size-7 [&_.lord-icon-wrapper]:size-7"
     }
   },
   defaultVariants: {
@@ -167,7 +167,6 @@ export function Button({
   iconOnly = false,
   ...props
 }: ButtonProps) {
-  const [isButtonHovered, setIsButtonHovered] = useState(false);
   const { onHoverStart, onHoverEnd, ...restProps } = props;
   const isDisabled = Boolean(props.disabled);
   const showOnlyIcon = iconOnly || (!children && Boolean(icon));
@@ -179,12 +178,14 @@ export function Button({
     animate?: boolean | string;
     animation?: string;
     animateOnHover?: boolean | string;
+    target?: string;
   };
   const resolvedIcon = isValidElement(icon)
     ? cloneElement(icon as ReactElement<IconElementProps>, {
-        animate: (!isDisabled && isButtonHovered) || Boolean((icon as ReactElement<IconElementProps>).props.animate),
-        animateOnHover: false,
-        animation: (icon as ReactElement<IconElementProps>).props.animation ?? "default"
+        animate: Boolean((icon as ReactElement<IconElementProps>).props.animate),
+        animateOnHover: (icon as ReactElement<IconElementProps>).props.animateOnHover ?? true,
+        animation: (icon as ReactElement<IconElementProps>).props.animation ?? "default",
+        target: (icon as ReactElement<IconElementProps>).props.target ?? "button"
       })
     : icon;
 
@@ -192,11 +193,9 @@ export function Button({
     <motion.button
       whileTap={isDisabled ? undefined : { scale: tapScale }}
       onHoverStart={(event, info) => {
-        setIsButtonHovered(true);
         onHoverStart?.(event, info);
       }}
       onHoverEnd={(event, info) => {
-        setIsButtonHovered(false);
         onHoverEnd?.(event, info);
       }}
       className={buttonClassName({

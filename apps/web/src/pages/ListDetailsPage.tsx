@@ -6,11 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
 import { CompletionCircleToggle } from "../components/CompletionCircleToggle";
 import { ItemCategoryIcon, itemCategoryLabels } from "../components/ItemCategoryIcon";
-import { ArrowLeft } from "../components/animate-ui/icons/arrow-left";
-import { Minus } from "../components/animate-ui/icons/minus";
-import { Plus } from "../components/animate-ui/icons/plus";
-import { Search } from "../components/animate-ui/icons/search";
-import { SlidersVertical } from "../components/animate-ui/icons/sliders-vertical";
+import { ArrowLeft, Minus, Plus, Search, SettingsCog } from "../components/lordicon/icons";
 import { Button, Dialog, H1, Input, Select, Textarea } from "../components/ui";
 import type { AuthUser } from "../types/auth";
 import type { ItemCategory } from "../domain/item-category";
@@ -769,7 +765,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 color="white"
                 appearance="outline"
                 type="button"
-                icon={<SlidersVertical animation="default" />}
+                icon={<SettingsCog animation="default" />}
                 iconOnly
                 aria-label="Admin"
                 title="Admin"
@@ -810,7 +806,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                     })
                   }
                 />
-                <ItemCategoryIcon category={item.category} size={24} />
+                <ItemCategoryIcon category={item.category} size={36} />
                 <div className="block min-w-0 flex-1">
                   <p className="m-0 truncate text-sm font-semibold text-slate-50">
                     {formatItemTitle(item.title)}
@@ -828,7 +824,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                         color="white"
                         appearance="transparent"
                         size="sm"
-                        className="h-7 w-7"
+                        className="h-8 w-8"
                         iconOnly
                         icon={<Minus animateOnHover />}
                         aria-label={`Decrease quantity for ${formatItemTitle(item.title)}`}
@@ -845,7 +841,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                         color="white"
                         appearance="transparent"
                         size="sm"
-                        className="h-7 w-7"
+                        className="h-8 w-8"
                         iconOnly
                         icon={<Plus animateOnHover />}
                         aria-label={`Increase quantity for ${formatItemTitle(item.title)}`}
@@ -858,7 +854,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                         color="white"
                         appearance="transparent"
                         size="sm"
-                        className="h-7 w-7"
+                        className="h-8 w-8"
                         iconOnly
                         icon={<Search animateOnHover />}
                         aria-label={`Podrobnosti: ${formatItemTitle(item.title)}`}

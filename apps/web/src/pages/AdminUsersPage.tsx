@@ -1,13 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { PenLine } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { LogOut } from "../components/animate-ui/icons/log-out";
-import { Plus } from "../components/animate-ui/icons/plus";
-import { Trash2 } from "../components/animate-ui/icons/trash-2";
+import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { AnimateIcon } from "../components/animate-ui/icons/icon";
 import { Button, Checkbox, Dialog, H1, Input, Label, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 
@@ -316,11 +312,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                       color="white"
                       appearance="outline"
                       type="button"
-                      icon={
-                        <AnimateIcon animation="path-draw">
-                          <PenLine />
-                        </AnimateIcon>
-                      }
+                      icon={<Edit animateOnHover />}
                       iconOnly
                       aria-label={`Edit ${user.username}`}
                       title={`Edit ${user.username}`}

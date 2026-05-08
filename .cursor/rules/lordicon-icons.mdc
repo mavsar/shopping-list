@@ -1,0 +1,13 @@
+---
+description: Standardize animated icons on Lordicon
+alwaysApply: true
+---
+
+# Lordicon Icon Standard
+
+- Use animated icons from `https://lordicon.com/` only.
+- Use JSON Lottie via the `<lord-icon>` web component and local wrappers in `apps/web/src/components/lordicon/`.
+- Prefer **System / Solid** icons and choose icons that clearly match button intent (e.g. settings cog for settings, pencil for edit, trash for delete).
+- Do not reintroduce Animate UI icon components or `@animate-ui` registries.
+- For new icon usage in React pages/components, import from `apps/web/src/components/lordicon/icons.tsx`.
+- Keep icon behavior consistent with existing button hover animation patterns.
