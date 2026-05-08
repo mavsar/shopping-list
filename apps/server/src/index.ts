@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 
+import { ensureBootstrapAdmin } from "./auth/bootstrap-admin.js";
 import { sqlite } from "./db/client.js";
 import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { itemsRouter } from "./routes/items.js";
 import { listsRouter } from "./routes/lists.js";
 import { usersRouter } from "./routes/users.js";
+
+ensureBootstrapAdmin();
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
