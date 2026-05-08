@@ -1,11 +1,8 @@
 name: shopping-list
 services:
   shopping-list:
-    image: shopping-list:local
-    pull_policy: never
-    build:
-      context: /DATA/AppData/shopping-list
-      dockerfile: Dockerfile
+    image: ghcr.io/mavsar/shopping-list:v1.0.0
+    pull_policy: always
     container_name: shopping-list
     environment:
       NODE_ENV: production
@@ -62,8 +59,8 @@ x-casaos:
   tips:
     before_install:
       en_US: |
-        This package builds from local source at `/DATA/AppData/shopping-list`.
-        Clone your repository there before installing.
+        This package pulls a pinned image tag from GHCR.
+        Bump the tag in `image: ghcr.io/mavsar/shopping-list:vX.Y.Z` when you want to upgrade.
 
         Default login (if unchanged):
         - username: `admin`
