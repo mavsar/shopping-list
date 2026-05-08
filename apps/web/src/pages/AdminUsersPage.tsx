@@ -1,10 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
+import { PenLine } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { LogOut } from "../components/animate-ui/icons/log-out";
+import { Plus } from "../components/animate-ui/icons/plus";
+import { Trash2 } from "../components/animate-ui/icons/trash-2";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Checkbox, Dialog, H1, Input, Label } from "../components/ui";
+import { AnimateIcon } from "../components/animate-ui/icons/icon";
+import { Button, Checkbox, Dialog, H1, Input, Label, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 
 type AdminUsersPageProps = {
@@ -24,9 +28,9 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newIsAdmin, setNewIsAdmin] = useState(false);
+  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
   const [createUserLoading, setCreateUserLoading] = useState(false);
   const [createUserError, setCreateUserError] = useState("");
-  const [createUserSuccess, setCreateUserSuccess] = useState("");
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [editingUsername, setEditingUsername] = useState("");
   const [editingName, setEditingName] = useState("");
@@ -37,7 +41,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   const [updateUserError, setUpdateUserError] = useState("");
   const [deleteUserLoadingId, setDeleteUserLoadingId] = useState<number | null>(null);
   const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<number | null>(null);
-  const [deleteConfirmUsername, setDeleteConfirmUsername] = useState("");
+  const [deleteTransferToUserId, setDeleteTransferToUserId] = useState<number | null>(null);
   const [deleteUserError, setDeleteUserError] = useState("");
 
   const authHeaders = useMemo(
@@ -79,7 +83,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateUserError("");
-    setCreateUserSuccess("");
     setCreateUserLoading(true);
 
     try {
@@ -104,12 +107,12 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       }
 
       setUsers((currentUsers) => [payload.user as ManagedUser, ...currentUsers]);
-      setCreateUserSuccess(`User "${payload.user.username}" created.`);
       setNewUsername("");
       setNewPassword("");
       setNewName("");
       setNewEmail("");
       setNewIsAdmin(false);
+      setCreateUserDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setCreateUserError(message);
@@ -120,7 +123,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
 
   function beginEditUser(user: ManagedUser) {
     setDeleteConfirmUserId(null);
-    setDeleteConfirmUsername("");
     setDeleteUserError("");
     setEditingUserId(user.id);
     setEditingUsername(user.username);
@@ -142,14 +144,18 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   }
 
   function beginDeleteUserConfirmation(userId: number) {
+    const firstTransferCandidate =
+      users.find((user) => user.id !== userId && user.id !== authUser.id)?.id ??
+      users.find((user) => user.id !== userId)?.id ??
+      null;
     setDeleteConfirmUserId(userId);
-    setDeleteConfirmUsername("");
+    setDeleteTransferToUserId(firstTransferCandidate);
     setDeleteUserError("");
   }
 
   function cancelDeleteUserConfirmation() {
     setDeleteConfirmUserId(null);
-    setDeleteConfirmUsername("");
+    setDeleteTransferToUserId(null);
     setDeleteUserError("");
   }
 
@@ -194,11 +200,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   }
 
   async function handleDeleteUser(user: ManagedUser) {
-    if (deleteConfirmUsername !== user.username) {
-      setDeleteUserError("Type the exact username to confirm deletion.");
-      return;
-    }
-
     const userId = user.id;
     setDeleteUserLoadingId(userId);
     setDeleteUserError("");
@@ -206,7 +207,13 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
     try {
       const response = await fetch(`/api/users/${userId}`, {
         method: "DELETE",
-        headers: authHeaders
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          transferToUserId: deleteTransferToUserId ?? undefined
+        })
       });
 
       if (!response.ok) {
@@ -237,6 +244,16 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         <AppHeader
           actions={
             <>
+              <Button
+                type="button"
+                icon={<Plus animateOnHover />}
+                onClick={() => {
+                  setCreateUserError("");
+                  setCreateUserDialogOpen(true);
+                }}
+              >
+                Add new user
+              </Button>
               <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
                 App
               </Button>
@@ -262,62 +279,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         <p className="mt-1 text-slate-200/90">Create users and manage privileged access with fluid real-time updates.</p>
       </section>
 
-      <section className="mt-6 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <motion.aside
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.12, duration: 0.42 }}
-          className="relative rounded-[2rem] border border-white/18 bg-slate-900/28 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_60px_rgba(2,8,23,0.42)] backdrop-blur-2xl"
-        >
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-white/45 to-transparent" />
-          <h2 className="text-base font-semibold text-slate-50">Create user</h2>
-          <form className="mt-3 grid gap-3" onSubmit={handleCreateUser}>
-            <label className="grid gap-1 text-sm text-slate-200">
-              Username
-              <Input
-                value={newUsername}
-                onChange={(event) => setNewUsername(event.target.value)}
-                minLength={3}
-                required
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-200">
-              Full name
-              <Input
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                required
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-200">
-              Password
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                minLength={8}
-                required
-              />
-            </label>
-            <label className="grid gap-1 text-sm text-slate-200">
-              Email (optional)
-              <Input
-                type="email"
-                value={newEmail}
-                onChange={(event) => setNewEmail(event.target.value)}
-              />
-            </label>
-            <Checkbox checked={newIsAdmin} onChange={(event) => setNewIsAdmin(event.target.checked)}>
-              Grant admin rights
-            </Checkbox>
-            <Button type="submit" disabled={createUserLoading} stretch>
-              {createUserLoading ? "Creating..." : "Create user"}
-            </Button>
-            {createUserError ? <p className="m-0 text-sm text-rose-300">{createUserError}</p> : null}
-            {createUserSuccess ? <p className="m-0 text-sm text-emerald-300">{createUserSuccess}</p> : null}
-          </form>
-        </motion.aside>
-
+      <section className="mt-6">
         <motion.article
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -327,7 +289,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Users</h2>
           {usersLoading ? <p className="text-slate-300">Loading users...</p> : null}
           {usersError ? <p className="m-0 text-sm text-rose-300">{usersError}</p> : null}
-          {updateUserError && editingUserId === null ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
           {!usersLoading && !usersError ? (
             <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
               {users.map((user) => (
@@ -340,92 +301,167 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                   whileHover={{ borderColor: "rgba(186,230,253,0.55)" }}
                   className="group flex items-center justify-between gap-2 rounded-2xl border border-white/16 bg-slate-900/20 p-4 backdrop-blur-lg transition"
                 >
-                  {editingUserId === user.id ? (
-                    <form className="grid w-full gap-2" onSubmit={handleUpdateUser}>
-                      <div className="grid gap-1 text-sm text-slate-200">
-                        Username
-                        <Input
-                          value={editingUsername}
-                          onChange={(event) => setEditingUsername(event.target.value)}
-                          minLength={3}
-                          required
-                        />
-                      </div>
-                      <div className="grid gap-1 text-sm text-slate-200">
-                        Full name
-                        <Input value={editingName} onChange={(event) => setEditingName(event.target.value)} required />
-                      </div>
-                      <div className="grid gap-1 text-sm text-slate-200">
-                        Email (optional)
-                        <Input
-                          type="email"
-                          value={editingEmail}
-                          onChange={(event) => setEditingEmail(event.target.value)}
-                        />
-                      </div>
-                      <div className="grid gap-1 text-sm text-slate-200">
-                        New password (optional)
-                        <Input
-                          type="password"
-                          value={editingPassword}
-                          onChange={(event) => setEditingPassword(event.target.value)}
-                          minLength={8}
-                          placeholder="Leave empty to keep current password"
-                        />
-                      </div>
-                      <Checkbox checked={editingIsAdmin} onChange={(event) => setEditingIsAdmin(event.target.checked)}>
-                        Admin user
-                      </Checkbox>
-                      {updateUserError ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="submit" disabled={updateUserLoading}>
-                          {updateUserLoading ? "Saving..." : "Save"}
-                        </Button>
-                        <Button color="white" appearance="outline" type="button" onClick={cancelEditUser} disabled={updateUserLoading}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <div>
-                        <p className="m-0 text-base font-semibold text-slate-50">{user.username}</p>
-                        <p className="m-0 text-sm text-slate-300">
-                          {user.name}
-                          {user.email ? ` - ${user.email}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
-                          {user.isAdmin ? "admin" : "user"}
-                        </Label>
-                        <Button
-                          color="white"
-                          appearance="outline"
-                          type="button"
-                          onClick={() => beginEditUser(user)}
-                          disabled={deleteUserLoadingId === user.id}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          color="danger"
-                          appearance="outline"
-                          type="button"
-                          onClick={() => beginDeleteUserConfirmation(user.id)}
-                          disabled={deleteUserLoadingId === user.id}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <p className="m-0 text-base font-semibold text-slate-50">{user.username}</p>
+                    <p className="m-0 text-sm text-slate-300">
+                      {user.name}
+                      {user.email ? ` - ${user.email}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
+                      {user.isAdmin ? "admin" : "user"}
+                    </Label>
+                    <Button
+                      color="white"
+                      appearance="outline"
+                      type="button"
+                      icon={
+                        <AnimateIcon animation="path-draw">
+                          <PenLine />
+                        </AnimateIcon>
+                      }
+                      iconOnly
+                      aria-label={`Edit ${user.username}`}
+                      title={`Edit ${user.username}`}
+                      onClick={() => beginEditUser(user)}
+                      disabled={deleteUserLoadingId === user.id}
+                    />
+                    <Button
+                      color="danger"
+                      appearance="outline"
+                      type="button"
+                      icon={<Trash2 animateOnHover />}
+                      iconOnly
+                      aria-label={`Delete ${user.username}`}
+                      title={`Delete ${user.username}`}
+                      onClick={() => beginDeleteUserConfirmation(user.id)}
+                      disabled={deleteUserLoadingId === user.id}
+                    />
+                  </div>
                 </motion.li>
               ))}
             </motion.ul>
           ) : null}
         </motion.article>
       </section>
+      <Dialog
+        open={Boolean(editingUserId)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            cancelEditUser();
+          }
+        }}
+        size="sm"
+        title="Edit user"
+      >
+        <form className="grid gap-3" onSubmit={handleUpdateUser}>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Username
+            <Input
+              value={editingUsername}
+              onChange={(event) => setEditingUsername(event.target.value)}
+              minLength={3}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Full name
+            <Input value={editingName} onChange={(event) => setEditingName(event.target.value)} required />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Email (optional)
+            <Input
+              type="email"
+              value={editingEmail}
+              onChange={(event) => setEditingEmail(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            New password (optional)
+            <Input
+              type="password"
+              value={editingPassword}
+              onChange={(event) => setEditingPassword(event.target.value)}
+              minLength={8}
+              placeholder="Leave empty to keep current password"
+            />
+          </label>
+          <Checkbox checked={editingIsAdmin} onChange={(event) => setEditingIsAdmin(event.target.checked)}>
+            Admin user
+          </Checkbox>
+          {updateUserError ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
+          <div className="flex gap-2">
+            <Button type="submit" disabled={updateUserLoading}>
+              {updateUserLoading ? "Saving..." : "Save"}
+            </Button>
+            <Button color="white" appearance="outline" type="button" onClick={cancelEditUser} disabled={updateUserLoading}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+      <Dialog
+        open={createUserDialogOpen}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setCreateUserDialogOpen(false);
+            setCreateUserError("");
+          }
+        }}
+        size="sm"
+        title="Add new user"
+      >
+        <form className="grid gap-3" onSubmit={handleCreateUser}>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Username
+            <Input
+              value={newUsername}
+              onChange={(event) => setNewUsername(event.target.value)}
+              minLength={3}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Full name
+            <Input
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Password
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              minLength={8}
+              required
+            />
+          </label>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Email (optional)
+            <Input
+              type="email"
+              value={newEmail}
+              onChange={(event) => setNewEmail(event.target.value)}
+            />
+          </label>
+          <Checkbox checked={newIsAdmin} onChange={(event) => setNewIsAdmin(event.target.checked)}>
+            Grant admin rights
+          </Checkbox>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={createUserLoading}>
+              {createUserLoading ? "Creating..." : "Create user"}
+            </Button>
+            <Button color="white" appearance="outline" type="button" onClick={() => setCreateUserDialogOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+          {createUserError ? <p className="m-0 text-sm text-rose-300">{createUserError}</p> : null}
+        </form>
+      </Dialog>
       <Dialog
         open={Boolean(deleteConfirmUser)}
         onOpenChange={(isOpen) => {
@@ -438,7 +474,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         description={
           deleteConfirmUser ? (
             <>
-              Type <strong>{deleteConfirmUser.username}</strong> to permanently delete this user.
+              You are about to permanently delete <strong>{deleteConfirmUser.username}</strong>.
             </>
           ) : undefined
         }
@@ -450,7 +486,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                 appearance="outline"
                 type="button"
                 onClick={() => void handleDeleteUser(deleteConfirmUser)}
-                disabled={deleteUserLoadingId === deleteConfirmUser.id || deleteConfirmUsername !== deleteConfirmUser.username}
+                disabled={deleteUserLoadingId === deleteConfirmUser.id}
               >
                 {deleteUserLoadingId === deleteConfirmUser.id ? "Deleting..." : "Confirm delete"}
               </Button>
@@ -463,11 +499,27 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       >
         {deleteConfirmUser ? (
           <div className="grid gap-2">
-            <Input
-              value={deleteConfirmUsername}
-              onChange={(event) => setDeleteConfirmUsername(event.target.value)}
-              placeholder={deleteConfirmUser.username}
-            />
+            <label className="grid gap-1 text-sm text-slate-200">
+              Transfer owned lists to
+              <Select
+                value={deleteTransferToUserId ? String(deleteTransferToUserId) : ""}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setDeleteTransferToUserId(Number.isInteger(value) && value > 0 ? value : null);
+                }}
+              >
+                <option value="" disabled>
+                  Select user
+                </option>
+                {users
+                  .filter((user) => user.id !== deleteConfirmUser.id)
+                  .map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.username}
+                    </option>
+                  ))}
+              </Select>
+            </label>
             {deleteUserError ? <p className="m-0 text-xs text-rose-200">{deleteUserError}</p> : null}
           </div>
         ) : null}

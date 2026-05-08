@@ -33,6 +33,10 @@ const updateUserSchema = z
     }
   );
 
+const deleteUserSchema = z.object({
+  transferToUserId: z.number().int().positive().optional()
+});
+
 export const usersRouter = Router();
 
 usersRouter.get("/", requireAuth, requireAdmin, (_req, res) => {
@@ -207,10 +211,67 @@ usersRouter.delete("/:userId", requireAuth, requireAdmin, (req, res) => {
     }
   }
 
+  const parsedDeletePayload = deleteUserSchema.safeParse(req.body ?? {});
+  if (!parsedDeletePayload.success) {
+    return res.status(400).json({
+      error: "Invalid payload",
+      details: parsedDeletePayload.error.flatten()
+    });
+  }
+
+  const transferToUserId = parsedDeletePayload.data.transferToUserId;
+  const ownedListsCount = sqlite
+    .prepare("SELECT COUNT(*) AS count FROM shopping_lists WHERE created_by_user_id = ?")
+    .get(userId) as { count: number };
+
+  if (ownedListsCount.count > 0) {
+    if (!transferToUserId) {
+      return res.status(409).json({
+        error: "User owns existing lists. Provide transferToUserId to transfer ownership before deletion."
+      });
+    }
+
+    if (transferToUserId === userId) {
+      return res.status(409).json({ error: "transferToUserId must be a different user" });
+    }
+
+    const transferTarget = sqlite
+      .prepare("SELECT id FROM users WHERE id = ? LIMIT 1")
+      .get(transferToUserId) as { id: number } | undefined;
+
+    if (!transferTarget) {
+      return res.status(404).json({ error: "Transfer target user not found" });
+    }
+  }
+
   try {
-    const result = sqlite.prepare("DELETE FROM users WHERE id = ?").run(userId);
-    if (result.changes === 0) {
-      return res.status(404).json({ error: "User not found" });
+    if (ownedListsCount.count > 0 && transferToUserId) {
+      const deleteWithTransfer = sqlite.transaction(() => {
+        sqlite
+          .prepare(
+            `
+            INSERT INTO list_members (list_id, user_id, role)
+            SELECT id, ?, 'owner'
+            FROM shopping_lists
+            WHERE created_by_user_id = ?
+            ON CONFLICT(list_id, user_id) DO UPDATE SET role = 'owner'
+            `
+          )
+          .run(transferToUserId, userId);
+
+        sqlite
+          .prepare("UPDATE shopping_lists SET created_by_user_id = ? WHERE created_by_user_id = ?")
+          .run(transferToUserId, userId);
+
+        sqlite.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      });
+
+      deleteWithTransfer();
+    } else {
+      const result = sqlite.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
     }
 
     return res.status(204).send();

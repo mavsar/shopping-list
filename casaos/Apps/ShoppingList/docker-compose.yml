@@ -1,10 +1,11 @@
 name: shopping-list
 services:
   shopping-list:
+    image: shopping-list:local
+    pull_policy: never
     build:
       context: /DATA/AppData/shopping-list
       dockerfile: Dockerfile
-    image: shopping-list:0.1.0
     container_name: shopping-list
     environment:
       NODE_ENV: production
