@@ -1012,11 +1012,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                                 })
                               }
                             />
-                            <ItemCategoryIcon category={item.category} size={36} />
+                            <ItemCategoryIcon category={item.category} size={30} />
                             <div className="block min-w-0 flex-1">
                               <button
                                 type="button"
-                                className="m-0 block max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm font-semibold text-slate-50 cursor-pointer"
+                                className="m-0 block max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-5 font-semibold text-slate-50 cursor-pointer"
                                 onClick={() => openItemDetails(item)}
                               >
                                 {formatItemTitle(item.title)}
@@ -1080,11 +1080,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                           })
                         }
                       />
-                      <ItemCategoryIcon category={item.category} size={36} />
+                      <ItemCategoryIcon category={item.category} size={30} />
                       <div className="block min-w-0 flex-1">
                         <button
                           type="button"
-                          className="m-0 block max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm font-semibold text-slate-50 cursor-pointer"
+                          className="m-0 block max-w-full min-h-9 line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-5 font-semibold text-slate-50 cursor-pointer"
                           onClick={() => openItemDetails(item)}
                         >
                           {formatItemTitle(item.title)}
