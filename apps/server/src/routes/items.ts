@@ -11,8 +11,8 @@ import { normalizeTitle } from "../domain/items.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const suggestQuerySchema = z.object({
-  q: z.string().trim().min(1),
-  limit: z.coerce.number().int().min(1).max(25).optional()
+  q: z.string().trim().max(200),
+  limit: z.coerce.number().int().min(1).max(500).optional()
 });
 
 const findImageQuerySchema = z.object({
@@ -664,7 +664,7 @@ itemsRouter.get("/suggest", requireAuth, (req, res) => {
   }
 
   const query = normalizeTitle(parsed.data.q);
-  const limit = parsed.data.limit ?? 8;
+  const limit = parsed.data.limit ?? 120;
 
   const items = sqlite
     .prepare(

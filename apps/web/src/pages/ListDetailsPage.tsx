@@ -308,6 +308,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [showAddNewItemButton, setShowAddNewItemButton] = useState(false);
 
   const [showCreateItemStep, setShowCreateItemStep] = useState(false);
   const [newItemName, setNewItemName] = useState("");
@@ -355,11 +356,26 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsEditMode(false);
   }, [detailsListItemId]);
 
-  const orderedVisibleItems = useMemo(() => {
+  const groupedVisibleItems = useMemo(() => {
     const visible = items.filter((row) => isVisibleListItemStatus(row.status));
-    const activeRows = visible.filter((row) => row.status === "active").sort(sortShoppingItemsNewestFirst);
-    const completedRows = visible.filter((row) => row.status === "completed").sort(sortShoppingItemsNewestFirst);
-    return [...activeRows, ...completedRows];
+    const byCategory = new Map<ItemCategory, ShoppingListItem[]>();
+
+    for (const row of visible) {
+      const categoryRows = byCategory.get(row.category) ?? [];
+      categoryRows.push(row);
+      byCategory.set(row.category, categoryRows);
+    }
+
+    return Array.from(byCategory.entries())
+      .sort((a, b) => itemCategoryLabels[a[0]].localeCompare(itemCategoryLabels[b[0]], "sl"))
+      .map(([category, rows]) => {
+        const activeRows = rows.filter((row) => row.status === "active").sort(sortShoppingItemsNewestFirst);
+        const completedRows = rows.filter((row) => row.status === "completed").sort(sortShoppingItemsNewestFirst);
+        return {
+          category,
+          items: [...activeRows, ...completedRows]
+        };
+      });
   }, [items]);
 
   const authHeaders = useMemo(
@@ -450,12 +466,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
 
     const normalizedQuery = searchValue.trim();
-    if (normalizedQuery.length < 1) {
-      setSearchResults([]);
-      setSearchError("");
-      setSearchLoading(false);
-      return;
-    }
 
     const timeout = window.setTimeout(() => {
       async function runSearch() {
@@ -464,7 +474,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         setSearchLoading(true);
         setSearchError("");
         try {
-          const response = await fetch(`/api/items/suggest?q=${encodeURIComponent(normalizedQuery)}&limit=16`, {
+          const response = await fetch(`/api/items/suggest?q=${encodeURIComponent(normalizedQuery)}&limit=500`, {
             headers: authHeaders
           });
           if (!response.ok) {
@@ -498,12 +508,33 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     };
   }, [addDialogOpen, authHeaders, searchValue, showCreateItemStep]);
 
+  useEffect(() => {
+    if (!addDialogOpen || showCreateItemStep) {
+      setShowAddNewItemButton(false);
+      return;
+    }
+
+    if (searchLoading || !searchValue.trim() || searchResults.length > 0) {
+      setShowAddNewItemButton(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowAddNewItemButton(true);
+    }, 420);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [addDialogOpen, searchLoading, searchResults.length, searchValue, showCreateItemStep]);
+
   function resetDialogState() {
     setAddDialogOpen(false);
     setSearchValue("");
     setSearchResults([]);
     setSearchError("");
     setSearchLoading(false);
+    setShowAddNewItemButton(false);
     setShowCreateItemStep(false);
     setNewItemName("");
     setNewItemQuantity(1);
@@ -947,87 +978,88 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         {listLoading || itemsLoading ? <p className="text-slate-300">Loading list...</p> : null}
         {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
         {!listLoading && !itemsLoading && !listError ? (
-          <ul className="m-0 mt-3 flex list-none flex-col gap-2 p-0">
-            {orderedVisibleItems.map((item) => (
-              <li
-                key={item.id}
-                className={cx(
-                  "flex items-center gap-4 py-2.5 px-4 transition-opacity",
-                  item.status === "completed"
-                    ? "border border-transparent bg-transparent shadow-none opacity-40 hover:opacity-100"
-                    : "rounded-2xl border border-white/14 bg-slate-900/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_rgba(2,8,23,0.35)]"
-                )}
-              >
-                <CompletionCircleToggle
-                  size="sm"
-                  completed={item.status === "completed"}
-                  disabled={Boolean(updatingItemId)}
-                  onToggle={() =>
-                    void patchListItem(item.id, {
-                      status: item.status === "completed" ? "active" : "completed"
-                    })
-                  }
-                />
-                <ItemCategoryIcon category={item.category} size={36} />
-                <div className="block min-w-0 flex-1">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-50">
-                    {formatItemTitle(item.title)}
-                    {item.status === "completed" ? (
-                      <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Kupljeno</span>
-                    ) : null}
-                  </p>
-                  {item.note ? <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p> : null}
-                </div>
-                <div className="flex min-w-0 flex-col justify-center">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="inline-flex items-center justify-center gap-1">
-                      <Button
-                        type="button"
-                        color="white"
-                        appearance="transparent"
+          <ul className="m-0 mt-3 flex list-none flex-col gap-4 p-0">
+            {groupedVisibleItems.map((group) => (
+              <li key={group.category} className="list-none">
+                <p className="m-0 mb-2 px-1 text-xs font-semibold tracking-wide text-slate-300 uppercase">
+                  {itemCategoryLabels[group.category]}
+                </p>
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                  {group.items.map((item) => (
+                    <li
+                      key={item.id}
+                      className={cx(
+                        "flex items-center gap-4 py-2.5 px-4 transition-opacity",
+                        item.status === "completed"
+                          ? "border border-transparent bg-transparent shadow-none opacity-40 hover:opacity-100"
+                          : "rounded-2xl border border-white/14 border-t-white/25 bg-slate-900/25 shadow-[0_8px_18px_rgba(2,8,23,0.35)]"
+                      )}
+                    >
+                      <CompletionCircleToggle
                         size="sm"
-                        className="h-8 w-8"
-                        iconOnly
-                        icon={<Minus animateOnHover />}
-                        aria-label={`Decrease quantity for ${formatItemTitle(item.title)}`}
+                        completed={item.status === "completed"}
                         disabled={Boolean(updatingItemId)}
-                        onClick={() =>
-                          void patchListItem(item.id, { quantity: Math.max(1, Number((item.quantity - quantityStep).toFixed(2))) })
+                        onToggle={() =>
+                          void patchListItem(item.id, {
+                            status: item.status === "completed" ? "active" : "completed"
+                          })
                         }
                       />
-                      <span className="inline-flex min-w-[4.5rem] items-center justify-center whitespace-nowrap text-center text-xs text-slate-100">
-                        {item.quantity} {item.unit}
-                      </span>
-                      <Button
-                        type="button"
-                        color="white"
-                        appearance="transparent"
-                        size="sm"
-                        className="h-8 w-8"
-                        iconOnly
-                        icon={<Plus animateOnHover />}
-                        aria-label={`Increase quantity for ${formatItemTitle(item.title)}`}
-                        disabled={Boolean(updatingItemId)}
-                        onClick={() => void patchListItem(item.id, { quantity: Number((item.quantity + quantityStep).toFixed(2)) })}
-                      />
-                      <span className="mx-3 h-4 w-px bg-white/20" aria-hidden />
-                      <Button
-                        type="button"
-                        color="white"
-                        appearance="transparent"
-                        size="sm"
-                        className="h-8 w-8"
-                        iconOnly
-                        icon={<Search animateOnHover />}
-                        aria-label={`Podrobnosti: ${formatItemTitle(item.title)}`}
-                        onClick={() => openItemDetails(item)}
-                      />
-                    </div>
-                  </div>
-                </div>
+                      <ItemCategoryIcon category={item.category} size={36} />
+                      <div className="block min-w-0 flex-1">
+                        <button
+                          type="button"
+                          className="m-0 block max-w-full truncate border-0 bg-transparent p-0 text-left text-sm font-semibold text-slate-50 cursor-pointer"
+                          onClick={() => openItemDetails(item)}
+                        >
+                          {formatItemTitle(item.title)}
+                          {item.status === "completed" ? (
+                            <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Kupljeno</span>
+                          ) : null}
+                        </button>
+                        {item.note ? <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p> : null}
+                      </div>
+                      <div className="flex min-w-0 flex-col justify-center">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="inline-flex items-center justify-center gap-1">
+                            <Button
+                              type="button"
+                              color="white"
+                              appearance="transparent"
+                              size="sm"
+                              className="h-8 w-8"
+                              iconOnly
+                              icon={<Minus animateOnHover />}
+                              aria-label={`Decrease quantity for ${formatItemTitle(item.title)}`}
+                              disabled={Boolean(updatingItemId)}
+                              onClick={() =>
+                                void patchListItem(item.id, { quantity: Math.max(1, Number((item.quantity - quantityStep).toFixed(2))) })
+                              }
+                            />
+                            <span className="inline-flex min-w-14 items-center justify-center whitespace-nowrap text-center text-xs text-slate-100">
+                              {item.quantity} {item.unit}
+                            </span>
+                            <Button
+                              type="button"
+                              color="white"
+                              appearance="transparent"
+                              size="sm"
+                              className="h-8 w-8"
+                              iconOnly
+                              icon={<Plus animateOnHover />}
+                              aria-label={`Increase quantity for ${formatItemTitle(item.title)}`}
+                              disabled={Boolean(updatingItemId)}
+                              onClick={() => void patchListItem(item.id, { quantity: Number((item.quantity + quantityStep).toFixed(2)) })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
-            {!orderedVisibleItems.length ? (
+            {!groupedVisibleItems.length ? (
               <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
                 No items yet. Tap the + button in the bottom-right corner to add your first product.
               </li>
@@ -1060,9 +1092,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           }
         }}
         size="md"
+        fullHeight
         title="Add item"
       >
-        <div className="overflow-hidden">
+        <div className="h-full overflow-hidden">
           <AnimatePresence initial={false} mode="wait">
             {!showCreateItemStep ? (
               <motion.div
@@ -1071,7 +1104,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 animate={{ x: 0, opacity: 1 }}
                 exit={{ x: -26, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="space-y-3"
+                className="flex h-full flex-col gap-3"
               >
                 <Input
                   value={searchValue}
@@ -1080,14 +1113,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   placeholder="Search item..."
                   autoFocus
                 />
-                {searchLoading ? <p className="m-0 text-xs text-slate-300">Searching...</p> : null}
                 {searchError ? <p className="m-0 text-xs text-rose-200">{searchError}</p> : null}
-                <div className="grid max-h-[300px] gap-2 overflow-y-auto pr-1">
+                <div className="grid content-start flex-1 gap-2 overflow-y-auto pr-1">
                   {searchResults.map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      className="flex w-full items-center gap-3 rounded-2xl border border-white/16 bg-slate-900/30 p-2 text-left text-slate-100 transition hover:border-cyan-300/45"
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/16 bg-slate-900/30 p-2 text-left text-slate-100 transition hover:border-cyan-300/45"
                       onClick={() => void addExistingItem(item.title)}
                       disabled={addItemLoading}
                     >
@@ -1098,18 +1130,20 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                     </button>
                   ))}
                 </div>
-                {!searchLoading && searchValue.trim() && !searchResults.length ? (
-                  <Button
-                    type="button"
-                    stretch
-                    appearance="outline"
-                    color="white"
-                    onClick={() => openCreateItemStep(searchValue.trim())}
-                    disabled={addItemLoading}
-                  >
-                    ADD NEW ITEM
-                  </Button>
-                ) : null}
+                <div className="mt-auto">
+                  {showAddNewItemButton ? (
+                    <Button
+                      type="button"
+                      stretch
+                      appearance="outline"
+                      color="white"
+                      onClick={() => openCreateItemStep(searchValue.trim())}
+                      disabled={addItemLoading}
+                    >
+                      ADD NEW ITEM
+                    </Button>
+                  ) : null}
+                </div>
                 {addItemError ? <p className="m-0 text-xs text-rose-200">{addItemError}</p> : null}
               </motion.div>
             ) : (

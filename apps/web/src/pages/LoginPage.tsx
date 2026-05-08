@@ -53,7 +53,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
         initial={{ opacity: 0, x: 14, y: 10 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ delay: 0.12, duration: 0.45 }}
-        className="relative mx-auto grid w-full max-w-xl gap-4 rounded-[2rem] border border-white/18 bg-slate-900/28 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_60px_rgba(2,8,23,0.42)] backdrop-blur-2xl"
+        className="relative mx-auto grid w-full max-w-sm gap-4 rounded-[2rem] border border-white/18 bg-slate-900/28 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_60px_rgba(2,8,23,0.42)] backdrop-blur-2xl"
         onSubmit={handleLogin}
       >
         <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-white/45 to-transparent" />

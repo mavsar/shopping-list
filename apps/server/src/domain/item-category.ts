@@ -3,6 +3,7 @@ export const itemCategoryValues = [
   "fruit",
   "bread",
   "dairy",
+  "eggs",
   "meat",
   "fish",
   "sweets",
@@ -210,6 +211,10 @@ const CATEGORY_RULES: { category: ItemCategory; keywords: string[] }[] = [
     ]
   },
   {
+    category: "eggs",
+    keywords: ["jajc", "jajce", "jajca", "egg", " eggs", "eggs", "free range egg", "bio egg"]
+  },
+  {
     category: "dairy",
     keywords: [
       "mleko",
@@ -237,11 +242,7 @@ const CATEGORY_RULES: { category: ItemCategory; keywords: string[] }[] = [
       "probiotic",
       "mascarpone",
       "smotana",
-      "smetan",
-      "jajc",
-      "egg",
-      " eggs",
-      "eggs"
+      "smetan"
     ]
   },
   {

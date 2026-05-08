@@ -112,6 +112,47 @@ const migrations: Migration[] = [
         'frozen', 'pantry', 'other'
       ));
     `
+  },
+  {
+    name: "006_items_category_eggs_split",
+    sql: `
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE IF NOT EXISTS items_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        normalized_title TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        image_url TEXT,
+        source_url TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        category TEXT NOT NULL DEFAULT 'other'
+        CHECK(category IN (
+          'vegetables', 'fruit', 'bread', 'dairy', 'eggs', 'meat', 'fish',
+          'sweets', 'chocolate', 'flour_baking', 'canned', 'beverages',
+          'frozen', 'pantry', 'other'
+        ))
+      );
+
+      INSERT INTO items_new (id, normalized_title, title, image_url, source_url, created_at, updated_at, category)
+      SELECT id, normalized_title, title, image_url, source_url, created_at, updated_at, category
+      FROM items;
+
+      UPDATE items_new
+      SET category = 'eggs', updated_at = CURRENT_TIMESTAMP
+      WHERE category = 'dairy'
+        AND (
+          normalized_title LIKE '%jajc%'
+          OR normalized_title LIKE '%egg%'
+        );
+
+      DROP TABLE items;
+      ALTER TABLE items_new RENAME TO items;
+
+      CREATE INDEX IF NOT EXISTS idx_items_normalized_title ON items(normalized_title);
+
+      PRAGMA foreign_keys = ON;
+    `
   }
 ];
 
@@ -129,6 +170,18 @@ export function runMigrations(sqlite: Database.Database): void {
   for (const migration of migrations) {
     const exists = hasMigration.get(migration.name);
     if (exists) {
+      continue;
+    }
+
+    if (migration.name === "006_items_category_eggs_split") {
+      // This migration rebuilds `items` table; run outside transaction so foreign key pragma can take effect.
+      sqlite.exec("PRAGMA foreign_keys = OFF;");
+      try {
+        sqlite.exec(migration.sql);
+        insertMigration.run(migration.name);
+      } finally {
+        sqlite.exec("PRAGMA foreign_keys = ON;");
+      }
       continue;
     }
 

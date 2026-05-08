@@ -30,6 +30,7 @@ type DialogProps = {
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
   closeOnOverlayClick?: boolean;
+  fullHeight?: boolean;
 };
 
 export function Dialog({
@@ -40,7 +41,8 @@ export function Dialog({
   children,
   footer,
   size = "md",
-  closeOnOverlayClick = true
+  closeOnOverlayClick = true,
+  fullHeight = false
 }: DialogProps) {
   useEffect(() => {
     if (!open) {
@@ -87,13 +89,18 @@ export function Dialog({
           <motion.button
             aria-label="Close dialog"
             type="button"
-            className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
+            className="absolute inset-0"
+            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
+            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            style={{ backgroundColor: "rgba(2, 6, 23, 0.55)", WebkitBackdropFilter: "blur(8px)" }}
             onClick={closeOnOverlayClick ? () => onOpenChange(false) : undefined}
           />
           <motion.section
             role="dialog"
             aria-modal="true"
-            className={`${dialogPanelClassName({ size })} max-h-[calc(100dvh-2rem)] flex flex-col`}
+            className={`${dialogPanelClassName({ size })} ${fullHeight ? "h-[calc(100dvh-2rem)]" : "max-h-[calc(100dvh-2rem)]"} flex flex-col`}
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
