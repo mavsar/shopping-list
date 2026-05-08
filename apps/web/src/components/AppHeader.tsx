@@ -6,24 +6,6 @@ type AppHeaderProps = {
   actions?: ReactNode;
 };
 
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 44 44" role="img" aria-label="Shopping list logo" className="h-11 w-11 shrink-0">
-      <defs>
-        <linearGradient id="shopping-logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#67e8f9" />
-          <stop offset="100%" stopColor="#60a5fa" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="40" height="40" rx="12" fill="none" stroke="url(#shopping-logo-gradient)" strokeWidth="2" />
-      <path d="M13 15.5H31" stroke="#bae6fd" strokeWidth="2" strokeLinecap="round" />
-      <path d="M13 22H31" stroke="#bae6fd" strokeWidth="2" strokeLinecap="round" />
-      <path d="M13 28.5H23" stroke="#bae6fd" strokeWidth="2" strokeLinecap="round" />
-      <path d="M25 29L27.5 31.5L32 27" stroke="#67e8f9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 export function AppHeader({ title, actions }: AppHeaderProps) {
   return (
     <div className="h-[calc(74px+env(safe-area-inset-top))]">
@@ -34,7 +16,7 @@ export function AppHeader({ title, actions }: AppHeaderProps) {
         <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Link to="/" className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45">
-              <BrandMark />
+              <img src="/logo-icon.svg" alt="Shopping list logo" className="h-11 w-11 shrink-0" />
             </Link>
             <p className="m-0 truncate text-base font-semibold tracking-tight text-slate-100 md:text-lg">
               {title}
