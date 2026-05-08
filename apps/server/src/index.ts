@@ -35,7 +35,9 @@ app.get("/api/version", (_req, res) => {
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirectoryPath = path.dirname(currentFilePath);
 const webDistPath = path.resolve(currentDirectoryPath, "..", "..", "web", "dist");
-const itemImagesDirectoryPath = path.resolve(currentDirectoryPath, "..", "storage", "item-images");
+const itemImagesDirectoryPath = process.env.ITEM_IMAGES_PATH?.trim()
+  ? path.resolve(process.env.ITEM_IMAGES_PATH)
+  : path.resolve(currentDirectoryPath, "..", "storage", "item-images");
 
 if (!fs.existsSync(itemImagesDirectoryPath)) {
   fs.mkdirSync(itemImagesDirectoryPath, { recursive: true });

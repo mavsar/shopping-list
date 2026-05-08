@@ -1,13 +1,14 @@
 name: shopping-list
 services:
   shopping-list:
-    image: ghcr.io/mavsar/shopping-list:v1.0.8
+    image: ghcr.io/mavsar/shopping-list:v1.0.9
     pull_policy: always
     container_name: shopping-list
     environment:
       NODE_ENV: production
       PORT: "5173"
       DATABASE_PATH: /app/data/shopping-list.db
+      ITEM_IMAGES_PATH: /app/data/item-images
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Admin}

@@ -46,7 +46,9 @@ const browserHtmlHeaders: HeadersInit = {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirectoryPath = path.dirname(currentFilePath);
-const itemImagesDirectoryPath = path.resolve(currentDirectoryPath, "..", "..", "storage", "item-images");
+const itemImagesDirectoryPath = process.env.ITEM_IMAGES_PATH?.trim()
+  ? path.resolve(process.env.ITEM_IMAGES_PATH)
+  : path.resolve(currentDirectoryPath, "..", "..", "storage", "item-images");
 const itemImagesPublicPath = "/api/item-images";
 const legacyItemImagesPublicPath = "/item-images";
 const generatedImageSize = 512;
@@ -757,32 +759,34 @@ itemsRouter.get("/find-image", requireAuth, async (req, res) => {
 
   if (cachedItem) {
     if (isLocalItemImageUrl(cachedItem.imageUrl) || fs.existsSync(localImagePaths.absolutePath)) {
+      if (fs.existsSync(localImagePaths.absolutePath)) {
+        return res.json({
+          found: true,
+          imageUrl: localImagePaths.publicUrl,
+          sourceUrl: cachedItem.sourceUrl,
+          fromCache: true
+        });
+      }
+    }
+
+    if (!isLocalItemImageUrl(cachedItem.imageUrl)) {
+      const localImageUrlFromCache = await saveSquareImageLocally(query, cachedItem.imageUrl);
+      if (localImageUrlFromCache) {
+        return res.json({
+          found: true,
+          imageUrl: localImageUrlFromCache,
+          sourceUrl: cachedItem.sourceUrl,
+          fromCache: true
+        });
+      }
+
       return res.json({
         found: true,
-        imageUrl: fs.existsSync(localImagePaths.absolutePath)
-          ? localImagePaths.publicUrl
-          : normalizeLocalItemImageUrl(cachedItem.imageUrl),
+        imageUrl: cachedItem.imageUrl,
         sourceUrl: cachedItem.sourceUrl,
         fromCache: true
       });
     }
-
-    const localImageUrlFromCache = await saveSquareImageLocally(query, cachedItem.imageUrl);
-    if (localImageUrlFromCache) {
-      return res.json({
-        found: true,
-        imageUrl: localImageUrlFromCache,
-        sourceUrl: cachedItem.sourceUrl,
-        fromCache: true
-      });
-    }
-
-    return res.json({
-      found: true,
-      imageUrl: cachedItem.imageUrl,
-      sourceUrl: cachedItem.sourceUrl,
-      fromCache: true
-    });
   }
 
   if (fs.existsSync(localImagePaths.absolutePath)) {
