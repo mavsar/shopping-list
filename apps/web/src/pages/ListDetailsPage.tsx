@@ -7,7 +7,7 @@ import { AppHeader } from "../components/AppHeader";
 import { CompletionCircleToggle } from "../components/CompletionCircleToggle";
 import { ItemCategoryIcon, itemCategoryLabels } from "../components/ItemCategoryIcon";
 import { ArrowLeft, Minus, Plus, Search, SettingsCog } from "../components/lordicon/icons";
-import { Button, Dialog, H1, Input, Select, Textarea } from "../components/ui";
+import { Button, Dialog, Input, Select, Textarea } from "../components/ui";
 import type { AuthUser } from "../types/auth";
 import type { ItemCategory } from "../domain/item-category";
 import { inferCategoryFromTitle, itemCategoryValues } from "../domain/item-category";
@@ -18,6 +18,11 @@ type ListDetailsPageProps = {
   token: string;
   authUser: AuthUser;
   onLogout: () => Promise<void>;
+};
+
+type ImageCandidate = {
+  imageUrl: string;
+  sourceUrl: string;
 };
 
 const quantityStep = 1;
@@ -120,8 +125,12 @@ type SharedItemFormFieldsProps = {
   imageSearchQuery: string;
   onImageSearchQueryChange: (value: string) => void;
   onFindImage: () => void;
+  imageCandidates: ImageCandidate[];
+  onSelectImageCandidate: (candidate: ImageCandidate) => void;
+  selectingImageCandidateUrl: string;
   findImageLoading: boolean;
   imageUrl: string;
+  imagePreviewUrl: string;
   sourceUrl: string;
   findImageError: string;
   disabled?: boolean;
@@ -144,12 +153,26 @@ function SharedItemFormFields({
   imageSearchQuery,
   onImageSearchQueryChange,
   onFindImage,
+  imageCandidates,
+  onSelectImageCandidate,
+  selectingImageCandidateUrl,
   findImageLoading,
   imageUrl,
+  imagePreviewUrl,
   sourceUrl,
   findImageError,
   disabled = false
 }: SharedItemFormFieldsProps) {
+  const [brokenCandidateUrls, setBrokenCandidateUrls] = useState<Set<string>>(new Set());
+  const visibleImageCandidates = useMemo(
+    () => imageCandidates.filter((candidate) => !brokenCandidateUrls.has(candidate.imageUrl)),
+    [brokenCandidateUrls, imageCandidates]
+  );
+
+  useEffect(() => {
+    setBrokenCandidateUrls(new Set());
+  }, [imageCandidates]);
+
   return (
     <>
     <div className="flex no-wrap gap-2">
@@ -206,6 +229,44 @@ function SharedItemFormFields({
             onClick={() => void onFindImage()}
           />
         </div>
+        {findImageLoading ? (
+          <p className="m-0 flex items-center gap-2 text-xs text-slate-300">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-300/60 border-t-transparent" aria-hidden />
+            {selectingImageCandidateUrl ? "Applying selected image..." : "Searching image candidates..."}
+          </p>
+        ) : null}
+        {visibleImageCandidates.length ? (
+          <div className="grid grid-cols-3 gap-2">
+            {visibleImageCandidates.map((candidate) => (
+              <button
+                key={candidate.imageUrl}
+                type="button"
+                className={cx(
+                  "aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition",
+                  selectingImageCandidateUrl === candidate.imageUrl && "border-cyan-300/60 opacity-70",
+                  !findImageLoading && "hover:border-cyan-300/45"
+                )}
+                onClick={() => onSelectImageCandidate(candidate)}
+                disabled={findImageLoading || disabled}
+                title="Use this image"
+              >
+                <img
+                  src={candidate.imageUrl}
+                  alt="Image candidate"
+                  className="block h-full w-full object-cover object-center"
+                  loading="lazy"
+                  onError={() =>
+                    setBrokenCandidateUrls((currentBrokenUrls) => {
+                      const nextBrokenUrls = new Set(currentBrokenUrls);
+                      nextBrokenUrls.add(candidate.imageUrl);
+                      return nextBrokenUrls;
+                    })
+                  }
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
         {imageUrl ? (
           <div
             className={cx(
@@ -213,7 +274,12 @@ function SharedItemFormFields({
               findImageLoading && "opacity-60"
             )}
           >
-            <img src={imageUrl} alt={name || "Preview"} className="block h-full w-full object-cover object-center" loading="lazy" />
+            <img
+              src={imagePreviewUrl || imageUrl}
+              alt={name || "Preview"}
+              className="block h-full w-full object-cover object-center"
+              loading="lazy"
+            />
           </div>
         ) : null}
         {sourceUrl ? (
@@ -250,8 +316,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [newItemNote, setNewItemNote] = useState("");
   const [newItemCategory, setNewItemCategory] = useState<ItemCategory>("other");
   const [newItemImageUrl, setNewItemImageUrl] = useState("");
+  const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState("");
   const [newItemSourceUrl, setNewItemSourceUrl] = useState("");
   const [imageSearchQuery, setImageSearchQuery] = useState("");
+  const [imageCandidates, setImageCandidates] = useState<ImageCandidate[]>([]);
+  const [selectingImageCandidateUrl, setSelectingImageCandidateUrl] = useState("");
   const [findImageLoading, setFindImageLoading] = useState(false);
   const [findImageError, setFindImageError] = useState("");
 
@@ -267,8 +336,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [detailsEditName, setDetailsEditName] = useState("");
   const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>("other");
   const [detailsEditImageUrl, setDetailsEditImageUrl] = useState("");
+  const [detailsEditImagePreviewUrl, setDetailsEditImagePreviewUrl] = useState("");
   const [detailsEditSourceUrl, setDetailsEditSourceUrl] = useState("");
   const [detailsImageSearchQuery, setDetailsImageSearchQuery] = useState("");
+  const [detailsImageCandidates, setDetailsImageCandidates] = useState<ImageCandidate[]>([]);
+  const [detailsSelectingImageCandidateUrl, setDetailsSelectingImageCandidateUrl] = useState("");
   const [detailsFindImageLoading, setDetailsFindImageLoading] = useState(false);
   const [detailsFindImageError, setDetailsFindImageError] = useState("");
   const searchRequestIdRef = useRef(0);
@@ -440,8 +512,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemCategory("other");
     categoryManualRef.current = false;
     setNewItemImageUrl("");
+    setNewItemImagePreviewUrl("");
     setNewItemSourceUrl("");
     setImageSearchQuery("");
+    setImageCandidates([]);
+    setSelectingImageCandidateUrl("");
     setFindImageError("");
     setFindImageLoading(false);
     setAddItemError("");
@@ -455,7 +530,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setFindImageError("");
     setFindImageLoading(false);
     setImageSearchQuery("");
+    setImageCandidates([]);
+    setSelectingImageCandidateUrl("");
     setNewItemImageUrl("");
+    setNewItemImagePreviewUrl("");
     setNewItemSourceUrl("");
     setNewItemName(prefillName?.trim() || searchValue.trim());
   }
@@ -554,12 +632,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
   }
 
-  async function findImageWithQuery(
+  async function searchImageCandidatesWithQuery(
     searchTarget: string,
     setLoading: (value: boolean) => void,
     setError: (value: string) => void,
-    setImageUrl: (value: string) => void,
-    setSourceUrl: (value: string) => void
+    setCandidates: (value: ImageCandidate[]) => void,
+    setSelectingCandidateUrl: (value: string) => void
   ) {
     if (!searchTarget) {
       setError("Enter item name or an image search phrase.");
@@ -568,26 +646,26 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
     setLoading(true);
     setError("");
+    setCandidates([]);
+    setSelectingCandidateUrl("");
     try {
-      const response = await fetch(`/api/items/find-image?q=${encodeURIComponent(searchTarget)}`, {
+      const response = await fetch(`/api/items/search-images?q=${encodeURIComponent(searchTarget)}`, {
         headers: authHeaders
       });
 
       const payload = (await response.json()) as {
         found?: boolean;
-        imageUrl?: string;
-        sourceUrl?: string;
+        candidates?: ImageCandidate[];
         error?: string;
       };
       if (!response.ok) {
-        throw new Error(payload.error ?? `Image lookup failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Image candidate search failed with status ${response.status}`);
       }
-      if (!payload.found || !payload.imageUrl) {
-        throw new Error(payload.error ?? "No image found for this item yet.");
+      if (!payload.found || !payload.candidates?.length) {
+        throw new Error(payload.error ?? "No image candidates found for this item yet.");
       }
 
-      setImageUrl(payload.imageUrl);
-      setSourceUrl(payload.sourceUrl ?? "");
+      setCandidates(payload.candidates);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setError(message);
@@ -596,19 +674,111 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
   }
 
+  async function selectImageCandidateWithQuery(
+    searchTarget: string,
+    candidate: ImageCandidate,
+    setLoading: (value: boolean) => void,
+    setError: (value: string) => void,
+    setImageUrl: (value: string) => void,
+    setImagePreviewUrl: (value: string) => void,
+    setSourceUrl: (value: string) => void,
+    setCandidates: (value: ImageCandidate[]) => void,
+    setSelectingCandidateUrl: (value: string) => void
+  ) {
+    if (!searchTarget) {
+      setError("Enter item name or an image search phrase.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSelectingCandidateUrl(candidate.imageUrl);
+    try {
+      const response = await fetch("/api/items/select-image", {
+        method: "POST",
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          q: searchTarget,
+          imageUrl: candidate.imageUrl,
+          sourceUrl: candidate.sourceUrl
+        })
+      });
+
+      const payload = (await response.json()) as {
+        found?: boolean;
+        imageUrl?: string;
+        sourceUrl?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.found || !payload.imageUrl) {
+        throw new Error(payload.error ?? `Applying selected image failed with status ${response.status}`);
+      }
+
+      setImageUrl(payload.imageUrl);
+      setImagePreviewUrl(`${payload.imageUrl}?v=${Date.now()}`);
+      setSourceUrl(payload.sourceUrl ?? candidate.sourceUrl ?? "");
+      setCandidates([]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setError(message);
+    } finally {
+      setSelectingCandidateUrl("");
+      setLoading(false);
+    }
+  }
+
   async function findImage() {
     const searchTarget = imageSearchQuery.trim() || newItemName.trim() || searchValue.trim();
-    await findImageWithQuery(searchTarget, setFindImageLoading, setFindImageError, setNewItemImageUrl, setNewItemSourceUrl);
+    await searchImageCandidatesWithQuery(
+      searchTarget,
+      setFindImageLoading,
+      setFindImageError,
+      setImageCandidates,
+      setSelectingImageCandidateUrl
+    );
+  }
+
+  async function selectImageCandidate(candidate: ImageCandidate) {
+    const searchTarget = imageSearchQuery.trim() || newItemName.trim() || searchValue.trim();
+    await selectImageCandidateWithQuery(
+      searchTarget,
+      candidate,
+      setFindImageLoading,
+      setFindImageError,
+      setNewItemImageUrl,
+      setNewItemImagePreviewUrl,
+      setNewItemSourceUrl,
+      setImageCandidates,
+      setSelectingImageCandidateUrl
+    );
   }
 
   async function findDetailsImage() {
     const searchTarget = detailsImageSearchQuery.trim() || detailsEditName.trim();
-    await findImageWithQuery(
+    await searchImageCandidatesWithQuery(
       searchTarget,
       setDetailsFindImageLoading,
       setDetailsFindImageError,
+      setDetailsImageCandidates,
+      setDetailsSelectingImageCandidateUrl
+    );
+  }
+
+  async function selectDetailsImageCandidate(candidate: ImageCandidate) {
+    const searchTarget = detailsImageSearchQuery.trim() || detailsEditName.trim();
+    await selectImageCandidateWithQuery(
+      searchTarget,
+      candidate,
+      setDetailsFindImageLoading,
+      setDetailsFindImageError,
       setDetailsEditImageUrl,
-      setDetailsEditSourceUrl
+      setDetailsEditImagePreviewUrl,
+      setDetailsEditSourceUrl,
+      setDetailsImageCandidates,
+      setDetailsSelectingImageCandidateUrl
     );
   }
 
@@ -686,8 +856,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsEditName(formatItemTitle(detailsItem.title));
     setDetailsEditCategory(detailsItem.category);
     setDetailsEditImageUrl(detailsItem.imageUrl ?? "");
+    setDetailsEditImagePreviewUrl(detailsItem.imageUrl ?? "");
     setDetailsEditSourceUrl("");
     setDetailsImageSearchQuery("");
+    setDetailsImageCandidates([]);
+    setDetailsSelectingImageCandidateUrl("");
     setDetailsFindImageError("");
     setDetailsFindImageLoading(false);
     setDetailsEditMode(true);
@@ -728,8 +901,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsEditName(formatItemTitle(detailsItem.title));
     setDetailsEditCategory(detailsItem.category);
     setDetailsEditImageUrl(detailsItem.imageUrl ?? "");
+    setDetailsEditImagePreviewUrl(detailsItem.imageUrl ?? "");
     setDetailsEditSourceUrl("");
     setDetailsImageSearchQuery("");
+    setDetailsImageCandidates([]);
+    setDetailsSelectingImageCandidateUrl("");
     setDetailsFindImageError("");
     setDetailsFindImageLoading(false);
     setDetailsEditMode(false);
@@ -738,18 +914,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   return (
     <>
       <AppHeader
+        title={list ? list.name : "List"}
         actions={
           <>
-            <Button
-              type="button"
-              icon={<Plus animateOnHover />}
-              onClick={() => {
-                setAddDialogOpen(true);
-                setAddItemError("");
-              }}
-            >
-              Item
-            </Button>
             <Button
               color="white"
               appearance="outline"
@@ -777,13 +944,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       />
 
       <section className="mt-6">
-        <H1 color="gradient" className="text-3xl md:text-4xl">
-          {list ? list.name : "List"}
-        </H1>
-        <p className="mt-1 text-slate-200/90">Add items quickly and keep the shopping trip organized.</p>
-      </section>
-
-      <section className="mt-5">
         {listLoading || itemsLoading ? <p className="text-slate-300">Loading list...</p> : null}
         {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
         {!listLoading && !itemsLoading && !listError ? (
@@ -869,13 +1029,28 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             ))}
             {!orderedVisibleItems.length ? (
               <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                No items yet. Tap + Item to add your first product.
+                No items yet. Tap the + button in the bottom-right corner to add your first product.
               </li>
             ) : null}
           </ul>
         ) : null}
         {updatingItemError ? <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p> : null}
       </section>
+      <div className="fixed right-5 bottom-5 z-40">
+        <Button
+          type="button"
+          icon={<Plus animateOnHover />}
+          iconOnly
+          size="lg"
+          aria-label="Add item"
+          title="Add item"
+          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
+          onClick={() => {
+            setAddDialogOpen(true);
+            setAddItemError("");
+          }}
+        />
+      </div>
 
       <Dialog
         open={addDialogOpen}
@@ -967,8 +1142,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   imageSearchQuery={imageSearchQuery}
                   onImageSearchQueryChange={setImageSearchQuery}
                   onFindImage={findImage}
+                  imageCandidates={imageCandidates}
+                  onSelectImageCandidate={selectImageCandidate}
+                  selectingImageCandidateUrl={selectingImageCandidateUrl}
                   findImageLoading={findImageLoading}
                   imageUrl={newItemImageUrl}
+                  imagePreviewUrl={newItemImagePreviewUrl}
                   sourceUrl={newItemSourceUrl}
                   findImageError={findImageError}
                 />
@@ -988,7 +1167,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                       setFindImageLoading(false);
                       setFindImageError("");
                       setImageSearchQuery("");
+                      setImageCandidates([]);
+                      setSelectingImageCandidateUrl("");
                       setNewItemImageUrl("");
+                      setNewItemImagePreviewUrl("");
                       setNewItemSourceUrl("");
                       setAddItemError("");
                     }}
@@ -1048,8 +1230,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 imageSearchQuery={detailsImageSearchQuery}
                 onImageSearchQueryChange={setDetailsImageSearchQuery}
                 onFindImage={findDetailsImage}
+                imageCandidates={detailsImageCandidates}
+                onSelectImageCandidate={selectDetailsImageCandidate}
+                selectingImageCandidateUrl={detailsSelectingImageCandidateUrl}
                 findImageLoading={detailsFindImageLoading}
                 imageUrl={detailsEditImageUrl}
+                imagePreviewUrl={detailsEditImagePreviewUrl}
                 sourceUrl={detailsEditSourceUrl}
                 findImageError={detailsFindImageError}
                 disabled={updatingItemId === detailsItem.id}

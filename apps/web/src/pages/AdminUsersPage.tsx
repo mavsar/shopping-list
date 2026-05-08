@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Checkbox, Dialog, H1, Input, Label, Select } from "../components/ui";
+import { Button, Checkbox, Dialog, Input, Label, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 
 type AdminUsersPageProps = {
@@ -238,18 +238,9 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         transition={{ duration: 0.4 }}
       >
         <AppHeader
+          title="Shopping List Admin"
           actions={
             <>
-              <Button
-                type="button"
-                icon={<Plus animateOnHover />}
-                onClick={() => {
-                  setCreateUserError("");
-                  setCreateUserDialogOpen(true);
-                }}
-              >
-                Add new user
-              </Button>
               <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
                 App
               </Button>
@@ -267,13 +258,6 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           }
         />
       </motion.div>
-
-      <section className="mt-6">
-        <H1 color="gradient" className="text-4xl">
-          Shopping List Admin
-        </H1>
-        <p className="mt-1 text-slate-200/90">Create users and manage privileged access with fluid real-time updates.</p>
-      </section>
 
       <section className="mt-6">
         <motion.article
@@ -337,6 +321,21 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           ) : null}
         </motion.article>
       </section>
+      <div className="fixed right-5 bottom-5 z-40">
+        <Button
+          type="button"
+          icon={<Plus animateOnHover />}
+          iconOnly
+          size="lg"
+          aria-label="Add new user"
+          title="Add new user"
+          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
+          onClick={() => {
+            setCreateUserError("");
+            setCreateUserDialogOpen(true);
+          }}
+        />
+      </div>
       <Dialog
         open={Boolean(editingUserId)}
         onOpenChange={(isOpen) => {

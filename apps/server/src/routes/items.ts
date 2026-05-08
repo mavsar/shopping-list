@@ -1,4 +1,9 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Router } from "express";
+import sharp from "sharp";
 import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
@@ -12,6 +17,12 @@ const suggestQuerySchema = z.object({
 
 const findImageQuerySchema = z.object({
   q: z.string().trim().min(2).max(200)
+});
+
+const selectImageBodySchema = z.object({
+  q: z.string().trim().min(2).max(200),
+  imageUrl: z.string().trim().url().max(2000),
+  sourceUrl: z.string().trim().url().max(2000).optional()
 });
 
 export const itemsRouter = Router();
@@ -32,6 +43,17 @@ const browserHtmlHeaders: HeadersInit = {
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7"
 };
+
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirectoryPath = path.dirname(currentFilePath);
+const itemImagesDirectoryPath = path.resolve(currentDirectoryPath, "..", "..", "storage", "item-images");
+const itemImagesPublicPath = "/api/item-images";
+const legacyItemImagesPublicPath = "/item-images";
+const generatedImageSize = 512;
+
+if (!fs.existsSync(itemImagesDirectoryPath)) {
+  fs.mkdirSync(itemImagesDirectoryPath, { recursive: true });
+}
 
 async function fetchHtml(url: string, init?: RequestInit): Promise<string> {
   const controller = new AbortController();
@@ -62,6 +84,138 @@ async function fetchHtmlPost(url: string, body: string): Promise<string> {
     },
     body
   });
+}
+
+function createImageStorageKey(query: string): string {
+  const normalizedTitle = normalizeTitle(query);
+  const safeSlug = normalizedTitle.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  const hash = crypto.createHash("sha1").update(normalizedTitle).digest("hex").slice(0, 12);
+  return safeSlug ? `${safeSlug}-${hash}` : `item-${hash}`;
+}
+
+function getLocalImagePaths(query: string): { absolutePath: string; publicUrl: string } {
+  const fileName = `${createImageStorageKey(query)}.webp`;
+  return {
+    absolutePath: path.join(itemImagesDirectoryPath, fileName),
+    publicUrl: `${itemImagesPublicPath}/${fileName}`
+  };
+}
+
+function isLocalItemImageUrl(imageUrl: string): boolean {
+  return imageUrl.startsWith(`${itemImagesPublicPath}/`) || imageUrl.startsWith(`${legacyItemImagesPublicPath}/`);
+}
+
+function normalizeLocalItemImageUrl(imageUrl: string): string {
+  if (imageUrl.startsWith(`${legacyItemImagesPublicPath}/`)) {
+    return `${itemImagesPublicPath}/${imageUrl.slice(`${legacyItemImagesPublicPath}/`.length)}`;
+  }
+  return imageUrl;
+}
+
+async function fetchImageBuffer(url: string): Promise<Buffer> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        ...browserHtmlHeaders,
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      throw new Error(`Image request failed with ${response.status}`);
+    }
+    const data = await response.arrayBuffer();
+    return Buffer.from(data);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function saveSquareImageLocally(query: string, sourceImageUrl: string, forceRegenerate = false): Promise<string | null> {
+  const localImage = getLocalImagePaths(query);
+  if (!forceRegenerate && fs.existsSync(localImage.absolutePath)) {
+    return localImage.publicUrl;
+  }
+
+  try {
+    const rawImageBuffer = await fetchImageBuffer(sourceImageUrl);
+    const squareImageBuffer = await sharp(rawImageBuffer)
+      .rotate()
+      .resize(generatedImageSize, generatedImageSize, {
+        fit: "cover",
+        position: "attention"
+      })
+      .webp({ quality: 86 })
+      .toBuffer();
+
+    await fs.promises.writeFile(localImage.absolutePath, squareImageBuffer);
+    await pruneOrphanedLocalImages([localImage.publicUrl]);
+    return localImage.publicUrl;
+  } catch {
+    return null;
+  }
+}
+
+async function pruneOrphanedLocalImages(preservePublicUrls: string[] = []): Promise<void> {
+  let referencedRows: Array<{ imageUrl: string | null }> = [];
+  try {
+    referencedRows = sqlite
+      .prepare(
+        `
+        SELECT image_url AS imageUrl
+        FROM items
+        WHERE image_url LIKE ? OR image_url LIKE ?
+        `
+      )
+      .all(`${itemImagesPublicPath}/%`, `${legacyItemImagesPublicPath}/%`) as Array<{ imageUrl: string | null }>;
+  } catch {
+    return;
+  }
+
+  const referencedImagePublicUrls = new Set(
+    referencedRows
+      .map((row) => row.imageUrl)
+      .filter((value): value is string => typeof value === "string" && isLocalItemImageUrl(value))
+      .map((value) => normalizeLocalItemImageUrl(value))
+  );
+  for (const preservePublicUrl of preservePublicUrls) {
+    referencedImagePublicUrls.add(normalizeLocalItemImageUrl(preservePublicUrl));
+  }
+
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = await fs.promises.readdir(itemImagesDirectoryPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const publicUrl = `${itemImagesPublicPath}/${entry.name}`;
+        if (referencedImagePublicUrls.has(publicUrl)) {
+          return;
+        }
+        const absolutePath = path.join(itemImagesDirectoryPath, entry.name);
+        try {
+          const stat = await fs.promises.stat(absolutePath);
+          const isRecent = Date.now() - stat.mtimeMs < 10 * 60 * 1000;
+          if (isRecent) {
+            return;
+          }
+        } catch {
+          return;
+        }
+        try {
+          await fs.promises.unlink(absolutePath);
+        } catch {
+          // ignore race conditions or transient file-system errors
+        }
+      })
+  );
 }
 
 function extractImageFromHtml(html: string): string | null {
@@ -370,7 +524,7 @@ function scoreWebImageSearchUrl(imageUrl: string, query: string, rankIndex: numb
   return score;
 }
 
-async function lookupBingImages(query: string): Promise<{ imageUrl: string; sourceUrl: string } | null> {
+async function lookupBingImageCandidates(query: string): Promise<Array<{ imageUrl: string; sourceUrl: string; score: number }>> {
   try {
     const params = new URLSearchParams({
       q: query,
@@ -386,28 +540,15 @@ async function lookupBingImages(query: string): Promise<{ imageUrl: string; sour
     });
     const candidates = extractBingImagesMurls(html);
     if (!candidates.length) {
-      return null;
+      return [];
     }
-    let bestUrl = candidates[0];
-    let bestScore = scoreWebImageSearchUrl(bestUrl, query, 0);
-    candidates.slice(1, 80).forEach((candidate, index) => {
-      const candidateScore = scoreWebImageSearchUrl(candidate, query, index + 1);
-      if (candidateScore > bestScore) {
-        bestScore = candidateScore;
-        bestUrl = candidate;
-      }
-    });
-
-    if (bestScore < -8) {
-      return null;
-    }
-
-    return {
-      imageUrl: bestUrl,
-      sourceUrl: searchUrl
-    };
+    return candidates.slice(0, 80).map((candidate, index) => ({
+      imageUrl: candidate,
+      sourceUrl: searchUrl,
+      score: scoreWebImageSearchUrl(candidate, query, index)
+    }));
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -449,8 +590,14 @@ async function lookupOpenFoodFactsImage(query: string): Promise<{ imageUrl: stri
   return null;
 }
 
-async function lookupImage(query: string): Promise<{ imageUrl: string; sourceUrl: string } | null> {
-  let bestMatch: { imageUrl: string; sourceUrl: string; score: number } | null = null;
+async function lookupImageCandidates(query: string): Promise<Array<{ imageUrl: string; sourceUrl: string }>> {
+  const bestCandidatesByImageUrl = new Map<string, { imageUrl: string; sourceUrl: string; score: number }>();
+  const upsertCandidate = (candidate: { imageUrl: string; sourceUrl: string; score: number }) => {
+    const existing = bestCandidatesByImageUrl.get(candidate.imageUrl);
+    if (!existing || candidate.score > existing.score) {
+      bestCandidatesByImageUrl.set(candidate.imageUrl, candidate);
+    }
+  };
 
   for (const domain of slovenianDomains) {
     let resultLinks: string[] = [];
@@ -468,13 +615,11 @@ async function lookupImage(query: string): Promise<{ imageUrl: string; sourceUrl
 
         for (const imageCandidate of imageCandidates) {
           const candidateScore = scoreImageCandidate(imageCandidate, resultLink, pageTitle, query);
-          if (!bestMatch || candidateScore > bestMatch.score) {
-            bestMatch = {
-              imageUrl: imageCandidate,
-              sourceUrl: resultLink,
-              score: candidateScore
-            };
-          }
+          upsertCandidate({
+            imageUrl: imageCandidate,
+            sourceUrl: resultLink,
+            score: candidateScore
+          });
         }
       } catch {
         continue;
@@ -482,19 +627,31 @@ async function lookupImage(query: string): Promise<{ imageUrl: string; sourceUrl
     }
   }
 
-  if (bestMatch) {
-    return {
-      imageUrl: bestMatch.imageUrl,
-      sourceUrl: bestMatch.sourceUrl
-    };
+  for (const candidate of await lookupBingImageCandidates(query)) {
+    upsertCandidate(candidate);
   }
 
-  const bingImage = await lookupBingImages(query);
-  if (bingImage) {
-    return bingImage;
+  const openFoodFactsImage = await lookupOpenFoodFactsImage(query);
+  if (openFoodFactsImage) {
+    upsertCandidate({
+      imageUrl: openFoodFactsImage.imageUrl,
+      sourceUrl: openFoodFactsImage.sourceUrl,
+      score: 7
+    });
   }
 
-  return lookupOpenFoodFactsImage(query);
+  return Array.from(bestCandidatesByImageUrl.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 18)
+    .map((candidate) => ({
+      imageUrl: candidate.imageUrl,
+      sourceUrl: candidate.sourceUrl
+    }));
+}
+
+async function lookupImage(query: string): Promise<{ imageUrl: string; sourceUrl: string } | null> {
+  const candidates = await lookupImageCandidates(query);
+  return candidates[0] ?? null;
 }
 
 itemsRouter.get("/suggest", requireAuth, (req, res) => {
@@ -524,6 +681,57 @@ itemsRouter.get("/suggest", requireAuth, (req, res) => {
   return res.json({ items });
 });
 
+itemsRouter.get("/search-images", requireAuth, async (req, res) => {
+  const parsed = findImageQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid query parameters",
+      details: parsed.error.flatten()
+    });
+  }
+
+  const query = parsed.data.q;
+  const foundCandidates = await lookupImageCandidates(query);
+
+  if (!foundCandidates.length) {
+    return res.json({
+      found: false,
+      candidates: [],
+      error: "No image candidates found yet. Try another wording."
+    });
+  }
+
+  return res.json({
+    found: true,
+    candidates: foundCandidates
+  });
+});
+
+itemsRouter.post("/select-image", requireAuth, async (req, res) => {
+  const parsed = selectImageBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid payload",
+      details: parsed.error.flatten()
+    });
+  }
+
+  const payload = parsed.data;
+  const localImageUrl = await saveSquareImageLocally(payload.q, payload.imageUrl, true);
+  if (!localImageUrl) {
+    return res.status(422).json({
+      found: false,
+      error: "Failed to generate local square image from selected candidate."
+    });
+  }
+
+  return res.json({
+    found: true,
+    imageUrl: localImageUrl,
+    sourceUrl: payload.sourceUrl ?? payload.imageUrl
+  });
+});
+
 itemsRouter.get("/find-image", requireAuth, async (req, res) => {
   const parsed = findImageQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -534,6 +742,7 @@ itemsRouter.get("/find-image", requireAuth, async (req, res) => {
   }
 
   const query = parsed.data.q;
+  const localImagePaths = getLocalImagePaths(query);
 
   const cachedItem = sqlite
     .prepare(
@@ -547,10 +756,40 @@ itemsRouter.get("/find-image", requireAuth, async (req, res) => {
     .get(normalizeTitle(query)) as { imageUrl: string; sourceUrl: string | null } | undefined;
 
   if (cachedItem) {
+    if (isLocalItemImageUrl(cachedItem.imageUrl) || fs.existsSync(localImagePaths.absolutePath)) {
+      return res.json({
+        found: true,
+        imageUrl: fs.existsSync(localImagePaths.absolutePath)
+          ? localImagePaths.publicUrl
+          : normalizeLocalItemImageUrl(cachedItem.imageUrl),
+        sourceUrl: cachedItem.sourceUrl,
+        fromCache: true
+      });
+    }
+
+    const localImageUrlFromCache = await saveSquareImageLocally(query, cachedItem.imageUrl);
+    if (localImageUrlFromCache) {
+      return res.json({
+        found: true,
+        imageUrl: localImageUrlFromCache,
+        sourceUrl: cachedItem.sourceUrl,
+        fromCache: true
+      });
+    }
+
     return res.json({
       found: true,
       imageUrl: cachedItem.imageUrl,
       sourceUrl: cachedItem.sourceUrl,
+      fromCache: true
+    });
+  }
+
+  if (fs.existsSync(localImagePaths.absolutePath)) {
+    return res.json({
+      found: true,
+      imageUrl: localImagePaths.publicUrl,
+      sourceUrl: null,
       fromCache: true
     });
   }
@@ -563,9 +802,17 @@ itemsRouter.get("/find-image", requireAuth, async (req, res) => {
     });
   }
 
+  const localImageUrl = await saveSquareImageLocally(query, foundImage.imageUrl);
+  if (!localImageUrl) {
+    return res.json({
+      found: false,
+      error: "Found an image source, but generating the local square image failed."
+    });
+  }
+
   return res.json({
     found: true,
-    imageUrl: foundImage.imageUrl,
+    imageUrl: localImageUrl,
     sourceUrl: foundImage.sourceUrl,
     fromCache: false
   });

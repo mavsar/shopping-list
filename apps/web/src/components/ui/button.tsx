@@ -198,14 +198,16 @@ export function Button({
       onHoverEnd={(event, info) => {
         onHoverEnd?.(event, info);
       }}
-      className={buttonClassName({
-        color: resolvedColor,
-        appearance: resolvedAppearance,
-        size,
-        stretch,
-        iconOnly: showOnlyIcon,
+      className={cx(
+        buttonClassName({
+          color: resolvedColor,
+          appearance: resolvedAppearance,
+          size,
+          stretch,
+          iconOnly: showOnlyIcon
+        }),
         className
-      })}
+      )}
       aria-label={buttonLabel}
       {...restProps}
     >

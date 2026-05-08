@@ -47,6 +47,19 @@ export function Dialog({
       return;
     }
 
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onOpenChange(false);
@@ -65,7 +78,7 @@ export function Dialog({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center p-4"
+          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto overscroll-contain p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -80,7 +93,7 @@ export function Dialog({
           <motion.section
             role="dialog"
             aria-modal="true"
-            className={dialogPanelClassName({ size })}
+            className={`${dialogPanelClassName({ size })} max-h-[calc(100dvh-2rem)] flex flex-col`}
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -100,7 +113,7 @@ export function Dialog({
             />
             <h3 className="pr-10 text-xl font-semibold text-slate-50">{title}</h3>
             {description ? <p className="mt-2 text-sm text-slate-200/90">{description}</p> : null}
-            {children ? <div className="mt-4">{children}</div> : null}
+            {children ? <div className="mt-4 min-h-0 flex-1 overflow-y-auto">{children}</div> : null}
             {footer ? <div className="mt-4 flex flex-wrap gap-2">{footer}</div> : null}
           </motion.section>
         </motion.div>

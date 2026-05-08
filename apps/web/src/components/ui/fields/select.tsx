@@ -6,7 +6,7 @@ const selectClassName = cva(
   {
     variants: {
       size: {
-        md: "h-10 text-sm",
+        md: "h-10 text-base md:text-sm",
         lg: "h-12 px-4 py-2.5 pr-10 text-base"
       },
       invalid: {

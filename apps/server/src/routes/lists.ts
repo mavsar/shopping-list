@@ -20,6 +20,13 @@ const addMemberSchema = z.object({
 type CategoryEnum = (typeof itemCategoryValues)[number];
 
 const itemCategorySchema = z.enum(itemCategoryValues as unknown as [CategoryEnum, ...CategoryEnum[]]);
+const itemImageUrlSchema = z
+  .string()
+  .trim()
+  .max(1000)
+  .refine((value) => z.string().url().safeParse(value).success || value.startsWith("/api/item-images/") || value.startsWith("/item-images/"), {
+    message: "Invalid image URL"
+  });
 
 const createListItemSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -27,7 +34,7 @@ const createListItemSchema = z.object({
   unit: z.enum(unitValues).default("pcs"),
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
-  imageUrl: z.string().trim().url().max(1000).optional(),
+  imageUrl: itemImageUrlSchema.optional(),
   sourceUrl: z.string().trim().url().max(1000).optional()
 });
 
@@ -42,7 +49,7 @@ const patchListItemSchema = z.object({
   unit: z.enum(unitValues).optional(),
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
-  imageUrl: z.string().trim().url().max(1000).optional(),
+  imageUrl: itemImageUrlSchema.optional(),
   sourceUrl: z.string().trim().url().max(1000).optional()
 });
 

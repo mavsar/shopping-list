@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { Button, Dialog, H1, Input } from "../components/ui";
+import { Button, Dialog, Input } from "../components/ui";
 import { toListSlug } from "../domain/list-slug";
 import type { AuthUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
@@ -201,19 +201,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         transition={{ duration: 0.4 }}
       >
         <AppHeader
+          title="Shopping Lists"
           actions={
             <>
-              <Button
-                type="button"
-                icon={<Plus />}
-                onClick={() => {
-                  setNewListName("");
-                  setCreateListError("");
-                  setCreateListDialogOpen(true);
-                }}
-              >
-                Create list
-              </Button>
               {authUser.isAdmin ? (
                 <Button
                   color="white"
@@ -230,15 +220,6 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           }
         />
       </motion.div>
-
-      <section className="mt-6">
-        <H1 color="gradient" className="text-4xl">
-          Shopping Lists
-        </H1>
-        <p className="mt-1 text-slate-200/90">
-          Create and manage shared lists for your household and plan shopping faster.
-        </p>
-      </section>
 
       <motion.section
         initial={{ opacity: 0, y: 14 }}
@@ -270,8 +251,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 tabIndex={0}
               >
                 <div>
-                  <p className="m-0 text-base font-semibold text-slate-50">{list.name}</p>
-                  <p className="m-0 text-sm text-slate-300">Updated {new Date(list.updatedAt).toLocaleString()}</p>
+                  <p className="m-0 text-xl font-semibold text-slate-50">{list.name}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -307,12 +287,28 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             ))}
             {!lists.length ? (
               <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                No lists yet. Click "Create list" to add your first one.
+                No lists yet. Tap the + button in the bottom-right corner to add your first one.
               </li>
             ) : null}
           </motion.ul>
         ) : null}
       </motion.section>
+      <div className="fixed right-5 bottom-5 z-40">
+        <Button
+          type="button"
+          icon={<Plus animateOnHover />}
+          iconOnly
+          size="lg"
+          aria-label="Create list"
+          title="Create list"
+          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
+          onClick={() => {
+            setNewListName("");
+            setCreateListError("");
+            setCreateListDialogOpen(true);
+          }}
+        />
+      </div>
 
       <Dialog
         open={createListDialogOpen}

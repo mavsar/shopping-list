@@ -6,7 +6,7 @@ const textAreaClassName = cva(
   {
     variants: {
       size: {
-        md: "min-h-10 text-sm",
+        md: "min-h-10 text-base md:text-sm",
         lg: "min-h-12 px-4 py-2.5 text-base"
       },
       invalid: {
