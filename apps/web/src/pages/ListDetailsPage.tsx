@@ -792,8 +792,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               <li
                 key={item.id}
                 className={cx(
-                  "flex items-center gap-4 rounded-2xl border border-white/14 bg-slate-900/25 py-2.5 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_rgba(2,8,23,0.35)] transition-opacity",
-                  item.status === "completed" && "opacity-40 hover:opacity-100"
+                  "flex items-center gap-4 py-2.5 px-4 transition-opacity",
+                  item.status === "completed"
+                    ? "border border-transparent bg-transparent shadow-none opacity-40 hover:opacity-100"
+                    : "rounded-2xl border border-white/14 bg-slate-900/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_18px_rgba(2,8,23,0.35)]"
                 )}
               >
                 <CompletionCircleToggle
@@ -811,7 +813,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   <p className="m-0 truncate text-sm font-semibold text-slate-50">
                     {formatItemTitle(item.title)}
                     {item.status === "completed" ? (
-                      <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Končano</span>
+                      <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Kupljeno</span>
                     ) : null}
                   </p>
                   {item.note ? <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p> : null}
@@ -1028,7 +1030,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             <form className="grid gap-3" onSubmit={saveDetailsEdit}>
               <p className="m-0 text-xs text-slate-400">
                 Stanje:{" "}
-                <span className="text-slate-200">{detailsItem.status === "completed" ? "Končano" : "Aktivno"}</span>
+                <span className="text-slate-200">{detailsItem.status === "completed" ? "Kupljeno" : "Aktivno"}</span>
               </p>
               <SharedItemFormFields
                 name={detailsEditName}

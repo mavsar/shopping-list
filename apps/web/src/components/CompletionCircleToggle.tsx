@@ -25,6 +25,7 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
       setSparkleBurst(true);
     }
     prevCompleted.current = completed;
+    setIsHovered(false);
   }, [completed]);
 
   useEffect(() => {
@@ -47,10 +48,13 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
           "relative z-[1] flex shrink-0 cursor-pointer items-center justify-center rounded-full border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
           controlSizeClass
         )}
-        aria-label={completed ? "Označi kot aktivno" : "Označi kot končano"}
+        aria-label={completed ? "Označi kot aktivno" : "Označi kot kupljeno"}
         aria-pressed={completed}
         disabled={disabled}
-        onClick={onToggle}
+        onClick={() => {
+          setIsHovered(false);
+          onToggle();
+        }}
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
         initial={false}
