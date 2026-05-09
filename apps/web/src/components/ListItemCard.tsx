@@ -1,0 +1,180 @@
+import { cx } from 'class-variance-authority';
+import { motion } from 'motion/react';
+
+import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
+import { CompletionCircleToggle } from './CompletionCircleToggle';
+import { ItemCategoryIcon } from './ItemCategoryIcon';
+import { Minus, Plus } from './lordicon/icons';
+import { Button, Card } from './ui';
+
+type ListItemCardProps = {
+  item: ShoppingListItem;
+  updating: boolean;
+  sparkleOnMount?: boolean;
+  supportsHoverPointer: boolean;
+  quantityControlsVisible: boolean;
+  quantityControlsTransition: {
+    duration: number;
+    ease: string;
+  };
+  formatTitle: (title: string) => string;
+  onHoverStart: (itemId: number) => void;
+  onHoverEnd: (itemId: number) => void;
+  onQuantityLabelClick: (itemId: number) => void;
+  onCompletionToggle: (item: ShoppingListItem) => void;
+  onOpenDetails: (item: ShoppingListItem) => void;
+  onDecreaseQuantity: (item: ShoppingListItem) => void;
+  onIncreaseQuantity: (item: ShoppingListItem) => void;
+};
+
+export function ListItemCard({
+  item,
+  updating,
+  sparkleOnMount,
+  supportsHoverPointer,
+  quantityControlsVisible,
+  quantityControlsTransition,
+  formatTitle,
+  onHoverStart,
+  onHoverEnd,
+  onQuantityLabelClick,
+  onCompletionToggle,
+  onOpenDetails,
+  onDecreaseQuantity,
+  onIncreaseQuantity,
+}: ListItemCardProps) {
+  const quantityControlsWidth = item.status === 'completed' ? 36 : 28;
+
+  return (
+    <Card
+      tone={item.status === 'completed' ? 'completed' : 'default'}
+      interactive={item.status !== 'completed'}
+      padding="none"
+    >
+      <div className="flex items-center gap-4 pr-2">
+        <div className="relative flex items-center justify-center">
+          <button
+            type="button"
+            className="flex px-4 py-2.5 cursor-pointer disabled:cursor-default"
+            aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
+            aria-pressed={item.status === 'completed'}
+            disabled={updating}
+            onClick={() => onCompletionToggle(item)}
+          >
+            <div className="flex pointer-events-none">
+              <CompletionCircleToggle
+                size="sm"
+                completed={item.status === 'completed'}
+                disabled={updating}
+                sparkleOnMount={sparkleOnMount}
+                onToggle={() => undefined}
+              />
+            </div>
+          </button>
+          <ItemCategoryIcon category={item.category} size={30} />
+        </div>
+        <div className="block min-w-0 flex-1">
+          <button
+            type="button"
+            className="m-0 max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-4 font-semibold text-slate-50 cursor-pointer"
+            onClick={() => onOpenDetails(item)}
+          >
+            {formatTitle(item.title)}
+            {item.status === 'completed' ? (
+              <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">
+                · Kupljeno
+              </span>
+            ) : null}
+          </button>
+          {item.note ? (
+            <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className="flex items-center justify-between gap-2">
+            <div
+              className="inline-flex items-center justify-center"
+              onMouseEnter={() => {
+                if (supportsHoverPointer) {
+                  onHoverStart(item.id);
+                }
+              }}
+              onMouseLeave={() => {
+                if (supportsHoverPointer) {
+                  onHoverEnd(item.id);
+                }
+              }}
+            >
+              <motion.span
+                initial={false}
+                animate={
+                  quantityControlsVisible
+                    ? { width: quantityControlsWidth, opacity: 1 }
+                    : { width: 0, opacity: 0 }
+                }
+                transition={quantityControlsTransition}
+                className={cx(
+                  'inline-flex shrink-0 items-center overflow-hidden',
+                  quantityControlsVisible ? 'pointer-events-auto' : 'pointer-events-none',
+                )}
+              >
+                <span className="inline-flex pr-1">
+                  <Button
+                    type="button"
+                    color="white"
+                    appearance="transparent"
+                    size="xs"
+                    iconOnly
+                    icon={<Minus animateOnHover />}
+                    aria-label={`Decrease quantity for ${formatTitle(item.title)}`}
+                    disabled={updating}
+                    onClick={() => onDecreaseQuantity(item)}
+                  />
+                </span>
+              </motion.span>
+              <button
+                type="button"
+                className={cx(
+                  'inline-flex min-w-14 items-center justify-center whitespace-nowrap rounded-lg px-1.5 py-1 text-center text-xs text-slate-100 transition',
+                  supportsHoverPointer ? 'cursor-default' : 'cursor-pointer hover:bg-white/10',
+                )}
+                aria-label={`Quantity for ${formatTitle(item.title)}`}
+                aria-expanded={quantityControlsVisible}
+                onClick={() => onQuantityLabelClick(item.id)}
+              >
+                {item.quantity} {getItemUnitLabel(item.unit)}
+              </button>
+              <motion.span
+                initial={false}
+                animate={
+                  quantityControlsVisible
+                    ? { width: quantityControlsWidth, opacity: 1 }
+                    : { width: 0, opacity: 0 }
+                }
+                transition={quantityControlsTransition}
+                className={cx(
+                  'inline-flex shrink-0 items-center overflow-hidden',
+                  quantityControlsVisible ? 'pointer-events-auto' : 'pointer-events-none',
+                )}
+              >
+                <span className="inline-flex pl-1">
+                  <Button
+                    type="button"
+                    color="white"
+                    appearance="transparent"
+                    size="xs"
+                    iconOnly
+                    icon={<Plus animateOnHover />}
+                    aria-label={`Increase quantity for ${formatTitle(item.title)}`}
+                    disabled={updating}
+                    onClick={() => onIncreaseQuantity(item)}
+                  />
+                </span>
+              </motion.span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

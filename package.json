@@ -11,10 +11,13 @@
     "dev": "concurrently \"npm run dev -w @shopping-list/server\" \"npm run dev -w @shopping-list/web\"",
     "build": "npm run build -w @shopping-list/web && npm run build -w @shopping-list/server",
     "start": "npm run start -w @shopping-list/server",
-    "typecheck": "npm run typecheck -w @shopping-list/web && npm run typecheck -w @shopping-list/server"
+    "typecheck": "npm run typecheck -w @shopping-list/web && npm run typecheck -w @shopping-list/server",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "prettier": "^3.8.3",
     "typescript": "^5.8.3"
   },
   "engines": {

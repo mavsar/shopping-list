@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Router } from "express";
+import express, { Router } from "express";
 import sharp from "sharp";
 import { z } from "zod";
 
@@ -17,6 +17,10 @@ const suggestQuerySchema = z.object({
 
 const findImageQuerySchema = z.object({
   q: z.string().trim().min(2).max(200)
+});
+
+const uploadImageQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200)
 });
 
 const selectImageBodySchema = z.object({
@@ -136,13 +140,21 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
 }
 
 async function saveSquareImageLocally(query: string, sourceImageUrl: string, forceRegenerate = false): Promise<string | null> {
+  try {
+    const rawImageBuffer = await fetchImageBuffer(sourceImageUrl);
+    return await saveSquareImageBufferLocally(query, rawImageBuffer, forceRegenerate);
+  } catch {
+    return null;
+  }
+}
+
+async function saveSquareImageBufferLocally(query: string, rawImageBuffer: Buffer, forceRegenerate = false): Promise<string | null> {
   const localImage = getLocalImagePaths(query);
   if (!forceRegenerate && fs.existsSync(localImage.absolutePath)) {
     return localImage.publicUrl;
   }
 
   try {
-    const rawImageBuffer = await fetchImageBuffer(sourceImageUrl);
     const squareImageBuffer = await sharp(rawImageBuffer)
       .rotate()
       .resize(generatedImageSize, generatedImageSize, {
@@ -731,6 +743,37 @@ itemsRouter.post("/select-image", requireAuth, async (req, res) => {
     found: true,
     imageUrl: localImageUrl,
     sourceUrl: payload.sourceUrl ?? payload.imageUrl
+  });
+});
+
+itemsRouter.post("/upload-image", requireAuth, express.raw({ type: ["image/*"], limit: "12mb" }), async (req, res) => {
+  const parsed = uploadImageQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid query parameters",
+      details: parsed.error.flatten()
+    });
+  }
+
+  const imageBuffer = Buffer.isBuffer(req.body) ? req.body : null;
+  if (!imageBuffer || imageBuffer.length === 0) {
+    return res.status(400).json({
+      found: false,
+      error: "Missing image body."
+    });
+  }
+
+  const localImageUrl = await saveSquareImageBufferLocally(parsed.data.q, imageBuffer, true);
+  if (!localImageUrl) {
+    return res.status(422).json({
+      found: false,
+      error: "Failed to process uploaded image."
+    });
+  }
+
+  return res.json({
+    found: true,
+    imageUrl: localImageUrl
   });
 });
 

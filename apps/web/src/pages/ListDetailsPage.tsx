@@ -1,17 +1,26 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { cx } from "class-variance-authority";
-import { useNavigate, useParams } from "react-router-dom";
+import { cx } from 'class-variance-authority';
+import { AnimatePresence, motion } from 'motion/react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import { AppHeader } from "../components/AppHeader";
-import { CompletionCircleToggle } from "../components/CompletionCircleToggle";
-import { ItemCategoryIcon, itemCategoryLabels } from "../components/ItemCategoryIcon";
-import { ArrowLeft, Minus, Plus, Search, SettingsCog } from "../components/lordicon/icons";
-import { Button, Card, Dialog, Input, Loader, Select, Textarea } from "../components/ui";
-import type { AuthUser } from "../types/auth";
-import type { ItemCategory } from "../domain/item-category";
-import { inferCategoryFromTitle, itemCategoryValues } from "../domain/item-category";
-import { toListSlug } from "../domain/list-slug";
+import { AppHeader } from '../components/AppHeader';
+import { ItemCategoryIcon, itemCategoryLabels } from '../components/ItemCategoryIcon';
+import { ListItemCard } from '../components/ListItemCard';
+import {
+  ArrowLeft,
+  CheckCheck,
+  Edit,
+  Minus,
+  Plus,
+  Search,
+  SettingsCog,
+  Trash2,
+} from '../components/lordicon/icons';
+import { Button, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
+import type { ItemCategory } from '../domain/item-category';
+import { inferCategoryFromTitle, itemCategoryValues } from '../domain/item-category';
+import { toListSlug } from '../domain/list-slug';
+import type { AuthUser } from '../types/auth';
 import {
   CatalogItem,
   getItemUnitLabel,
@@ -19,8 +28,8 @@ import {
   normalizeShoppingItemUnit,
   ShoppingItemUnit,
   ShoppingList,
-  ShoppingListItem
-} from "../types/lists";
+  ShoppingListItem,
+} from '../types/lists';
 
 type ListDetailsPageProps = {
   token: string;
@@ -36,19 +45,29 @@ type ImageCandidate = {
 const quantityStep = 1;
 
 function formatItemTitle(title: string): string {
-  const normalized = title.trim().replace(/\s+/g, " ");
+  const normalized = title.trim().replace(/\s+/g, ' ');
   if (!normalized) {
-    return "";
+    return '';
   }
   return normalized.charAt(0).toLocaleUpperCase() + normalized.slice(1);
 }
 
-function isVisibleListItemStatus(status: ShoppingListItem["status"]): boolean {
-  return status === "active" || status === "completed";
+function isVisibleListItemStatus(status: ShoppingListItem['status']): boolean {
+  return status === 'active' || status === 'completed';
 }
 
 function sortShoppingItemsNewestFirst(a: ShoppingListItem, b: ShoppingListItem): number {
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
+function resolveImageSearchTarget(...candidates: string[]): string {
+  for (const candidate of candidates) {
+    const normalizedCandidate = candidate.trim();
+    if (normalizedCandidate) {
+      return normalizedCandidate;
+    }
+  }
+  return '';
 }
 
 type ItemQuantityUnitControlsProps = {
@@ -57,7 +76,7 @@ type ItemQuantityUnitControlsProps = {
   unit: ShoppingItemUnit;
   onUnitChange: (value: ShoppingItemUnit) => void;
   disabled?: boolean;
-  buttonSize?: "sm" | "md" | "lg";
+  buttonSize?: 'sm' | 'md' | 'lg';
 };
 
 function ItemQuantityUnitControls({
@@ -66,7 +85,7 @@ function ItemQuantityUnitControls({
   unit,
   onUnitChange,
   disabled = false,
-  buttonSize
+  buttonSize,
 }: ItemQuantityUnitControlsProps) {
   return (
     <div className="flex no-wrap items-center gap-2">
@@ -83,7 +102,7 @@ function ItemQuantityUnitControls({
       />
       <Input
         type="text"
-        className="w-12"
+        className="w-12 text-center"
         min={1}
         max={9999}
         step={0.5}
@@ -105,7 +124,10 @@ function ItemQuantityUnitControls({
         disabled={disabled}
         onClick={() => onQuantityChange(Number((quantity + quantityStep).toFixed(2)))}
       />
-      <Select value={unit} onChange={(event) => onUnitChange(event.target.value as ShoppingItemUnit)}>
+      <Select
+        value={unit}
+        onChange={(event) => onUnitChange(event.target.value as ShoppingItemUnit)}
+      >
         {itemUnitSelectValues.map((itemUnit) => (
           <option key={itemUnit} value={itemUnit}>
             {getItemUnitLabel(itemUnit)}
@@ -121,7 +143,7 @@ type SharedItemFormFieldsProps = {
   onNameChange: (value: string) => void;
   quantity: number;
   onQuantityChange: (value: number) => void;
-  quantityButtonSize?: "sm" | "md" | "lg";
+  quantityButtonSize?: 'sm' | 'md' | 'lg';
   unit: ShoppingItemUnit;
   onUnitChange: (value: ShoppingItemUnit) => void;
   note: string;
@@ -141,6 +163,9 @@ type SharedItemFormFieldsProps = {
   imagePreviewUrl: string;
   sourceUrl: string;
   findImageError: string;
+  onRemoveImage?: () => void;
+  onUploadImageFile: (file: File) => Promise<void>;
+  onPasteImageFromClipboard: () => Promise<void>;
   disabled?: boolean;
 };
 
@@ -169,40 +194,86 @@ function SharedItemFormFields({
   imagePreviewUrl,
   sourceUrl,
   findImageError,
-  disabled = false
+  onRemoveImage,
+  onUploadImageFile,
+  onPasteImageFromClipboard,
+  disabled = false,
 }: SharedItemFormFieldsProps) {
   const [brokenCandidateUrls, setBrokenCandidateUrls] = useState<Set<string>>(new Set());
+  const [imageMode, setImageMode] = useState<'find-online' | 'upload' | 'clipboard'>('find-online');
+  const [clipboardHasImage, setClipboardHasImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const visibleImageCandidates = useMemo(
     () => imageCandidates.filter((candidate) => !brokenCandidateUrls.has(candidate.imageUrl)),
-    [brokenCandidateUrls, imageCandidates]
+    [brokenCandidateUrls, imageCandidates],
   );
 
   useEffect(() => {
     setBrokenCandidateUrls(new Set());
   }, [imageCandidates]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function refreshClipboardAvailability() {
+      if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+        if (isMounted) {
+          setClipboardHasImage(false);
+        }
+        return;
+      }
+      try {
+        const clipboardItems = await navigator.clipboard.read();
+        const hasImage = clipboardItems.some((item) =>
+          item.types.some((type) => type.startsWith('image/')),
+        );
+        if (isMounted) {
+          setClipboardHasImage(hasImage);
+        }
+      } catch {
+        if (isMounted) {
+          setClipboardHasImage(false);
+        }
+      }
+    }
+
+    void refreshClipboardAvailability();
+    const handleWindowFocus = () => {
+      void refreshClipboardAvailability();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, []);
+
   return (
     <>
-    <div className="flex no-wrap gap-2">
-      <Input
-        value={name}
-        onChange={(event) => onNameChange(event.target.value)}
-        placeholder="Item name"
-        minLength={1}
-        maxLength={200}
-        required
-        className="flex-1"
+      <div className="flex no-wrap gap-2">
+        <Input
+          value={name}
+          onChange={(event) => onNameChange(event.target.value)}
+          placeholder="Item name"
+          minLength={1}
+          maxLength={200}
+          required
+          className="flex-1"
         />
-      <ItemQuantityUnitControls
-        quantity={quantity}
-        onQuantityChange={onQuantityChange}
-        unit={unit}
-        onUnitChange={onUnitChange}
-        disabled={disabled}
-        buttonSize={quantityButtonSize}
+        <ItemQuantityUnitControls
+          quantity={quantity}
+          onQuantityChange={onQuantityChange}
+          unit={unit}
+          onUnitChange={onUnitChange}
+          disabled={disabled}
+          buttonSize={quantityButtonSize}
         />
       </div>
-      <Select value={category} onChange={(event) => onCategoryChange(event.target.value as ItemCategory)}>
+      <Select
+        value={category}
+        onChange={(event) => onCategoryChange(event.target.value as ItemCategory)}
+      >
         {itemCategoryValues.map((itemCategory) => (
           <option key={itemCategory} value={itemCategory}>
             {itemCategoryLabels[itemCategory]}
@@ -218,79 +289,169 @@ function SharedItemFormFields({
         rows={noteRows}
       />
       <div className="grid gap-3 rounded-2xl">
-        <div className="flex items-center gap-2">
-          <Input
-            value={imageSearchQuery}
-            onChange={(event) => onImageSearchQueryChange(event.target.value)}
-            placeholder="Image search (optional) — e.g. bela sirova štručka"
-            maxLength={200}
-            aria-label="Image search phrase"
-          />
-          <Button
-            type="button"
-            appearance="outline"
-            color="white"
-            iconOnly
-            icon={<Search animateOnHover />}
-            aria-label={findImageLoading ? "Finding image" : "Find image"}
-            disabled={findImageLoading || disabled}
-            onClick={() => void onFindImage()}
-          />
-        </div>
-        {findImageLoading ? (
-          <Loader label={selectingImageCandidateUrl ? "Applying selected image..." : "Searching image candidates..."} />
-        ) : null}
-        {visibleImageCandidates.length ? (
-          <div className="grid grid-cols-3 gap-2">
-            {visibleImageCandidates.map((candidate) => (
-              <button
-                key={candidate.imageUrl}
+        <div className="h-px w-full bg-white/12" />
+        <SharedTabs
+          value={imageMode}
+          onValueChange={(value) => setImageMode(value as 'find-online' | 'upload' | 'clipboard')}
+          items={[
+            { value: 'find-online', label: 'Find image online', disabled },
+            { value: 'upload', label: 'Upload', disabled },
+            {
+              value: 'clipboard',
+              label: 'Paste from clipboard',
+              disabled: disabled || !clipboardHasImage,
+            },
+          ]}
+          listClassName="grid-cols-3"
+        />
+        {imageMode === 'find-online' ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Input
+                value={imageSearchQuery}
+                onChange={(event) => onImageSearchQueryChange(event.target.value)}
+                placeholder="Image search (optional) — e.g. bela sirova štručka"
+                maxLength={200}
+                aria-label="Image search phrase"
+              />
+              <Button
                 type="button"
-                className={cx(
-                  "aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition",
-                  selectingImageCandidateUrl === candidate.imageUrl && "border-cyan-300/60 opacity-70",
-                  !findImageLoading && "hover:border-cyan-300/45"
-                )}
-                onClick={() => onSelectImageCandidate(candidate)}
+                appearance="outline"
+                color="white"
+                iconOnly
+                icon={<Search animateOnHover />}
+                aria-label={findImageLoading ? 'Finding image' : 'Find image'}
                 disabled={findImageLoading || disabled}
-                title="Use this image"
-              >
-                <img
-                  src={candidate.imageUrl}
-                  alt="Image candidate"
-                  className="block h-full w-full object-cover object-center"
-                  loading="lazy"
-                  onError={() =>
-                    setBrokenCandidateUrls((currentBrokenUrls) => {
-                      const nextBrokenUrls = new Set(currentBrokenUrls);
-                      nextBrokenUrls.add(candidate.imageUrl);
-                      return nextBrokenUrls;
-                    })
-                  }
-                />
-              </button>
-            ))}
+                onClick={() => void onFindImage()}
+              />
+            </div>
+            {findImageLoading ? (
+              <Loader
+                label={
+                  selectingImageCandidateUrl
+                    ? 'Applying selected image...'
+                    : 'Searching image candidates...'
+                }
+              />
+            ) : null}
+            {visibleImageCandidates.length ? (
+              <div className="grid grid-cols-3 gap-2">
+                {visibleImageCandidates.map((candidate) => (
+                  <button
+                    key={candidate.imageUrl}
+                    type="button"
+                    className={cx(
+                      'aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition',
+                      selectingImageCandidateUrl === candidate.imageUrl &&
+                        'border-cyan-300/60 opacity-70',
+                      !findImageLoading && 'hover:border-cyan-300/45',
+                    )}
+                    onClick={() => onSelectImageCandidate(candidate)}
+                    disabled={findImageLoading || disabled}
+                    title="Use this image"
+                  >
+                    <img
+                      src={candidate.imageUrl}
+                      alt="Image candidate"
+                      className="block h-full w-full object-cover object-center"
+                      loading="lazy"
+                      onError={() =>
+                        setBrokenCandidateUrls((currentBrokenUrls) => {
+                          const nextBrokenUrls = new Set(currentBrokenUrls);
+                          nextBrokenUrls.add(candidate.imageUrl);
+                          return nextBrokenUrls;
+                        })
+                      }
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        {imageMode === 'upload' ? (
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) {
+                  return;
+                }
+                void onUploadImageFile(selectedFile);
+                event.target.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              color="white"
+              appearance="outline"
+              disabled={findImageLoading || disabled}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose from gallery/computer
+            </Button>
+          </div>
+        ) : null}
+        {imageMode === 'clipboard' ? (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              color="white"
+              appearance="outline"
+              disabled={findImageLoading || disabled || !clipboardHasImage}
+              onClick={() => void onPasteImageFromClipboard()}
+            >
+              Paste image now
+            </Button>
           </div>
         ) : null}
         {imageUrl ? (
           <div
             className={cx(
-              "aspect-square w-full overflow-hidden rounded-xl bg-slate-900/50",
-              findImageLoading && "opacity-60"
+              'aspect-square w-full overflow-hidden rounded-xl bg-slate-900/50',
+              findImageLoading && 'opacity-60',
             )}
           >
             <img
               src={imagePreviewUrl || imageUrl}
-              alt={name || "Preview"}
+              alt={name || 'Preview'}
               className="block h-full w-full object-cover object-center"
               loading="lazy"
             />
           </div>
         ) : null}
-        {sourceUrl ? (
-          <a className="text-xs text-cyan-200/90 underline underline-offset-2" href={sourceUrl} target="_blank" rel="noreferrer">
-            Source page
-          </a>
+        {sourceUrl || (imageUrl && onRemoveImage) ? (
+          <div className="flex items-center justify-between gap-2">
+            {sourceUrl ? (
+              <a
+                className="text-xs text-cyan-200/90 underline underline-offset-2"
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Source page
+              </a>
+            ) : (
+              <span />
+            )}
+            {imageUrl && onRemoveImage ? (
+              <Button
+                type="button"
+                size="xs"
+                color="white"
+                appearance="outline"
+                icon={<Trash2 animateOnHover />}
+                onClick={onRemoveImage}
+                disabled={findImageLoading || disabled}
+              >
+                Odstrani sliko
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         {findImageError ? <p className="m-0 text-xs text-rose-200">{findImageError}</p> : null}
       </div>
@@ -305,65 +466,107 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [resolvedListId, setResolvedListId] = useState<number | null>(null);
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
-  const [listError, setListError] = useState("");
+  const [listError, setListError] = useState('');
   const [itemsLoading, setItemsLoading] = useState(false);
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
+  const [searchValue, setSearchValue] = useState('');
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState("");
+  const [searchError, setSearchError] = useState('');
   const [showAddNewItemButton, setShowAddNewItemButton] = useState(false);
 
   const [showCreateItemStep, setShowCreateItemStep] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
+  const [newItemName, setNewItemName] = useState('');
   const [newItemQuantity, setNewItemQuantity] = useState(1);
-  const [newItemUnit, setNewItemUnit] = useState<ShoppingItemUnit>("kos");
-  const [newItemNote, setNewItemNote] = useState("");
-  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>("other");
-  const [newItemImageUrl, setNewItemImageUrl] = useState("");
-  const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState("");
-  const [newItemSourceUrl, setNewItemSourceUrl] = useState("");
-  const [imageSearchQuery, setImageSearchQuery] = useState("");
+  const [newItemUnit, setNewItemUnit] = useState<ShoppingItemUnit>('kos');
+  const [newItemNote, setNewItemNote] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('other');
+  const [newItemImageUrl, setNewItemImageUrl] = useState('');
+  const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState('');
+  const [newItemSourceUrl, setNewItemSourceUrl] = useState('');
+  const [imageSearchQuery, setImageSearchQuery] = useState('');
   const [imageCandidates, setImageCandidates] = useState<ImageCandidate[]>([]);
-  const [selectingImageCandidateUrl, setSelectingImageCandidateUrl] = useState("");
+  const [selectingImageCandidateUrl, setSelectingImageCandidateUrl] = useState('');
   const [findImageLoading, setFindImageLoading] = useState(false);
-  const [findImageError, setFindImageError] = useState("");
+  const [findImageError, setFindImageError] = useState('');
 
   const [addItemLoading, setAddItemLoading] = useState(false);
-  const [addItemError, setAddItemError] = useState("");
+  const [addItemError, setAddItemError] = useState('');
   const [updatingItemId, setUpdatingItemId] = useState<number | null>(null);
-  const [updatingItemError, setUpdatingItemError] = useState("");
+  const [updatingItemError, setUpdatingItemError] = useState('');
+  const [recentlyCompletedItemId, setRecentlyCompletedItemId] = useState<number | null>(null);
+  const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
+  const [hoveredQuantityItemId, setHoveredQuantityItemId] = useState<number | null>(null);
+  const [expandedQuantityItemId, setExpandedQuantityItemId] = useState<number | null>(null);
   const [detailsListItemId, setDetailsListItemId] = useState<number | null>(null);
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsEditQuantity, setDetailsEditQuantity] = useState(1);
-  const [detailsEditUnit, setDetailsEditUnit] = useState<ShoppingItemUnit>("kos");
-  const [detailsEditNote, setDetailsEditNote] = useState("");
-  const [detailsEditName, setDetailsEditName] = useState("");
-  const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>("other");
-  const [detailsEditImageUrl, setDetailsEditImageUrl] = useState("");
-  const [detailsEditImagePreviewUrl, setDetailsEditImagePreviewUrl] = useState("");
-  const [detailsEditSourceUrl, setDetailsEditSourceUrl] = useState("");
-  const [detailsImageSearchQuery, setDetailsImageSearchQuery] = useState("");
+  const [detailsEditUnit, setDetailsEditUnit] = useState<ShoppingItemUnit>('kos');
+  const [detailsEditNote, setDetailsEditNote] = useState('');
+  const [detailsEditName, setDetailsEditName] = useState('');
+  const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>('other');
+  const [detailsEditImageUrl, setDetailsEditImageUrl] = useState('');
+  const [detailsEditImagePreviewUrl, setDetailsEditImagePreviewUrl] = useState('');
+  const [detailsEditSourceUrl, setDetailsEditSourceUrl] = useState('');
+  const [detailsEditImageRemoved, setDetailsEditImageRemoved] = useState(false);
+  const [detailsImageSearchQuery, setDetailsImageSearchQuery] = useState('');
   const [detailsImageCandidates, setDetailsImageCandidates] = useState<ImageCandidate[]>([]);
-  const [detailsSelectingImageCandidateUrl, setDetailsSelectingImageCandidateUrl] = useState("");
+  const [detailsSelectingImageCandidateUrl, setDetailsSelectingImageCandidateUrl] = useState('');
   const [detailsFindImageLoading, setDetailsFindImageLoading] = useState(false);
-  const [detailsFindImageError, setDetailsFindImageError] = useState("");
+  const [detailsFindImageError, setDetailsFindImageError] = useState('');
   const searchRequestIdRef = useRef(0);
   const categoryManualRef = useRef(false);
   const detailsEditTransitionRef = useRef(false);
+  const recentlyCompletedTimeoutRef = useRef<number | null>(null);
 
   const detailsItem = useMemo(
-    () => (detailsListItemId === null ? null : (items.find((row) => row.id === detailsListItemId) ?? null)),
-    [detailsListItemId, items]
+    () =>
+      detailsListItemId === null
+        ? null
+        : (items.find((row) => row.id === detailsListItemId) ?? null),
+    [detailsListItemId, items],
   );
 
   useEffect(() => {
     setDetailsEditMode(false);
   }, [detailsListItemId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const updateSupportsHoverPointer = () => {
+      setSupportsHoverPointer(mediaQuery.matches);
+    };
+
+    updateSupportsHoverPointer();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateSupportsHoverPointer);
+      return () => {
+        mediaQuery.removeEventListener('change', updateSupportsHoverPointer);
+      };
+    }
+
+    mediaQuery.addListener(updateSupportsHoverPointer);
+    return () => {
+      mediaQuery.removeListener(updateSupportsHoverPointer);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (recentlyCompletedTimeoutRef.current !== null) {
+        window.clearTimeout(recentlyCompletedTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const groupedActiveItems = useMemo(() => {
-    const activeItems = items.filter((row) => row.status === "active");
+    const activeItems = items.filter((row) => row.status === 'active');
     const byCategory = new Map<ItemCategory, ShoppingListItem[]>();
 
     for (const row of activeItems) {
@@ -373,28 +576,71 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
 
     return Array.from(byCategory.entries())
-      .sort((a, b) => itemCategoryLabels[a[0]].localeCompare(itemCategoryLabels[b[0]], "sl"))
+      .sort((a, b) => itemCategoryLabels[a[0]].localeCompare(itemCategoryLabels[b[0]], 'sl'))
       .map(([category, rows]) => ({
         category,
-        items: rows.sort(sortShoppingItemsNewestFirst)
+        items: rows.sort(sortShoppingItemsNewestFirst),
       }));
   }, [items]);
 
   const completedVisibleItems = useMemo(
-    () => items.filter((row) => row.status === "completed").sort(sortShoppingItemsNewestFirst),
-    [items]
+    () => items.filter((row) => row.status === 'completed').sort(sortShoppingItemsNewestFirst),
+    [items],
   );
+
+  function isQuantityControlsVisible(itemId: number) {
+    return supportsHoverPointer
+      ? hoveredQuantityItemId === itemId
+      : expandedQuantityItemId === itemId;
+  }
+
+  function handleQuantityLabelClick(itemId: number) {
+    if (supportsHoverPointer) {
+      return;
+    }
+    setExpandedQuantityItemId((current) => (current === itemId ? null : itemId));
+  }
+
+  const quantityControlsTransition = { duration: 0.16, ease: 'easeOut' } as const;
+
+  function handleCompletionToggle(item: ShoppingListItem) {
+    const nextStatus = item.status === 'completed' ? 'active' : 'completed';
+
+    if (nextStatus === 'completed') {
+      setRecentlyCompletedItemId(item.id);
+      if (recentlyCompletedTimeoutRef.current !== null) {
+        window.clearTimeout(recentlyCompletedTimeoutRef.current);
+      }
+      recentlyCompletedTimeoutRef.current = window.setTimeout(() => {
+        setRecentlyCompletedItemId((current) => (current === item.id ? null : current));
+      }, 900);
+    } else {
+      setRecentlyCompletedItemId((current) => (current === item.id ? null : current));
+    }
+
+    void patchListItem(item.id, { status: nextStatus });
+  }
+
+  function decreaseItemQuantity(item: ShoppingListItem) {
+    void patchListItem(item.id, {
+      quantity: Math.max(1, Number((item.quantity - quantityStep).toFixed(2))),
+    });
+  }
+
+  function increaseItemQuantity(item: ShoppingListItem) {
+    void patchListItem(item.id, { quantity: Number((item.quantity + quantityStep).toFixed(2)) });
+  }
 
   const authHeaders = useMemo(
     () => ({
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
-    [token]
+    [token],
   );
 
   useEffect(() => {
     if (!listSlug?.trim()) {
-      setListError("Invalid list URL.");
+      setListError('Invalid list URL.');
       setResolvedListId(null);
       setList(null);
       return;
@@ -403,24 +649,25 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
     async function resolveListFromSlug() {
       setListLoading(true);
-      setListError("");
+      setListError('');
       try {
-        const response = await fetch("/api/lists", { headers: authHeaders });
+        const response = await fetch('/api/lists', { headers: authHeaders });
         if (!response.ok) {
           throw new Error(`Lists API failed with status ${response.status}`);
         }
         const payload = (await response.json()) as { lists: ShoppingList[] };
-        const matched = payload.lists.find((row) => toListSlug(row.name) === currentListSlug) ?? null;
+        const matched =
+          payload.lists.find((row) => toListSlug(row.name) === currentListSlug) ?? null;
         if (!matched) {
           setList(null);
           setResolvedListId(null);
-          setListError("List not found.");
+          setListError('List not found.');
           return;
         }
         setList(matched);
         setResolvedListId(matched.id);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message = error instanceof Error ? error.message : 'Unknown error';
         setListError(message);
         setResolvedListId(null);
       } finally {
@@ -439,9 +686,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
     async function loadItems() {
       setItemsLoading(true);
-      setUpdatingItemError("");
+      setUpdatingItemError('');
       try {
-        const itemsResponse = await fetch(`/api/lists/${resolvedListId}/items?status=all`, { headers: authHeaders });
+        const itemsResponse = await fetch(`/api/lists/${resolvedListId}/items?status=all`, {
+          headers: authHeaders,
+        });
 
         if (!itemsResponse.ok) {
           throw new Error(`Items API failed with status ${itemsResponse.status}`);
@@ -450,7 +699,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         const itemsPayload = (await itemsResponse.json()) as { items: ShoppingListItem[] };
         setItems(itemsPayload.items.filter((row) => isVisibleListItemStatus(row.status)));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
+        const message = error instanceof Error ? error.message : 'Unknown error';
         setUpdatingItemError(message);
       } finally {
         setItemsLoading(false);
@@ -479,11 +728,14 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         const requestId = searchRequestIdRef.current + 1;
         searchRequestIdRef.current = requestId;
         setSearchLoading(true);
-        setSearchError("");
+        setSearchError('');
         try {
-          const response = await fetch(`/api/items/suggest?q=${encodeURIComponent(normalizedQuery)}&limit=500`, {
-            headers: authHeaders
-          });
+          const response = await fetch(
+            `/api/items/suggest?q=${encodeURIComponent(normalizedQuery)}&limit=500`,
+            {
+              headers: authHeaders,
+            },
+          );
           if (!response.ok) {
             throw new Error(`Search failed with status ${response.status}`);
           }
@@ -493,10 +745,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             setSearchResults(payload.items);
           }
         } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
+          if (error instanceof Error && error.name === 'AbortError') {
             return;
           }
-          const message = error instanceof Error ? error.message : "Unknown error";
+          const message = error instanceof Error ? error.message : 'Unknown error';
           if (searchRequestIdRef.current === requestId) {
             setSearchError(message);
           }
@@ -537,64 +789,64 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
   function resetDialogState() {
     setAddDialogOpen(false);
-    setSearchValue("");
+    setSearchValue('');
     setSearchResults([]);
-    setSearchError("");
+    setSearchError('');
     setSearchLoading(false);
     setShowAddNewItemButton(false);
     setShowCreateItemStep(false);
-    setNewItemName("");
+    setNewItemName('');
     setNewItemQuantity(1);
-    setNewItemUnit("kos");
-    setNewItemNote("");
-    setNewItemCategory("other");
+    setNewItemUnit('kos');
+    setNewItemNote('');
+    setNewItemCategory('other');
     categoryManualRef.current = false;
-    setNewItemImageUrl("");
-    setNewItemImagePreviewUrl("");
-    setNewItemSourceUrl("");
-    setImageSearchQuery("");
+    setNewItemImageUrl('');
+    setNewItemImagePreviewUrl('');
+    setNewItemSourceUrl('');
+    setImageSearchQuery('');
     setImageCandidates([]);
-    setSelectingImageCandidateUrl("");
-    setFindImageError("");
+    setSelectingImageCandidateUrl('');
+    setFindImageError('');
     setFindImageLoading(false);
-    setAddItemError("");
+    setAddItemError('');
     setAddItemLoading(false);
   }
 
   function openCreateItemStep(prefillName?: string) {
     categoryManualRef.current = false;
     setShowCreateItemStep(true);
-    setAddItemError("");
-    setFindImageError("");
+    setAddItemError('');
+    setFindImageError('');
     setFindImageLoading(false);
-    setImageSearchQuery("");
+    setImageSearchQuery('');
     setImageCandidates([]);
-    setSelectingImageCandidateUrl("");
-    setNewItemImageUrl("");
-    setNewItemImagePreviewUrl("");
-    setNewItemSourceUrl("");
+    setSelectingImageCandidateUrl('');
+    setNewItemImageUrl('');
+    setNewItemImagePreviewUrl('');
+    setNewItemSourceUrl('');
     setNewItemName(prefillName?.trim() || searchValue.trim());
   }
 
   async function addExistingItem(itemTitle: string) {
     if (!resolvedListId) {
-      setAddItemError("List is not loaded yet.");
+      setAddItemError('List is not loaded yet.');
       return;
     }
     setAddItemLoading(true);
-    setAddItemError("");
+    setAddItemError('');
     try {
       const response = await fetch(`/api/lists/${resolvedListId}/items`, {
-        method: "POST",
+        method: 'POST',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           title: formatItemTitle(itemTitle),
           quantity: 1,
-          unit: "kos"
-        })
+          unit: 'kos',
+        }),
       });
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
@@ -603,7 +855,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       }
 
       setItems((currentItems) => {
-        const withoutExisting = currentItems.filter((currentItem) => currentItem.id !== payload.listItem?.id);
+        const withoutExisting = currentItems.filter(
+          (currentItem) => currentItem.id !== payload.listItem?.id,
+        );
         if (!isVisibleListItemStatus((payload.listItem as ShoppingListItem).status)) {
           return withoutExisting;
         }
@@ -611,7 +865,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       });
       resetDialogState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setAddItemError(message);
     } finally {
       setAddItemLoading(false);
@@ -621,22 +875,22 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   async function handleCreateItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!resolvedListId) {
-      setAddItemError("List is not loaded yet.");
+      setAddItemError('List is not loaded yet.');
       return;
     }
     if (!newItemName.trim()) {
-      setAddItemError("Item name is required.");
+      setAddItemError('Item name is required.');
       return;
     }
 
     setAddItemLoading(true);
-    setAddItemError("");
+    setAddItemError('');
     try {
       const response = await fetch(`/api/lists/${resolvedListId}/items`, {
-        method: "POST",
+        method: 'POST',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           title: formatItemTitle(newItemName),
@@ -645,8 +899,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           note: newItemNote.trim() ? newItemNote.trim() : undefined,
           category: newItemCategory,
           imageUrl: newItemImageUrl.trim() ? newItemImageUrl.trim() : undefined,
-          sourceUrl: newItemSourceUrl.trim() ? newItemSourceUrl.trim() : undefined
-        })
+          sourceUrl: newItemSourceUrl.trim() ? newItemSourceUrl.trim() : undefined,
+        }),
       });
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
@@ -655,7 +909,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       }
 
       setItems((currentItems) => {
-        const withoutExisting = currentItems.filter((currentItem) => currentItem.id !== payload.listItem?.id);
+        const withoutExisting = currentItems.filter(
+          (currentItem) => currentItem.id !== payload.listItem?.id,
+        );
         if (!isVisibleListItemStatus((payload.listItem as ShoppingListItem).status)) {
           return withoutExisting;
         }
@@ -663,7 +919,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       });
       resetDialogState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setAddItemError(message);
     } finally {
       setAddItemLoading(false);
@@ -675,21 +931,24 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setLoading: (value: boolean) => void,
     setError: (value: string) => void,
     setCandidates: (value: ImageCandidate[]) => void,
-    setSelectingCandidateUrl: (value: string) => void
+    setSelectingCandidateUrl: (value: string) => void,
   ) {
     if (!searchTarget) {
-      setError("Enter item name or an image search phrase.");
+      setError('Enter item name or an image search phrase.');
       return;
     }
 
     setLoading(true);
-    setError("");
+    setError('');
     setCandidates([]);
-    setSelectingCandidateUrl("");
+    setSelectingCandidateUrl('');
     try {
-      const response = await fetch(`/api/items/search-images?q=${encodeURIComponent(searchTarget)}`, {
-        headers: authHeaders
-      });
+      const response = await fetch(
+        `/api/items/search-images?q=${encodeURIComponent(searchTarget)}`,
+        {
+          headers: authHeaders,
+        },
+      );
 
       const payload = (await response.json()) as {
         found?: boolean;
@@ -697,15 +956,17 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         error?: string;
       };
       if (!response.ok) {
-        throw new Error(payload.error ?? `Image candidate search failed with status ${response.status}`);
+        throw new Error(
+          payload.error ?? `Image candidate search failed with status ${response.status}`,
+        );
       }
       if (!payload.found || !payload.candidates?.length) {
-        throw new Error(payload.error ?? "No image candidates found for this item yet.");
+        throw new Error(payload.error ?? 'No image candidates found for this item yet.');
       }
 
       setCandidates(payload.candidates);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setError(message);
     } finally {
       setLoading(false);
@@ -721,28 +982,28 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setImagePreviewUrl: (value: string) => void,
     setSourceUrl: (value: string) => void,
     setCandidates: (value: ImageCandidate[]) => void,
-    setSelectingCandidateUrl: (value: string) => void
+    setSelectingCandidateUrl: (value: string) => void,
   ) {
     if (!searchTarget) {
-      setError("Enter item name or an image search phrase.");
+      setError('Enter item name or an image search phrase.');
       return;
     }
 
     setLoading(true);
-    setError("");
+    setError('');
     setSelectingCandidateUrl(candidate.imageUrl);
     try {
-      const response = await fetch("/api/items/select-image", {
-        method: "POST",
+      const response = await fetch('/api/items/select-image', {
+        method: 'POST',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           q: searchTarget,
           imageUrl: candidate.imageUrl,
-          sourceUrl: candidate.sourceUrl
-        })
+          sourceUrl: candidate.sourceUrl,
+        }),
       });
 
       const payload = (await response.json()) as {
@@ -752,35 +1013,113 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         error?: string;
       };
       if (!response.ok || !payload.found || !payload.imageUrl) {
-        throw new Error(payload.error ?? `Applying selected image failed with status ${response.status}`);
+        throw new Error(
+          payload.error ?? `Applying selected image failed with status ${response.status}`,
+        );
       }
 
       setImageUrl(payload.imageUrl);
       setImagePreviewUrl(`${payload.imageUrl}?v=${Date.now()}`);
-      setSourceUrl(payload.sourceUrl ?? candidate.sourceUrl ?? "");
+      setSourceUrl(payload.sourceUrl ?? candidate.sourceUrl ?? '');
       setCandidates([]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setError(message);
     } finally {
-      setSelectingCandidateUrl("");
+      setSelectingCandidateUrl('');
       setLoading(false);
     }
   }
 
+  async function uploadImageFileWithQuery(
+    searchTarget: string,
+    file: File,
+    setLoading: (value: boolean) => void,
+    setError: (value: string) => void,
+    setImageUrl: (value: string) => void,
+    setImagePreviewUrl: (value: string) => void,
+    setSourceUrl: (value: string) => void,
+    setCandidates: (value: ImageCandidate[]) => void,
+    setSelectingCandidateUrl: (value: string) => void,
+  ) {
+    if (!searchTarget) {
+      setError('Enter item name first.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSelectingCandidateUrl('');
+    try {
+      const response = await fetch(
+        `/api/items/upload-image?q=${encodeURIComponent(searchTarget)}`,
+        {
+          method: 'POST',
+          headers: {
+            ...authHeaders,
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+          body: file,
+        },
+      );
+
+      const payload = (await response.json()) as {
+        found?: boolean;
+        imageUrl?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.found || !payload.imageUrl) {
+        throw new Error(payload.error ?? `Image upload failed with status ${response.status}`);
+      }
+
+      setImageUrl(payload.imageUrl);
+      setImagePreviewUrl(`${payload.imageUrl}?v=${Date.now()}`);
+      setSourceUrl('');
+      setCandidates([]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function readImageFromClipboard(): Promise<File | null> {
+    if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+      return null;
+    }
+
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types.find((type) => type.startsWith('image/'));
+        if (!imageType) {
+          continue;
+        }
+        const blob = await clipboardItem.getType(imageType);
+        const extension = imageType.split('/')[1] || 'png';
+        return new File([blob], `clipboard-${Date.now()}.${extension}`, { type: imageType });
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   async function findImage() {
-    const searchTarget = imageSearchQuery.trim() || newItemName.trim() || searchValue.trim();
+    const searchTarget = resolveImageSearchTarget(imageSearchQuery, newItemName, searchValue);
     await searchImageCandidatesWithQuery(
       searchTarget,
       setFindImageLoading,
       setFindImageError,
       setImageCandidates,
-      setSelectingImageCandidateUrl
+      setSelectingImageCandidateUrl,
     );
   }
 
   async function selectImageCandidate(candidate: ImageCandidate) {
-    const searchTarget = imageSearchQuery.trim() || newItemName.trim() || searchValue.trim();
+    const searchTarget = resolveImageSearchTarget(imageSearchQuery, newItemName, searchValue);
     await selectImageCandidateWithQuery(
       searchTarget,
       candidate,
@@ -790,23 +1129,48 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setNewItemImagePreviewUrl,
       setNewItemSourceUrl,
       setImageCandidates,
-      setSelectingImageCandidateUrl
+      setSelectingImageCandidateUrl,
     );
   }
 
+  async function uploadNewItemImage(file: File) {
+    const searchTarget = resolveImageSearchTarget(imageSearchQuery, newItemName, searchValue);
+    await uploadImageFileWithQuery(
+      searchTarget,
+      file,
+      setFindImageLoading,
+      setFindImageError,
+      setNewItemImageUrl,
+      setNewItemImagePreviewUrl,
+      setNewItemSourceUrl,
+      setImageCandidates,
+      setSelectingImageCandidateUrl,
+    );
+  }
+
+  async function pasteNewItemImageFromClipboard() {
+    const clipboardImage = await readImageFromClipboard();
+    if (!clipboardImage) {
+      setFindImageError('No image found in clipboard.');
+      return;
+    }
+    await uploadNewItemImage(clipboardImage);
+  }
+
   async function findDetailsImage() {
-    const searchTarget = detailsImageSearchQuery.trim() || detailsEditName.trim();
+    const searchTarget = resolveImageSearchTarget(detailsImageSearchQuery, detailsEditName);
     await searchImageCandidatesWithQuery(
       searchTarget,
       setDetailsFindImageLoading,
       setDetailsFindImageError,
       setDetailsImageCandidates,
-      setDetailsSelectingImageCandidateUrl
+      setDetailsSelectingImageCandidateUrl,
     );
   }
 
   async function selectDetailsImageCandidate(candidate: ImageCandidate) {
-    const searchTarget = detailsImageSearchQuery.trim() || detailsEditName.trim();
+    setDetailsEditImageRemoved(false);
+    const searchTarget = resolveImageSearchTarget(detailsImageSearchQuery, detailsEditName);
     await selectImageCandidateWithQuery(
       searchTarget,
       candidate,
@@ -816,12 +1180,37 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setDetailsEditImagePreviewUrl,
       setDetailsEditSourceUrl,
       setDetailsImageCandidates,
-      setDetailsSelectingImageCandidateUrl
+      setDetailsSelectingImageCandidateUrl,
     );
   }
 
+  async function uploadDetailsItemImage(file: File) {
+    setDetailsEditImageRemoved(false);
+    const searchTarget = resolveImageSearchTarget(detailsImageSearchQuery, detailsEditName);
+    await uploadImageFileWithQuery(
+      searchTarget,
+      file,
+      setDetailsFindImageLoading,
+      setDetailsFindImageError,
+      setDetailsEditImageUrl,
+      setDetailsEditImagePreviewUrl,
+      setDetailsEditSourceUrl,
+      setDetailsImageCandidates,
+      setDetailsSelectingImageCandidateUrl,
+    );
+  }
+
+  async function pasteDetailsImageFromClipboard() {
+    const clipboardImage = await readImageFromClipboard();
+    if (!clipboardImage) {
+      setDetailsFindImageError('No image found in clipboard.');
+      return;
+    }
+    await uploadDetailsItemImage(clipboardImage);
+  }
+
   function handleSearchEnter(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== "Enter") {
+    if (event.key !== 'Enter') {
       return;
     }
     event.preventDefault();
@@ -832,30 +1221,37 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
   async function patchListItem(
     listItemId: number,
-    payload: Partial<Pick<ShoppingListItem, "title" | "quantity" | "unit" | "note" | "status" | "category">> & {
-      imageUrl?: string;
-      sourceUrl?: string;
-    }
+    payload: Partial<
+      Pick<ShoppingListItem, 'title' | 'quantity' | 'unit' | 'note' | 'status' | 'category'>
+    > & {
+      imageUrl?: string | null;
+      sourceUrl?: string | null;
+    },
   ): Promise<boolean> {
     if (!resolvedListId) {
-      setUpdatingItemError("List is not loaded yet.");
+      setUpdatingItemError('List is not loaded yet.');
       return false;
     }
     setUpdatingItemId(listItemId);
-    setUpdatingItemError("");
+    setUpdatingItemError('');
     try {
       const response = await fetch(`/api/lists/${resolvedListId}/items/${listItemId}`, {
-        method: "PATCH",
+        method: 'PATCH',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
-      const responsePayload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
+      const responsePayload = (await response.json()) as {
+        listItem?: ShoppingListItem;
+        error?: string;
+      };
       if (!response.ok || !responsePayload.listItem) {
-        throw new Error(responsePayload.error ?? `Item update failed with status ${response.status}`);
+        throw new Error(
+          responsePayload.error ?? `Item update failed with status ${response.status}`,
+        );
       }
 
       setItems((currentItems) => {
@@ -869,10 +1265,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         }
         return currentItems.map((item) => (item.id === listItemId ? nextItem : item));
       });
-      setUpdatingItemError("");
+      setUpdatingItemError('');
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setUpdatingItemError(message);
       return false;
     } finally {
@@ -884,26 +1280,42 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsListItemId(item.id);
   }
 
+  function resetDetailsEditImageSearchState() {
+    setDetailsImageSearchQuery('');
+    setDetailsImageCandidates([]);
+    setDetailsSelectingImageCandidateUrl('');
+    setDetailsFindImageError('');
+    setDetailsFindImageLoading(false);
+  }
+
+  function applyDetailsItemToEditState(item: ShoppingListItem) {
+    setDetailsEditQuantity(item.quantity);
+    setDetailsEditUnit(normalizeShoppingItemUnit(item.unit));
+    setDetailsEditNote(item.note ?? '');
+    setDetailsEditName(formatItemTitle(item.title));
+    setDetailsEditCategory(item.category);
+    setDetailsEditImageUrl(item.imageUrl ?? '');
+    setDetailsEditImagePreviewUrl(item.imageUrl ?? '');
+    setDetailsEditSourceUrl('');
+    setDetailsEditImageRemoved(false);
+    resetDetailsEditImageSearchState();
+  }
+
+  function removeDetailsEditImage() {
+    setDetailsEditImageRemoved(true);
+    setDetailsEditImageUrl('');
+    setDetailsEditImagePreviewUrl('');
+    setDetailsEditSourceUrl('');
+  }
+
   function beginDetailsEdit(item: ShoppingListItem) {
     detailsEditTransitionRef.current = true;
     window.setTimeout(() => {
       detailsEditTransitionRef.current = false;
     }, 250);
-    setDetailsEditQuantity(item.quantity);
-    setDetailsEditUnit(normalizeShoppingItemUnit(item.unit));
-    setDetailsEditNote(item.note ?? "");
-    setDetailsEditName(formatItemTitle(item.title));
-    setDetailsEditCategory(item.category);
-    setDetailsEditImageUrl(item.imageUrl ?? "");
-    setDetailsEditImagePreviewUrl(item.imageUrl ?? "");
-    setDetailsEditSourceUrl("");
-    setDetailsImageSearchQuery("");
-    setDetailsImageCandidates([]);
-    setDetailsSelectingImageCandidateUrl("");
-    setDetailsFindImageError("");
-    setDetailsFindImageLoading(false);
+    applyDetailsItemToEditState(item);
     setDetailsEditMode(true);
-    setUpdatingItemError("");
+    setUpdatingItemError('');
   }
 
   async function saveDetailsEdit(event: FormEvent<HTMLFormElement>) {
@@ -912,7 +1324,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       return;
     }
     if (!detailsEditName.trim()) {
-      setUpdatingItemError("Item name is required.");
+      setUpdatingItemError('Item name is required.');
       return;
     }
     const ok = await patchListItem(detailsItem.id, {
@@ -921,8 +1333,16 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       unit: detailsEditUnit,
       note: detailsEditNote.trim(),
       category: detailsEditCategory,
-      imageUrl: detailsEditImageUrl.trim() ? detailsEditImageUrl.trim() : undefined,
-      sourceUrl: detailsEditSourceUrl.trim() ? detailsEditSourceUrl.trim() : undefined
+      imageUrl: detailsEditImageRemoved
+        ? null
+        : detailsEditImageUrl.trim()
+          ? detailsEditImageUrl.trim()
+          : undefined,
+      sourceUrl: detailsEditImageRemoved
+        ? null
+        : detailsEditSourceUrl.trim()
+          ? detailsEditSourceUrl.trim()
+          : undefined,
     });
     if (ok) {
       setDetailsEditMode(false);
@@ -934,26 +1354,14 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setDetailsEditMode(false);
       return;
     }
-    setDetailsEditQuantity(detailsItem.quantity);
-    setDetailsEditUnit(normalizeShoppingItemUnit(detailsItem.unit));
-    setDetailsEditNote(detailsItem.note ?? "");
-    setDetailsEditName(formatItemTitle(detailsItem.title));
-    setDetailsEditCategory(detailsItem.category);
-    setDetailsEditImageUrl(detailsItem.imageUrl ?? "");
-    setDetailsEditImagePreviewUrl(detailsItem.imageUrl ?? "");
-    setDetailsEditSourceUrl("");
-    setDetailsImageSearchQuery("");
-    setDetailsImageCandidates([]);
-    setDetailsSelectingImageCandidateUrl("");
-    setDetailsFindImageError("");
-    setDetailsFindImageLoading(false);
+    applyDetailsItemToEditState(detailsItem);
     setDetailsEditMode(false);
   }
 
   return (
     <>
       <AppHeader
-        title={list ? list.name : "List"}
+        title={list ? list.name : 'List'}
         actions={
           <>
             <Button
@@ -964,7 +1372,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               iconOnly
               aria-label="Back"
               title="Back"
-              onClick={() => navigate("/")}
+              onClick={() => navigate('/')}
             />
             {authUser.isAdmin ? (
               <Button
@@ -975,16 +1383,22 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 iconOnly
                 aria-label="Admin"
                 title="Admin"
-                onClick={() => navigate("/admin/users")}
+                onClick={() => navigate('/admin/users')}
               />
             ) : null}
           </>
         }
       />
 
-      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
-        <section className="relative mt-6 min-h-[12rem]">
-          {listLoading || itemsLoading ? <Loader placement="overlay" label="Loading list..." /> : null}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42 }}
+      >
+        <section className="relative mt-6 min-h-[calc(100lvh-(74px+env(safe-area-inset-top)+1.5rem))]">
+          {listLoading || itemsLoading ? (
+            <Loader placement="overlay" label="Loading list..." />
+          ) : null}
           {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
           {!listLoading && !itemsLoading && !listError ? (
             <ul className="m-0 mt-3 flex list-none flex-col gap-2 p-0">
@@ -992,75 +1406,26 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 <li key={group.category} className="list-none">
                   <ul className="m-0 flex list-none flex-col gap-2 p-0">
                     {group.items.map((item) => (
-                      <li
-                        key={item.id}
-                        className="list-none"
-                      >
-                        <Card
-                          tone={item.status === "completed" ? "completed" : "default"}
-                          interactive={item.status !== "completed"}
-                          padding="none"
-                        >
-                          <div className="flex items-center gap-4 py-2.5 px-4">
-                            <CompletionCircleToggle
-                              size="sm"
-                              completed={item.status === "completed"}
-                              disabled={Boolean(updatingItemId)}
-                              onToggle={() =>
-                                void patchListItem(item.id, {
-                                  status: item.status === "completed" ? "active" : "completed"
-                                })
-                              }
-                            />
-                            <ItemCategoryIcon category={item.category} size={30} />
-                            <div className="block min-w-0 flex-1">
-                              <button
-                                type="button"
-                                className="m-0 block max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-5 font-semibold text-slate-50 cursor-pointer"
-                                onClick={() => openItemDetails(item)}
-                              >
-                                {formatItemTitle(item.title)}
-                                {item.status === "completed" ? (
-                                  <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Kupljeno</span>
-                                ) : null}
-                              </button>
-                              {item.note ? <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p> : null}
-                            </div>
-                            <div className="flex min-w-0 flex-col justify-center">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="inline-flex items-center justify-center">
-                                  <Button
-                                    type="button"
-                                    color="white"
-                                    appearance="transparent"
-                                    size="xs"
-                                    iconOnly
-                                    icon={<Minus animateOnHover />}
-                                    aria-label={`Decrease quantity for ${formatItemTitle(item.title)}`}
-                                    disabled={Boolean(updatingItemId)}
-                                    onClick={() =>
-                                      void patchListItem(item.id, { quantity: Math.max(1, Number((item.quantity - quantityStep).toFixed(2))) })
-                                    }
-                                  />
-                                  <span className="inline-flex min-w-14 items-center justify-center whitespace-nowrap text-center text-xs text-slate-100">
-                                  {item.quantity} {getItemUnitLabel(item.unit)}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    color="white"
-                                    appearance="transparent"
-                                    size="xs"
-                                    iconOnly
-                                    icon={<Plus animateOnHover />}
-                                    aria-label={`Increase quantity for ${formatItemTitle(item.title)}`}
-                                    disabled={Boolean(updatingItemId)}
-                                    onClick={() => void patchListItem(item.id, { quantity: Number((item.quantity + quantityStep).toFixed(2)) })}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </Card>
+                      <li key={item.id} className="list-none">
+                        <ListItemCard
+                          item={item}
+                          updating={Boolean(updatingItemId)}
+                          supportsHoverPointer={supportsHoverPointer}
+                          quantityControlsVisible={isQuantityControlsVisible(item.id)}
+                          quantityControlsTransition={quantityControlsTransition}
+                          formatTitle={formatItemTitle}
+                          onHoverStart={setHoveredQuantityItemId}
+                          onHoverEnd={(itemId) =>
+                            setHoveredQuantityItemId((current) =>
+                              current === itemId ? null : current,
+                            )
+                          }
+                          onQuantityLabelClick={handleQuantityLabelClick}
+                          onCompletionToggle={handleCompletionToggle}
+                          onOpenDetails={openItemDetails}
+                          onDecreaseQuantity={decreaseItemQuantity}
+                          onIncreaseQuantity={increaseItemQuantity}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -1068,92 +1433,54 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               ))}
               {completedVisibleItems.map((item) => (
                 <li key={`completed-${item.id}`} className="list-none">
-                  <Card tone="completed" interactive={false} padding="none">
-                    <div className="flex items-center gap-4 py-2.5 px-4">
-                      <CompletionCircleToggle
-                        size="sm"
-                        completed={true}
-                        disabled={Boolean(updatingItemId)}
-                        onToggle={() =>
-                          void patchListItem(item.id, {
-                            status: "active"
-                          })
-                        }
-                      />
-                      <ItemCategoryIcon category={item.category} size={30} />
-                      <div className="block min-w-0 flex-1">
-                        <button
-                          type="button"
-                          className="m-0 block max-w-full min-h-9 line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-5 font-semibold text-slate-50 cursor-pointer"
-                          onClick={() => openItemDetails(item)}
-                        >
-                          {formatItemTitle(item.title)}
-                          <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">· Kupljeno</span>
-                        </button>
-                        {item.note ? <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p> : null}
-                      </div>
-                      <div className="flex min-w-0 flex-col justify-center">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="inline-flex items-center justify-center">
-                            <Button
-                              type="button"
-                              color="white"
-                              appearance="transparent"
-                              size="sm"
-                              iconOnly
-                              icon={<Minus animateOnHover />}
-                              aria-label={`Decrease quantity for ${formatItemTitle(item.title)}`}
-                              disabled={Boolean(updatingItemId)}
-                              onClick={() =>
-                                void patchListItem(item.id, { quantity: Math.max(1, Number((item.quantity - quantityStep).toFixed(2))) })
-                              }
-                            />
-                            <span className="inline-flex min-w-14 items-center justify-center whitespace-nowrap text-center text-xs text-slate-100">
-                              {item.quantity} {getItemUnitLabel(item.unit)}
-                            </span>
-                            <Button
-                              type="button"
-                              color="white"
-                              appearance="transparent"
-                              size="sm"
-                              iconOnly
-                              icon={<Plus animateOnHover />}
-                              aria-label={`Increase quantity for ${formatItemTitle(item.title)}`}
-                              disabled={Boolean(updatingItemId)}
-                              onClick={() => void patchListItem(item.id, { quantity: Number((item.quantity + quantityStep).toFixed(2)) })}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
+                  <ListItemCard
+                    item={item}
+                    updating={Boolean(updatingItemId)}
+                    sparkleOnMount={recentlyCompletedItemId === item.id}
+                    supportsHoverPointer={supportsHoverPointer}
+                    quantityControlsVisible={isQuantityControlsVisible(item.id)}
+                    quantityControlsTransition={quantityControlsTransition}
+                    formatTitle={formatItemTitle}
+                    onHoverStart={setHoveredQuantityItemId}
+                    onHoverEnd={(itemId) =>
+                      setHoveredQuantityItemId((current) => (current === itemId ? null : current))
+                    }
+                    onQuantityLabelClick={handleQuantityLabelClick}
+                    onCompletionToggle={handleCompletionToggle}
+                    onOpenDetails={openItemDetails}
+                    onDecreaseQuantity={decreaseItemQuantity}
+                    onIncreaseQuantity={increaseItemQuantity}
+                  />
                 </li>
               ))}
               {!groupedActiveItems.length && !completedVisibleItems.length ? (
                 <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                  No items yet. Tap the + button in the bottom-right corner to add your first product.
+                  No items yet. Tap the + button in the bottom-right corner to add your first
+                  product.
                 </li>
               ) : null}
             </ul>
           ) : null}
-          {updatingItemError ? <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p> : null}
+          {updatingItemError ? (
+            <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p>
+          ) : null}
         </section>
-        <div className="fixed right-8 bottom-8 z-40">
-          <Button
-            type="button"
-            icon={<Plus animateOnHover />}
-            iconOnly
-            size="lg"
-            aria-label="Add item"
-            title="Add item"
-            className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
-            onClick={() => {
-              setAddDialogOpen(true);
-              setAddItemError("");
-            }}
-          />
-        </div>
       </motion.div>
+      <div className="fixed right-8 bottom-8 z-40">
+        <Button
+          type="button"
+          icon={<Plus animateOnHover />}
+          iconOnly
+          size="lg"
+          aria-label="Add item"
+          title="Add item"
+          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
+          onClick={() => {
+            setAddDialogOpen(true);
+            setAddItemError('');
+          }}
+        />
+      </div>
 
       <Dialog
         open={addDialogOpen}
@@ -1169,7 +1496,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           showCreateItemStep ? (
             <>
               <Button type="submit" form="create-item-form" disabled={addItemLoading}>
-                {addItemLoading ? "Adding..." : "Add item"}
+                {addItemLoading ? 'Adding...' : 'Add item'}
               </Button>
               <Button
                 type="button"
@@ -1178,14 +1505,14 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 onClick={() => {
                   setShowCreateItemStep(false);
                   setFindImageLoading(false);
-                  setFindImageError("");
-                  setImageSearchQuery("");
+                  setFindImageError('');
+                  setImageSearchQuery('');
                   setImageCandidates([]);
-                  setSelectingImageCandidateUrl("");
-                  setNewItemImageUrl("");
-                  setNewItemImagePreviewUrl("");
-                  setNewItemSourceUrl("");
-                  setAddItemError("");
+                  setSelectingImageCandidateUrl('');
+                  setNewItemImageUrl('');
+                  setNewItemImagePreviewUrl('');
+                  setNewItemSourceUrl('');
+                  setAddItemError('');
                 }}
                 disabled={addItemLoading}
               >
@@ -1281,6 +1608,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   imagePreviewUrl={newItemImagePreviewUrl}
                   sourceUrl={newItemSourceUrl}
                   findImageError={findImageError}
+                  onUploadImageFile={uploadNewItemImage}
+                  onPasteImageFromClipboard={pasteNewItemImageFromClipboard}
                 />
 
                 {addItemError ? <p className="m-0 text-xs text-rose-200">{addItemError}</p> : null}
@@ -1319,8 +1648,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           detailsItem ? (
             detailsEditMode ? (
               <>
-                <Button type="submit" form="details-edit-form" disabled={updatingItemId === detailsItem.id}>
-                  {updatingItemId === detailsItem.id ? "Shranjujem..." : "Shrani"}
+                <Button
+                  type="submit"
+                  form="details-edit-form"
+                  icon={<CheckCheck animateOnHover />}
+                  disabled={updatingItemId === detailsItem.id}
+                >
+                  {updatingItemId === detailsItem.id ? 'Shranjujem...' : 'Shrani'}
                 </Button>
                 <Button
                   type="button"
@@ -1340,8 +1674,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           detailsEditMode ? (
             <form id="details-edit-form" className="grid gap-3" onSubmit={saveDetailsEdit}>
               <p className="m-0 text-xs text-slate-400">
-                Stanje:{" "}
-                <span className="text-slate-200">{detailsItem.status === "completed" ? "Kupljeno" : "Aktivno"}</span>
+                Stanje:{' '}
+                <span className="text-slate-200">
+                  {detailsItem.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
+                </span>
               </p>
               <SharedItemFormFields
                 name={detailsEditName}
@@ -1367,18 +1703,24 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 imagePreviewUrl={detailsEditImagePreviewUrl}
                 sourceUrl={detailsEditSourceUrl}
                 findImageError={detailsFindImageError}
+                onRemoveImage={removeDetailsEditImage}
+                onUploadImageFile={uploadDetailsItemImage}
+                onPasteImageFromClipboard={pasteDetailsImageFromClipboard}
                 disabled={updatingItemId === detailsItem.id}
                 quantityButtonSize="md"
               />
-              {updatingItemError ? <p className="m-0 text-xs text-rose-200">{updatingItemError}</p> : null}
+              {updatingItemError ? (
+                <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
+              ) : null}
             </form>
           ) : (
             <div className="grid gap-3">
               <p className="m-0 text-xs text-slate-300">
-                Kategorija: <span className="text-slate-100">{itemCategoryLabels[detailsItem.category]}</span>
+                Kategorija:{' '}
+                <span className="text-slate-100">{itemCategoryLabels[detailsItem.category]}</span>
               </p>
               <p className="m-0 text-xs text-slate-300">
-                Količina:{" "}
+                Količina:{' '}
                 <span className="text-slate-100">
                   {detailsItem.quantity} {getItemUnitLabel(detailsItem.unit)}
                 </span>
@@ -1391,24 +1733,23 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   </p>
                 </div>
               ) : null}
-              {updatingItemError ? <p className="m-0 text-xs text-rose-200">{updatingItemError}</p> : null}
-              <div className="aspect-square w-full overflow-hidden rounded-xl border border-white/12 bg-slate-900/50">
-                {detailsItem.imageUrl ? (
+              {updatingItemError ? (
+                <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
+              ) : null}
+              {detailsItem.imageUrl ? (
+                <div className="aspect-square w-full overflow-hidden rounded-xl border border-white/12 bg-slate-900/50">
                   <img
                     src={detailsItem.imageUrl}
                     alt={formatItemTitle(detailsItem.title)}
                     className="block h-full w-full object-cover object-center"
                     loading="lazy"
                   />
-                ) : (
-                  <div className="grid h-full w-full place-items-center px-4 text-center text-sm text-slate-400">
-                    Ni fotografije — dodaj jo ob ustvarjanju artikla ali z »Find image«.
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : null}
               <div className="pt-1">
                 <Button
                   type="button"
+                  icon={<Edit animateOnHover />}
                   disabled={updatingItemId === detailsItem.id}
                   onClick={() => beginDetailsEdit(detailsItem)}
                 >

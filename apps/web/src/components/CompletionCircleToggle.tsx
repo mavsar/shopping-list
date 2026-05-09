@@ -13,9 +13,16 @@ type CompletionCircleToggleProps = {
   disabled: boolean;
   onToggle: () => void;
   size?: "sm" | "md";
+  sparkleOnMount?: boolean;
 };
 
-export function CompletionCircleToggle({ completed, disabled, onToggle, size = "md" }: CompletionCircleToggleProps) {
+export function CompletionCircleToggle({
+  completed,
+  disabled,
+  onToggle,
+  size = "md",
+  sparkleOnMount = false
+}: CompletionCircleToggleProps) {
   const prevCompleted = useRef(completed);
   const [sparkleBurst, setSparkleBurst] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -27,6 +34,12 @@ export function CompletionCircleToggle({ completed, disabled, onToggle, size = "
     prevCompleted.current = completed;
     setIsHovered(false);
   }, [completed]);
+
+  useEffect(() => {
+    if (completed && sparkleOnMount) {
+      setSparkleBurst(true);
+    }
+  }, [completed, sparkleOnMount]);
 
   useEffect(() => {
     if (!sparkleBurst) {

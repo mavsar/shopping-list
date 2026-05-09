@@ -4,4 +4,5 @@ export { Dialog } from "./dialog";
 export { H1, H2, H3, H4, H5, H6 } from "./heading";
 export { Label } from "./label";
 export { Loader } from "./loader";
+export { SharedTabs } from "./tabs";
 export { Checkbox, Combobox, Input, Select, Textarea } from "./fields";

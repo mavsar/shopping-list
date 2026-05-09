@@ -49,8 +49,8 @@ const patchListItemSchema = z.object({
   unit: z.enum(unitValues).optional(),
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
-  imageUrl: itemImageUrlSchema.optional(),
-  sourceUrl: z.string().trim().url().max(1000).optional()
+  imageUrl: itemImageUrlSchema.nullable().optional(),
+  sourceUrl: z.string().trim().url().max(1000).nullable().optional()
 });
 
 export const listsRouter = Router();
@@ -535,7 +535,7 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
     payload.sourceUrl !== undefined
   ) {
     const itemUpdateSegments: string[] = [];
-    const itemUpdateArgs: Array<string> = [];
+    const itemUpdateArgs: Array<string | null> = [];
 
     if (payload.title !== undefined) {
       const formattedTitle = formatItemTitle(payload.title);
