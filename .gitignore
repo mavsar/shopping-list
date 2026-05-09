@@ -8,3 +8,4 @@ build
 data
 coverage
 apps/server/storage
+*.tsbuildinfo
