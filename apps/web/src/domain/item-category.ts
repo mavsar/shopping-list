@@ -51,14 +51,36 @@ type CategorySignals = {
 
 const CATEGORY_SIGNALS: Record<ItemCategory, CategorySignals> = {
   alkoholi: {
-    strongPhrases: ["rdece vino", "belo vino", "craft beer", "penece vino", "brezalkoholno pivo"],
-    phrases: ["alkohol", "vino", "beer", "pivo", "whisky", "viski", "vodka", "gin", "rum", "tekila", "sampanjec"],
-    tokens: ["liker", "aperol", "prosecco", "brendi", "jager", "jagermeister", "cider"]
+    strongPhrases: [
+      "rdece vino",
+      "belo vino",
+      "rose vino",
+      "penece vino",
+      "craft beer",
+      "brezalkoholno pivo",
+      "temno pivo",
+      "svetlo pivo",
+      "gin tonic",
+      "rum kola",
+      "jabolcni cider",
+      "viski cola"
+    ],
+    phrases: ["alkohol", "vino", "beer", "pivo", "whisky", "viski", "vodka", "gin", "rum", "tekila", "sampanjec", "cider", "liker", "prosecco"],
+    tokens: ["aperol", "jager", "jagermeister", "martini", "bourbon", "merlot", "cabernet", "chardonnay", "rizling", "brendi"]
   },
   dom_in_vrt: {
-    strongPhrases: ["zemlja za roze", "zemlja za roze", "vrtno orodje", "vrtna cev"],
-    phrases: ["dom", "vrt", "garden", "orodje", "tools", "zarnica", "žarnica", "gnojilo", "sadil"],
-    tokens: ["zemlja", "lopata", "grablj", "vijak", "zebelj", "žebelj", "baterija", "filter", "metla"]
+    strongPhrases: [
+      "zemlja za roze",
+      "zemlja za sobne rastline",
+      "vrtno orodje",
+      "vrtna cev",
+      "lonec za roze",
+      "set za zalivanje",
+      "zarnica led",
+      "sesalec za listje"
+    ],
+    phrases: ["dom", "vrt", "garden", "orodje", "tools", "zarnica", "žarnica", "gnojilo", "sadil", "rastline", "cvetlice"],
+    tokens: ["zemlja", "lopata", "grablje", "vijak", "zebelj", "žebelj", "filter", "metla", "zalivalka", "cev", "loncek", "cvetlicni"]
   },
   drugo: {
     strongPhrases: [],
@@ -66,116 +88,359 @@ const CATEGORY_SIGNALS: Record<ItemCategory, CategorySignals> = {
     tokens: []
   },
   elektronika: {
-    strongPhrases: ["usb kabel", "polnilec usb c", "sd kartica", "baterija aa", "baterija aaa"],
-    phrases: ["elektronik", "adapter", "polnilec", "charger", "kabel", "slusalke", "slušalke", "laptop", "tv"],
-    tokens: ["usb", "hdmi", "bluetooth", "miška", "miska", "tipkovnica", "powerbank", "router", "monitor", "računalnik", "racunalnik"]
+    strongPhrases: [
+      "usb kabel",
+      "usb c kabel",
+      "polnilec usb c",
+      "sd kartica",
+      "baterija aa",
+      "baterija aaa",
+      "brezzicne slusalke",
+      "bluetooth zvocnik",
+      "polnilec za telefon",
+      "adapter za laptop"
+    ],
+    phrases: ["elektronik", "adapter", "polnilec", "charger", "kabel", "slusalke", "slušalke", "laptop", "tv", "telefon", "tablica", "prenosnik"],
+    tokens: ["usb", "hdmi", "bluetooth", "miška", "miska", "tipkovnica", "powerbank", "router", "monitor", "računalnik", "racunalnik", "smartwatch", "zvocnik", "zvočnik"]
   },
   hisni_ljubljencki: {
-    strongPhrases: ["pasja hrana", "mackja hrana", "mačja hrana", "pesek za macke", "pesek za mačke"],
-    phrases: ["hisni ljubljen", "hišni ljubljen", "pet food", "pets", "dog food", "cat food"],
-    tokens: ["briketi", "macka", "mačka", "pes", "dog", "cat", "praske", "praske", "praskalnik", "povodec"]
+    strongPhrases: [
+      "pasja hrana",
+      "mackja hrana",
+      "mačja hrana",
+      "pesek za macke",
+      "pesek za mačke",
+      "mokre brikete",
+      "konzerva za psa",
+      "priboljski za psa",
+      "igraca za macko"
+    ],
+    phrases: ["hisni ljubljen", "hišni ljubljen", "pet food", "pets", "dog food", "cat food", "hrana za psa", "hrana za macko"],
+    tokens: ["briketi", "macka", "mačka", "pes", "dog", "cat", "praskalnik", "povodec", "oprtnica", "posodica", "posoda", "igraca", "igrača"]
   },
   kava_in_caj: {
-    strongPhrases: ["zeleni caj", "črni caj", "kapsule za kavo", "kavna zrna", "instant kava"],
-    phrases: ["kava", "coffee", "espresso", "caj", "čaj", "tea", "cappuccino", "kapucino"],
-    tokens: ["macchiato", "latte", "nescafe", "ilter", "filter", "kamilica", "meta", "earl", "hibiskus"],
-    avoid: ["ledeni caj", "ice tea", "energijska pijaca", "proteinski shake"]
+    strongPhrases: [
+      "zeleni caj",
+      "crni caj",
+      "črni čaj",
+      "kapsule za kavo",
+      "kavna zrna",
+      "instant kava",
+      "turaska kava",
+      "espresso kava",
+      "sadni caj",
+      "caj v filter vreckah"
+    ],
+    phrases: ["kava", "coffee", "espresso", "caj", "čaj", "tea", "cappuccino", "kapucino", "latte", "macchiato"],
+    tokens: ["nescafe", "filter", "kamilica", "meta", "earl", "hibiskus", "rooibos", "matcha", "jacobs", "illy", "barcaffe", "barcaffe"],
+    avoid: ["ledeni caj", "ice tea", "energijska pijaca", "proteinski shake", "cajni biskvit"]
   },
   konzervirana_zivila: {
-    strongPhrases: ["paradiznik v konzervi", "tuna v konzervi", "koruza v konzervi", "fizol v konzervi"],
-    phrases: ["konzerv", "canned", "pelat", "passata", "vlozeno", "vloženo", "kompot"],
-    tokens: ["oliva", "olive", "kapre", "sardine", "kisle", "kisli", "pasterizirano", "kozarec"]
+    strongPhrases: [
+      "paradiznik v konzervi",
+      "tuna v konzervi",
+      "koruza v konzervi",
+      "fizol v konzervi",
+      "grah v konzervi",
+      "kompot breskev",
+      "vlozene kumarice",
+      "rdeca pesa v kozarcu",
+      "ananas v konzervi"
+    ],
+    phrases: ["konzerv", "canned", "pelat", "passata", "vlozeno", "vloženo", "kompot", "v kozarcu", "v konzervi"],
+    tokens: ["oliva", "olive", "kapre", "sardine", "kisle", "kisli", "pasterizirano", "kozarec", "vlozena", "vlozene", "sterilizirano"]
   },
   meso_in_perutnina: {
-    strongPhrases: ["piscanji file", "piščančji file", "mleto meso", "goveje meso", "svinjsko meso", "puranje meso"],
-    phrases: ["meso", "chicken", "beef", "pork", "turkey", "slanina", "ham", "prsut", "pršut"],
-    tokens: ["klobasa", "salama", "steak", "zrezek", "cevap", "ćevap", "perut", "jagnje", "telec"]
+    strongPhrases: [
+      "piscanji file",
+      "piščančji file",
+      "mleto meso",
+      "goveje meso",
+      "svinjsko meso",
+      "puranje meso",
+      "piscanja prsa",
+      "goveji steak",
+      "svinjski zrezek",
+      "dimljena slanina"
+    ],
+    phrases: ["meso", "chicken", "beef", "pork", "turkey", "slanina", "ham", "prsut", "pršut", "perutnina", "narezek"],
+    tokens: ["klobasa", "salama", "steak", "zrezek", "cevap", "ćevap", "jagnje", "telec", "pleskavica", "burger", "kebab", "hrenovka"]
   },
   mlecni_izdelki_in_jajca: {
-    strongPhrases: ["grski jogurt", "grški jogurt", "kisla smetana", "jajca prosta reja", "mleko brez laktoze"],
-    phrases: ["mleko", "milk", "sir", "cheese", "jogurt", "yogurt", "maslo", "butter", "jajca", "jajce", "egg"],
-    tokens: ["skuta", "kefir", "ricotta", "mozzarella", "parmezan", "feta", "smetana", "puding"]
+    strongPhrases: [
+      "grski jogurt",
+      "grški jogurt",
+      "kisla smetana",
+      "jajca prosta reja",
+      "mleko brez laktoze",
+      "sadna skuta",
+      "bela skuta",
+      "skuta bela",
+      "mozzarella sir",
+      "mocarela sir",
+      "jajca velikost m",
+      "jajca velikost l",
+      "svezi sirni namaz",
+      "maslo brez laktoze",
+      "pitni jogurt",
+      "proteinski puding",
+    ],
+    phrases: ["mleko", "milk", "sir", "cheese", "jogurt", "yogurt", "maslo", "butter", "jajca", "jajce", "egg", "skuta", "mocarela", "mozzarella", "smetana"],
+    tokens: ["skuta", "kefir", "ricotta", "mozzarella", "mocarela", "parmezan", "feta", "smetana", "puding", "edamec", "gauda", "gouda", "camembert"]
   },
   oblacila: {
-    strongPhrases: ["zimska jakna", "sportna majica", "športna majica", "otroske nogavice", "otroške nogavice"],
-    phrases: ["oblacil", "oblačil", "clothes", "majica", "jakna", "shirt", "pants", "hlače", "hlace"],
-    tokens: ["nogavice", "pulover", "trenirka", "copati", "cevlji", "čevlji", "kapuca", "pas"]
+    strongPhrases: [
+      "zimska jakna",
+      "sportna majica",
+      "športna majica",
+      "otroske nogavice",
+      "otroške nogavice",
+      "spodnje perilo",
+      "tekaska majica",
+      "bombažna majica"
+    ],
+    phrases: ["oblacil", "oblačil", "clothes", "majica", "jakna", "shirt", "pants", "hlače", "hlace", "perilo"],
+    tokens: ["nogavice", "pulover", "trenirka", "copati", "cevlji", "čevlji", "kapuca", "pas", "spodnjice", "modrcek", "modrček", "plašč", "plasc"]
   },
   osebna_nega: {
-    strongPhrases: ["gel za tusiranje", "gel za tuširanje", "zobna pasta", "krema za obraz", "dezodorant roll on"],
-    phrases: ["osebna nega", "shampoo", "sampon", "šampon", "dezodorant", "toothpaste", "britvice"],
-    tokens: ["milo", "balzam", "pena", "krema", "serum", "ustna voda", "vatke", "robcki", "robčki"]
+    strongPhrases: [
+      "gel za tusiranje",
+      "gel za tuširanje",
+      "zobna pasta",
+      "krema za obraz",
+      "dezodorant roll on",
+      "sampon za lase",
+      "balzam za lase",
+      "pena za britje",
+      "vata za obraz",
+      "micelarna voda"
+    ],
+    phrases: ["osebna nega", "shampoo", "sampon", "šampon", "dezodorant", "toothpaste", "britvice", "kozmetika"],
+    tokens: ["milo", "balzam", "pena", "krema", "serum", "ustna voda", "vatke", "robcki", "robčki", "losjon", "piling", "brivnik", "higiena"]
   },
   pekovski_izdelki: {
-    strongPhrases: ["polnozrnat kruh", "toast kruh", "masleni rogljic", "masleni rogljič", "hamburger bombeta"],
-    phrases: ["kruh", "bread", "pecivo", "bageta", "baguette", "toast", "rogljic", "rogljič"],
-    tokens: ["bombeta", "focaccia", "ciabatta", "štruca", "struca", "žemlja", "zemlja", "krof"]
+    strongPhrases: [
+      "polnozrnat kruh",
+      "toast kruh",
+      "masleni rogljic",
+      "masleni rogljič",
+      "hamburger bombeta",
+      "sveza bageta",
+      "ciabatta kruh",
+      "krof z marmelado"
+    ],
+    phrases: ["kruh", "bread", "pecivo", "bageta", "baguette", "toast", "rogljic", "rogljič", "zemljica", "bombeta"],
+    tokens: ["bombeta", "focaccia", "ciabatta", "štruca", "struca", "žemlja", "zemlja", "krof", "preste", "lepinja", "bagel"]
   },
   pijace: {
-    strongPhrases: ["mineralna voda", "pomarancni sok", "pomarančni sok", "proteinski napitek", "gazirana pijaca", "gazirana pijača"],
-    phrases: ["pijaca", "pijača", "voda", "water", "sok", "juice", "cola", "nektar", "limonada", "smoothie"],
-    tokens: ["fanta", "sprite", "cockta", "tonik", "isostar", "sirup", "napitek", "shake"],
+    strongPhrases: [
+      "mineralna voda",
+      "pomarancni sok",
+      "pomarančni sok",
+      "proteinski napitek",
+      "gazirana pijaca",
+      "gazirana pijača",
+      "negazirana voda",
+      "vitaminska voda",
+      "jabolcni sok",
+      "multivitaminski sok"
+    ],
+    phrases: ["pijaca", "pijača", "voda", "water", "sok", "juice", "cola", "nektar", "limonada", "smoothie", "ledeni caj", "ice tea"],
+    tokens: ["fanta", "sprite", "cockta", "tonik", "isostar", "sirup", "napitek", "shake", "cedevita", "radenska", "jana", "schweppes"],
     avoid: ["kava", "coffee", "caj", "čaj", "vino", "beer", "pivo", "vodka", "rum", "whisky"]
   },
   pisalne_potrebscine: {
-    strongPhrases: ["kemicni svincnik", "kemični svinčnik", "barvni svincniki", "barvni svinčniki", "samolepilni listki"],
-    phrases: ["pisalne", "svincnik", "svinčnik", "kemicni", "kemični", "marker", "zvezek", "papir"],
-    tokens: ["radirka", "lepilo", "mapa", "flomaster", "nalivno", "korektor", "blok"]
+    strongPhrases: [
+      "kemicni svincnik",
+      "kemični svinčnik",
+      "barvni svincniki",
+      "barvni svinčniki",
+      "samolepilni listki",
+      "a4 papir",
+      "spiralni zvezek",
+      "set markerjev"
+    ],
+    phrases: ["pisalne", "svincnik", "svinčnik", "kemicni", "kemični", "marker", "zvezek", "papir", "flomaster"],
+    tokens: ["radirka", "lepilo", "mapa", "flomaster", "nalivno", "korektor", "blok", "sestilo", "ravnilo", "selotejp", "fascikel"]
   },
   prigrizki_in_sladkarije: {
-    strongPhrases: ["mlecna cokolada", "mlečna čokolada", "slan krompircek", "slan krompirček", "gumijasti bonboni"],
-    phrases: ["prigriz", "sladkar", "snack", "chips", "cips", "čips", "cokolad", "čokolad", "bonbon", "keks", "cookie", "candy"],
-    tokens: ["oreo", "milka", "kinder", "nutella", "pokovka", "kokice", "palcke", "palčke", "vafelj"]
+    strongPhrases: [
+      "mlecna cokolada",
+      "mlečna čokolada",
+      "slan krompircek",
+      "slan krompirček",
+      "gumijasti bonboni",
+      "cokoladni bonboni",
+      "cokoladni namaz",
+      "slani prestici",
+      "slane palcke"
+    ],
+    phrases: ["prigriz", "sladkar", "snack", "chips", "cips", "čips", "cokolad", "čokolad", "bonbon", "keks", "cookie", "candy", "vafelj", "napolitanke"],
+    tokens: ["oreo", "milka", "kinder", "nutella", "pokovka", "kokice", "palcke", "palčke", "vafelj", "haribo", "twix", "snickers", "doritos"]
   },
   pripravljeni_obroki: {
-    strongPhrases: ["instant juha", "gotov obrok", "ready meal", "pripravljena lazanja", "pripravljena lazanja"],
-    phrases: ["pripravljen", "ready to eat", "ready-to-eat", "instant obrok", "gotova jed"],
-    tokens: ["lazanja", "lasagna", "pizza", "wrap", "burrito", "sendvic", "sendvič", "obrok"]
+    strongPhrases: [
+      "instant juha",
+      "gotov obrok",
+      "ready meal",
+      "pripravljena lazanja",
+      "pripravljena pica",
+      "pripravljena solata",
+      "instant rezanci",
+      "gotova jed",
+      "mikrovalovni obrok"
+    ],
+    phrases: ["pripravljen", "ready to eat", "ready-to-eat", "instant obrok", "gotova jed", "sendvic", "sendvič", "tortilja wrap"],
+    tokens: ["lazanja", "lasagna", "pizza", "wrap", "burrito", "obrok", "rezanci", "juha", "rižota", "rizota"]
   },
   rastlinski_izdelki: {
-    strongPhrases: ["sojin napitek", "ovseno mleko", "mandljevo mleko", "veganski sir", "veganski burger"],
-    phrases: ["rastlinsk", "plant based", "plant-based", "vegan", "veganski", "tofu", "tempeh", "seitan", "soja"],
-    tokens: ["humus", "hummus", "falafel", "leca", "leča", "beljakovine", "protein vegan"]
+    strongPhrases: [
+      "sojin napitek",
+      "ovseno mleko",
+      "mandljevo mleko",
+      "veganski sir",
+      "veganski burger",
+      "rastlinski jogurt",
+      "kokosov jogurt",
+      "veganski namaz",
+      "veganske klobase"
+    ],
+    phrases: ["rastlinsk", "plant based", "plant-based", "vegan", "veganski", "tofu", "tempeh", "seitan", "soja", "hummus", "humus"],
+    tokens: ["falafel", "leca", "leča", "beljakovine", "protein vegan", "edamame", "quorn", "jackfruit", "chia", "laneno"]
   },
   ribe_in_morski_sadezi: {
-    strongPhrases: ["svez losos", "svež losos", "dimljen losos", "tunjevina", "kozice", "morski sadezi", "morski sadeži"],
-    phrases: ["riba", "fish", "losos", "tuna", "tun", "lignji", "hobotnica", "morski"],
-    tokens: ["sardina", "postrv", "brancin", "orada", "skampi", "škampi", "shrimp", "clam"]
+    strongPhrases: [
+      "svez losos",
+      "svež losos",
+      "dimljen losos",
+      "tunjevina",
+      "kozice",
+      "morski sadezi",
+      "morski sadeži",
+      "file brancina",
+      "file orade",
+      "ocisceni lignji"
+    ],
+    phrases: ["riba", "fish", "losos", "tuna", "tun", "lignji", "hobotnica", "morski", "sardela", "skuša", "skusa"],
+    tokens: ["sardina", "postrv", "brancin", "orada", "skampi", "škampi", "shrimp", "clam", "dagnje", "trska", "oslic", "lososov"]
   },
   sadje_in_zelenjava: {
-    strongPhrases: ["sveza zelenjava", "sveža zelenjava", "sveze sadje", "sveže sadje", "cesnjev paradiznik", "češnjev paradižnik"],
-    phrases: ["sadje", "zelenjava", "fruit", "vegetable", "jabol", "banan", "paradiznik", "krompir", "solata", "korenje", "paprika"],
-    tokens: ["kumara", "brokoli", "cvetaca", "cvetača", "cebula", "čebula", "cesen", "česen", "avokado", "limona", "pomaranca", "pomaranča"]
+    strongPhrases: [
+      "sveza zelenjava",
+      "sveža zelenjava",
+      "sveze sadje",
+      "sveže sadje",
+      "cesnjev paradiznik",
+      "češnjev paradižnik",
+      "mesana solata",
+      "zelena solata",
+      "sveze jagode",
+      "sveže jagode",
+      "sladek krompir",
+      "rdeca cebula"
+    ],
+    phrases: ["sadje", "zelenjava", "fruit", "vegetable", "jabol", "banan", "paradiznik", "krompir", "solata", "korenje", "paprika", "kumara", "brokoli"],
+    tokens: ["cvetaca", "cvetača", "cebula", "čebula", "cesen", "česen", "avokado", "limona", "pomaranca", "pomaranča", "hruška", "hruska", "mandarina", "bučka", "bucka"]
   },
   suhi_izdelki: {
-    strongPhrases: ["basmati riz", "basmati riž", "polnozrnate testenine", "ovseni kosmici", "ovseni kosmiči", "pirina moka"],
-    phrases: ["riz", "riž", "rice", "testenine", "pasta", "moka", "flour", "oves", "oat", "kosmici", "kosmiči"],
-    tokens: ["quinoa", "kvinoja", "bulgur", "kuskus", "couscous", "zdrob", "prosena", "ajdova"]
+    strongPhrases: [
+      "basmati riz",
+      "basmati riž",
+      "polnozrnate testenine",
+      "ovseni kosmici",
+      "ovseni kosmiči",
+      "pirina moka",
+      "koruzni zdrob",
+      "ajdova moka",
+      "jasminov riz",
+      "integralni riz"
+    ],
+    phrases: ["riz", "riž", "rice", "testenine", "pasta", "moka", "flour", "oves", "oat", "kosmici", "kosmiči", "zdrob", "kuskus", "bulgur"],
+    tokens: ["quinoa", "kvinoja", "couscous", "prosena", "ajdova", "pirin", "makaroni", "spageti", "špageti", "njoki", "rezanci", "farfalle"]
   },
   za_otroke: {
-    strongPhrases: ["otroske plenice", "otroške plenice", "otroska hrana", "otroška hrana", "mlecna formula", "mlečna formula"],
-    phrases: ["otroci", "otrok", "baby", "dojen", "plenice", "duda", "kasica", "kašica", "formula"],
-    tokens: ["robcki za dojencka", "robčki za dojenčka", "flaška", "flaska", "igraca", "igrača", "vlazilni robcki", "vlažilni robčki"]
+    strongPhrases: [
+      "otroske plenice",
+      "otroške plenice",
+      "otroska hrana",
+      "otroška hrana",
+      "mlecna formula",
+      "mlečna formula",
+      "sadna kasica",
+      "zelenjavna kasica",
+      "otroski robcki",
+      "otroški robčki"
+    ],
+    phrases: ["otroci", "otrok", "baby", "dojen", "plenice", "duda", "kasica", "kašica", "formula", "dojencek", "dojenček"],
+    tokens: ["robcki za dojencka", "robčki za dojenčka", "flaška", "flaska", "igraca", "igrača", "vlazilni robcki", "vlažilni robčki", "dojenje", "dudka", "slinček", "slincek"]
   },
   zamrznjeni_izdelki: {
-    strongPhrases: ["zamrznjena pizza", "zamrznjena zelenjava", "zamrznjeno sadje", "sladoled na palcki", "sladoled na palčki"],
-    phrases: ["zamrzn", "frozen", "sladoled", "zmrzlina", "globoko zamrznjeno"],
-    tokens: ["led", "gelato", "sorbet", "pizza", "pomfri", "pomfrit", "grah", "jagode"]
+    strongPhrases: [
+      "zamrznjena pizza",
+      "zamrznjena zelenjava",
+      "zamrznjeno sadje",
+      "sladoled na palcki",
+      "sladoled na palčki",
+      "globoko zamrznjeno",
+      "zamrznjeni pomfrit",
+      "zamrznjene jagode",
+      "zamrznjen grah"
+    ],
+    phrases: ["zamrzn", "frozen", "sladoled", "zmrzlina", "globoko zamrznjeno", "zamrznjena", "zamrznjeni"],
+    tokens: ["led", "gelato", "sorbet", "pizza", "pomfri", "pomfrit", "grah", "jagode", "brokoli", "mesanica", "mešanica", "ribje palcke", "ribje palčke"]
   },
   zacimbe_omake_in_olja: {
-    strongPhrases: ["oljcno olje", "oljčno olje", "sojina omaka", "paradiznikova omaka", "paradižnikova omaka", "jabolcni kis", "jabolčni kis"],
-    phrases: ["zacimb", "začimb", "spice", "omaka", "sauce", "olje", "oil", "kis", "vinegar", "ketchup", "majonez", "gorcica", "gorčica"],
-    tokens: ["origano", "bazilika", "poper", "sol", "kurkuma", "curry", "cili", "čili", "pesto", "salsa"]
+    strongPhrases: [
+      "oljcno olje",
+      "oljčno olje",
+      "soncnicno olje",
+      "sončnično olje",
+      "sojina omaka",
+      "paradiznikova omaka",
+      "paradižnikova omaka",
+      "jabolcni kis",
+      "jabolčni kis",
+      "balzamicni kis",
+      "balzamični kis",
+      "sladka paprika"
+    ],
+    phrases: ["zacimb", "začimb", "spice", "omaka", "sauce", "olje", "oil", "kis", "vinegar", "ketchup", "majonez", "gorcica", "gorčica", "pesto"],
+    tokens: ["origano", "bazilika", "poper", "sol", "kurkuma", "curry", "cili", "čili", "salsa", "cimet", "muskatni orescek", "muškatni orešček", "timijan", "rožmarin", "rozmarin"]
   },
   zdravje: {
-    strongPhrases: ["vitamin c", "magnezijeve tablete", "omega 3", "oblizi za rane", "obliži za rane"],
-    phrases: ["zdravje", "vitamin", "zdravilo", "ibuprofen", "lekadol", "maska", "obliz", "obliž", "supplement"],
-    tokens: ["paracetamol", "aspirin", "probiotik", "sirup za kaselj", "sirup za kašelj", "termometer"]
+    strongPhrases: [
+      "vitamin c",
+      "magnezijeve tablete",
+      "omega 3",
+      "oblizi za rane",
+      "obliži za rane",
+      "sirup za kaselj",
+      "sirup za kašelj",
+      "prehransko dopolnilo",
+      "tablete proti bolecinam",
+      "tablete proti bolečinam"
+    ],
+    phrases: ["zdravje", "vitamin", "zdravilo", "ibuprofen", "lekadol", "maska", "obliz", "obliž", "supplement", "probiotik", "dopolnilo"],
+    tokens: ["paracetamol", "aspirin", "termometer", "omega", "cink", "vitamin", "multivitamin", "kolagen", "elektroliti", "imunski"]
   },
   ciscenje_in_pranje: {
-    strongPhrases: ["prasek za perilo", "prašek za perilo", "tekoci detergent", "tekoči detergent", "mehcalec za perilo", "mehčalec za perilo"],
-    phrases: ["ciscenje", "čiščenje", "pranje", "detergent", "mehcalec", "mehčalec", "belilo", "cistilo", "čistilo", "razkuzilo", "razkužilo"],
-    tokens: ["wc", "kuhinja", "steklo", "spuzva", "goba", "krpa", "vrecke", "vrečke", "sesalec", "pomivalo"]
+    strongPhrases: [
+      "prasek za perilo",
+      "prašek za perilo",
+      "tekoci detergent",
+      "tekoči detergent",
+      "mehcalec za perilo",
+      "mehčalec za perilo",
+      "tablete za pomivalni stroj",
+      "tekocina za pomivanje posode",
+      "tekočina za pomivanje posode",
+      "cistilo za kopalnico",
+      "čistilo za kopalnico",
+      "razkuzilo za roke",
+      "razkužilo za roke"
+    ],
+    phrases: ["ciscenje", "čiščenje", "pranje", "detergent", "mehcalec", "mehčalec", "belilo", "cistilo", "čistilo", "razkuzilo", "razkužilo", "pomivanje"],
+    tokens: ["wc", "kuhinja", "steklo", "spuzva", "goba", "krpa", "vrecke", "vrečke", "sesalec", "pomivalo", "odmascevalec", "odmaščevalec", "dezinfekcija", "dezinfekcijsko"]
   }
 };
 

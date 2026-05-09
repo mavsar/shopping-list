@@ -50,7 +50,7 @@ const ICONS: Record<ItemCategory, { reveal: string; base: string }> = {
   },
   oblacila: { reveal: '/lordicon/clothes-reveal.json', base: '/lordicon/clothes.json' },
   osebna_nega: { reveal: '/lordicon/shampoo-reveal.json', base: '/lordicon/shampoo.json' },
-  pekovski_izdelki: { reveal: '/lordicon/baking-reveal.json', base: '/lordicon/baking.json' },
+  pekovski_izdelki: { reveal: '/lordicon/bread-reveal.json', base: '/lordicon/bread.json' },
   pijace: { reveal: '/lordicon/drinks-reveal.json', base: '/lordicon/drinks.json' },
   pisalne_potrebscine: { reveal: '/lordicon/crayons-reveal.json', base: '/lordicon/crayons.json' },
   prigrizki_in_sladkarije: {

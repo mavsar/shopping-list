@@ -141,6 +141,7 @@ function ItemQuantityUnitControls({
 type SharedItemFormFieldsProps = {
   name: string;
   onNameChange: (value: string) => void;
+  onNameBlur?: (value: string) => void;
   quantity: number;
   onQuantityChange: (value: number) => void;
   quantityButtonSize?: 'sm' | 'md' | 'lg';
@@ -172,6 +173,7 @@ type SharedItemFormFieldsProps = {
 function SharedItemFormFields({
   name,
   onNameChange,
+  onNameBlur,
   quantity,
   onQuantityChange,
   quantityButtonSize,
@@ -264,6 +266,7 @@ function SharedItemFormFields({
         <Input
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
+          onBlur={(event) => onNameBlur?.(event.target.value)}
           placeholder="Ime izdelka"
           minLength={1}
           maxLength={200}
@@ -1308,6 +1311,19 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     resetDetailsEditImageSearchState();
   }
 
+  function applyDetailsCategoryGuessFromTitle(title: string) {
+    setDetailsEditCategory(inferCategoryFromTitle(title));
+  }
+
+  function handleDetailsEditNameChange(value: string) {
+    setDetailsEditName(value);
+    applyDetailsCategoryGuessFromTitle(value);
+  }
+
+  function handleDetailsEditNameBlur(value: string) {
+    applyDetailsCategoryGuessFromTitle(value);
+  }
+
   function removeDetailsEditImage() {
     setDetailsEditImageRemoved(true);
     setDetailsEditImageUrl('');
@@ -1684,7 +1700,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             </p>
             <SharedItemFormFields
               name={detailsEditName}
-              onNameChange={setDetailsEditName}
+              onNameChange={handleDetailsEditNameChange}
+              onNameBlur={handleDetailsEditNameBlur}
               quantity={detailsEditQuantity}
               onQuantityChange={setDetailsEditQuantity}
               unit={detailsEditUnit}
