@@ -1,5 +1,6 @@
 import { cx } from 'class-variance-authority';
 import { motion } from 'motion/react';
+import type { Transition } from 'motion/react';
 
 import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
 import { CompletionCircleToggle } from './CompletionCircleToggle';
@@ -13,10 +14,7 @@ type ListItemCardProps = {
   sparkleOnMount?: boolean;
   supportsHoverPointer: boolean;
   quantityControlsVisible: boolean;
-  quantityControlsTransition: {
-    duration: number;
-    ease: string;
-  };
+  quantityControlsTransition: Transition;
   formatTitle: (title: string) => string;
   onHoverStart: (itemId: number) => void;
   onHoverEnd: (itemId: number) => void;
