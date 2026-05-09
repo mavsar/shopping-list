@@ -35,13 +35,13 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
       const payload = (await response.json()) as Partial<AuthResponse> & { error?: string };
       if (!response.ok || !payload.token || !payload.user) {
-        throw new Error(payload.error ?? `Login failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Prijava ni uspela (status ${response.status}).`);
       }
 
       onLoginSuccess(payload.token, payload.user, rememberMe);
       setPassword("");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Neznana napaka";
       setAuthError(message);
     } finally {
       setLoginLoading(false);
@@ -58,9 +58,9 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
         onSubmit={handleLogin}
       >
         <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-white/45 to-transparent" />
-        <h2 className="text-xl font-semibold text-white">Sign in</h2>
+        <h2 className="text-xl font-semibold text-white">Prijava</h2>
         <label className="grid gap-1 text-sm text-slate-200">
-          Username
+          Uporabniško ime
           <Input
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -69,7 +69,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
           />
         </label>
         <label className="grid gap-1 text-sm text-slate-200">
-          Password
+          Geslo
           <Input
             type="password"
             value={password}
@@ -79,10 +79,10 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
           />
         </label>
         <Checkbox checked={rememberMe} onCheckedChange={setRememberMe}>
-          Remember me
+          Zapomni si me
         </Checkbox>
         <Button type="submit" disabled={loginLoading} stretch icon={<Login animateOnHover />}>
-          {loginLoading ? "Logging in..." : "Log In"}
+          {loginLoading ? "Prijavljam..." : "Prijava"}
         </Button>
         {authError ? <p className="m-0 text-sm text-rose-300">{authError}</p> : null}
       </motion.form>

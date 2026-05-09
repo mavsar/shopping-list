@@ -78,7 +78,7 @@ export function AppHeader({ title, actions, syncInfo }: AppHeaderProps) {
               to="/"
               className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
             >
-              <img src="/logo-icon.svg" alt="Shopping list logo" className="h-11 w-11 shrink-0" />
+              <img src="/logo-icon.svg" alt="Logotip nakupovalnega seznama" className="h-11 w-11 shrink-0" />
             </Link>
             <p className="m-0 truncate text-base font-semibold tracking-tight text-slate-100 md:text-lg">
               {title}

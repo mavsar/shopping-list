@@ -124,7 +124,7 @@ export function ListItemCard({
                     size="xs"
                     iconOnly
                     icon={<Minus animateOnHover />}
-                    aria-label={`Decrease quantity for ${formatTitle(item.title)}`}
+                    aria-label={`Zmanjšaj količino za ${formatTitle(item.title)}`}
                     disabled={updating}
                     onClick={() => onDecreaseQuantity(item)}
                   />
@@ -136,7 +136,7 @@ export function ListItemCard({
                   'inline-flex min-w-14 items-center justify-center whitespace-nowrap rounded-lg px-1.5 py-1 text-center text-xs text-slate-100 transition',
                   supportsHoverPointer ? 'cursor-default' : 'cursor-pointer hover:bg-white/10',
                 )}
-                aria-label={`Quantity for ${formatTitle(item.title)}`}
+                aria-label={`Količina za ${formatTitle(item.title)}`}
                 aria-expanded={quantityControlsVisible}
                 onClick={() => onQuantityLabelClick(item.id)}
               >
@@ -163,7 +163,7 @@ export function ListItemCard({
                     size="xs"
                     iconOnly
                     icon={<Plus animateOnHover />}
-                    aria-label={`Increase quantity for ${formatTitle(item.title)}`}
+                    aria-label={`Povečaj količino za ${formatTitle(item.title)}`}
                     disabled={updating}
                     onClick={() => onIncreaseQuantity(item)}
                   />

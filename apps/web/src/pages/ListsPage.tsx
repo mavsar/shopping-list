@@ -57,14 +57,14 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         headers: authHeaders,
       });
       if (!response.ok) {
-        throw new Error(`Lists API failed with status ${response.status}`);
+        throw new Error(`Pridobivanje seznamov ni uspelo (status ${response.status}).`);
       }
 
       const payload = (await response.json()) as { lists: ShoppingList[] };
       setLists(payload.lists);
       setLastSyncedAt(new Date());
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setListsError(message);
     } finally {
       setListsLoading(false);
@@ -95,7 +95,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
       const payload = (await response.json()) as { list?: ShoppingList; error?: string };
       if (!response.ok || !payload.list) {
-        throw new Error(payload.error ?? `List creation failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Ustvarjanje seznama ni uspelo (status ${response.status}).`);
       }
 
       setLists((currentLists) => [payload.list as ShoppingList, ...currentLists]);
@@ -103,7 +103,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       setNewListIsPrivate(true);
       setCreateListDialogOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setCreateListError(message);
     } finally {
       setCreateListLoading(false);
@@ -160,7 +160,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
       const payload = (await response.json()) as { list?: ShoppingList; error?: string };
       if (!response.ok || !payload.list) {
-        throw new Error(payload.error ?? `List update failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Posodobitev seznama ni uspela (status ${response.status}).`);
       }
 
       setLists((currentLists) =>
@@ -168,7 +168,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       );
       cancelEditList();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setUpdateListError(message);
     } finally {
       setUpdateListLoading(false);
@@ -188,7 +188,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `List deletion failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Brisanje seznama ni uspelo (status ${response.status}).`);
       }
 
       setLists((currentLists) => currentLists.filter((currentList) => currentList.id !== listId));
@@ -197,7 +197,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       }
       cancelDeleteListConfirmation();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setDeleteListError(message);
     } finally {
       setDeleteListLoadingId(null);
@@ -207,7 +207,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   return (
     <>
       <AppHeader
-        title="Shopping Lists"
+        title="Nakupovalni seznami"
         syncInfo={{
           lastSyncedAt,
           refreshing: listsLoading,
@@ -222,8 +222,8 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 type="button"
                 icon={<SettingsCog animation="default" />}
                 iconOnly
-                aria-label="Admin"
-                title="Admin"
+                aria-label="Skrbništvo"
+                title="Skrbništvo"
                 onClick={() => navigate('/admin/users')}
               />
             ) : null}
@@ -237,7 +237,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         transition={{ delay: 0.12, duration: 0.42 }}
         className="relative mt-6 min-h-[12rem]"
       >
-        {listsLoading ? <Loader placement="overlay" label="Loading lists..." /> : null}
+        {listsLoading ? <Loader placement="overlay" label="Nalagam sezname..." /> : null}
         {listsError ? <p className="m-0 text-sm text-rose-300">{listsError}</p> : null}
         {!listsLoading && !listsError ? (
           <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
@@ -269,7 +269,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                     <div className="flex items-center gap-2">
                       {list.isPrivate ? (
                         <span className="inline-flex rounded-full border border-white/20 bg-slate-950/45 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-200 uppercase">
-                          Private
+                          Zasebno
                         </span>
                       ) : null}
                       <Button
@@ -278,8 +278,8 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                         type="button"
                         icon={<Edit animateOnHover />}
                         iconOnly
-                        aria-label={`Edit ${list.name}`}
-                        title={`Edit ${list.name}`}
+                        aria-label={`Uredi ${list.name}`}
+                        title={`Uredi ${list.name}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           beginEditList(list);
@@ -293,7 +293,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             ))}
             {!lists.length ? (
               <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                No lists yet. Tap the + button in the bottom-right corner to add your first one.
+                Še ni seznamov. Za dodajanje prvega uporabi gumb + spodaj desno.
               </li>
             ) : null}
           </motion.ul>
@@ -305,8 +305,8 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           icon={<Plus animateOnHover />}
           iconOnly
           size="lg"
-          aria-label="Create list"
-          title="Create list"
+          aria-label="Ustvari seznam"
+          title="Ustvari seznam"
           className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
           onClick={() => {
             setNewListName('');
@@ -328,7 +328,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           }
         }}
         size="sm"
-        title="Create list"
+        title="Ustvari seznam"
         footer={
           <>
             <Button
@@ -337,7 +337,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               disabled={createListLoading}
               icon={<CheckCheck animation="default" />}
             >
-              {createListLoading ? 'Saving...' : 'Save'}
+              {createListLoading ? 'Shranjujem...' : 'Shrani'}
             </Button>
             <Button
               color="white"
@@ -350,7 +350,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 setNewListIsPrivate(true);
               }}
             >
-              Cancel
+              Prekliči
             </Button>
           </>
         }
@@ -361,11 +361,11 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             onChange={(event) => setNewListName(event.target.value)}
             minLength={1}
             maxLength={200}
-            placeholder="Weekly groceries"
+            placeholder="Tedenski nakup"
             required
           />
           <Checkbox checked={newListIsPrivate} onCheckedChange={setNewListIsPrivate}>
-            Private list
+            Zasebni seznam
           </Checkbox>
           {createListError ? <p className="m-0 text-xs text-rose-200">{createListError}</p> : null}
         </form>
@@ -379,11 +379,11 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           }
         }}
         size="sm"
-        title="Edit list"
+        title="Uredi seznam"
         footer={
           <>
             <Button type="submit" form="edit-list-form" disabled={updateListLoading}>
-              {updateListLoading ? 'Saving...' : 'Save'}
+              {updateListLoading ? 'Shranjujem...' : 'Shrani'}
             </Button>
             <Button
               color="white"
@@ -392,7 +392,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               onClick={cancelEditList}
               disabled={updateListLoading}
             >
-              Cancel
+              Prekliči
             </Button>
             <Button
               color="danger"
@@ -407,7 +407,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               }}
               disabled={updateListLoading || editingListId === null}
             >
-              Delete
+              Izbriši
             </Button>
           </>
         }
@@ -421,7 +421,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             required
           />
           <Checkbox checked={editingListIsPrivate} onCheckedChange={setEditingListIsPrivate}>
-            Private list
+            Zasebni seznam
           </Checkbox>
           {updateListError ? <p className="m-0 text-xs text-rose-200">{updateListError}</p> : null}
         </form>
@@ -435,12 +435,12 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           }
         }}
         size="sm"
-        title="Confirm list deletion"
+        title="Potrdi brisanje seznama"
         description={
           deleteConfirmList ? (
             <>
-              You are about to permanently delete <strong>{deleteConfirmList.name}</strong>. This
-              action cannot be undone.
+              Trajno boš izbrisal/a <strong>{deleteConfirmList.name}</strong>. Dejanja ni mogoče
+              razveljaviti.
             </>
           ) : undefined
         }
@@ -454,7 +454,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 onClick={() => void handleDeleteList(deleteConfirmList)}
                 disabled={deleteListLoadingId === deleteConfirmList.id}
               >
-                {deleteListLoadingId === deleteConfirmList.id ? 'Deleting...' : 'Confirm delete'}
+                {deleteListLoadingId === deleteConfirmList.id ? 'Brišem...' : 'Potrdi brisanje'}
               </Button>
               <Button
                 color="white"
@@ -462,7 +462,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 type="button"
                 onClick={cancelDeleteListConfirmation}
               >
-                Cancel
+                Prekliči
               </Button>
             </>
           ) : null

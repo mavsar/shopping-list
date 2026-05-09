@@ -28,7 +28,7 @@ function DialogFormFooterActions({
   loadingSubmitLabel,
   loading,
   onCancel,
-  cancelLabel = "Cancel"
+  cancelLabel = "Prekliči"
 }: DialogFormFooterActionsProps) {
   return (
     <>
@@ -89,14 +89,14 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         headers: authHeaders
       });
       if (!response.ok) {
-        throw new Error(`Users API failed with status ${response.status}`);
+        throw new Error(`Pridobivanje uporabnikov ni uspelo (status ${response.status}).`);
       }
 
       const payload = (await response.json()) as { users: ManagedUser[] };
       setUsers(payload.users);
       setLastSyncedAt(new Date());
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Neznana napaka";
       setUsersError(message);
     } finally {
       setUsersLoading(false);
@@ -130,7 +130,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
 
       const payload = (await response.json()) as { user?: ManagedUser; error?: string };
       if (!response.ok || !payload.user) {
-        throw new Error(payload.error ?? `User creation failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Ustvarjanje uporabnika ni uspelo (status ${response.status}).`);
       }
 
       setUsers((currentUsers) => [payload.user as ManagedUser, ...currentUsers]);
@@ -141,7 +141,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       setNewIsAdmin(false);
       setCreateUserDialogOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Neznana napaka";
       setCreateUserError(message);
     } finally {
       setCreateUserLoading(false);
@@ -213,13 +213,13 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
 
       const payload = (await response.json()) as { user?: ManagedUser; error?: string };
       if (!response.ok || !payload.user) {
-        throw new Error(payload.error ?? `User update failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Posodobitev uporabnika ni uspela (status ${response.status}).`);
       }
 
       setUsers((currentUsers) => currentUsers.map((user) => (user.id === payload.user?.id ? payload.user : user)));
       cancelEditUser();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Neznana napaka";
       setUpdateUserError(message);
     } finally {
       setUpdateUserLoading(false);
@@ -245,7 +245,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        throw new Error(payload.error ?? `User deletion failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Brisanje uporabnika ni uspelo (status ${response.status}).`);
       }
 
       setUsers((currentUsers) => currentUsers.filter((user) => user.id !== userId));
@@ -254,7 +254,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       }
       cancelDeleteUserConfirmation();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Neznana napaka";
       setDeleteUserError(message);
     } finally {
       setDeleteUserLoadingId(null);
@@ -264,7 +264,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   return (
     <>
       <AppHeader
-        title="Shopping List Admin"
+        title="Skrbništvo"
         syncInfo={{
           lastSyncedAt,
           refreshing: usersLoading,
@@ -273,7 +273,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         actions={
           <>
             <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
-              App
+              Aplikacija
             </Button>
             <Button
               color="white"
@@ -281,8 +281,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
               type="button"
               icon={<LogOut animateOnHover />}
               iconOnly
-              aria-label="Logout"
-              title="Logout"
+              aria-label="Odjava"
+              title="Odjava"
               onClick={() => void onLogout()}
             />
           </>
@@ -296,8 +296,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           transition={{ delay: 0.18, duration: 0.42 }}
           className="relative min-h-[12rem]"
         >
-          <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Users</h2>
-          {usersLoading ? <Loader placement="overlay" label="Loading users..." /> : null}
+          <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Uporabniki</h2>
+          {usersLoading ? <Loader placement="overlay" label="Nalagam uporabnike..." /> : null}
           {usersError ? <p className="m-0 text-sm text-rose-300">{usersError}</p> : null}
           {!usersLoading && !usersError ? (
             <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
@@ -321,7 +321,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                       </div>
                       <div className="flex items-center gap-2">
                         <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
-                          {user.isAdmin ? "admin" : "user"}
+                          {user.isAdmin ? "skrbnik" : "uporabnik"}
                         </Label>
                         <Button
                           color="white"
@@ -329,8 +329,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                           type="button"
                           icon={<Edit animateOnHover />}
                           iconOnly
-                          aria-label={`Edit ${user.username}`}
-                          title={`Edit ${user.username}`}
+                          aria-label={`Uredi ${user.username}`}
+                          title={`Uredi ${user.username}`}
                           onClick={() => beginEditUser(user)}
                           disabled={deleteUserLoadingId === user.id}
                         />
@@ -340,8 +340,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                           type="button"
                           icon={<Trash2 animateOnHover />}
                           iconOnly
-                          aria-label={`Delete ${user.username}`}
-                          title={`Delete ${user.username}`}
+                          aria-label={`Izbriši ${user.username}`}
+                          title={`Izbriši ${user.username}`}
                           onClick={() => beginDeleteUserConfirmation(user.id)}
                           disabled={deleteUserLoadingId === user.id}
                         />
@@ -360,8 +360,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           icon={<Plus animateOnHover />}
           iconOnly
           size="lg"
-          aria-label="Add new user"
-          title="Add new user"
+          aria-label="Dodaj novega uporabnika"
+          title="Dodaj novega uporabnika"
           className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
           onClick={() => {
             setCreateUserError("");
@@ -377,12 +377,12 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           }
         }}
         size="sm"
-        title="Edit user"
+        title="Uredi uporabnika"
         footer={
           <DialogFormFooterActions
             formId="edit-user-form"
-            submitLabel="Save"
-            loadingSubmitLabel="Saving..."
+            submitLabel="Shrani"
+            loadingSubmitLabel="Shranjujem..."
             loading={updateUserLoading}
             onCancel={cancelEditUser}
           />
@@ -390,7 +390,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       >
         <form id="edit-user-form" className="grid gap-3" onSubmit={handleUpdateUser}>
           <label className="grid gap-1 text-sm text-slate-200">
-            Username
+            Uporabniško ime
             <Input
               value={editingUsername}
               onChange={(event) => setEditingUsername(event.target.value)}
@@ -399,11 +399,11 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            Full name
+            Polno ime
             <Input value={editingName} onChange={(event) => setEditingName(event.target.value)} required />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            Email (optional)
+            E-pošta (neobvezno)
             <Input
               type="email"
               value={editingEmail}
@@ -411,17 +411,17 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            New password (optional)
+            Novo geslo (neobvezno)
             <Input
               type="password"
               value={editingPassword}
               onChange={(event) => setEditingPassword(event.target.value)}
               minLength={8}
-              placeholder="Leave empty to keep current password"
+              placeholder="Pusti prazno za ohranitev trenutnega gesla"
             />
           </label>
           <Checkbox checked={editingIsAdmin} onChange={(event) => setEditingIsAdmin(event.target.checked)}>
-            Admin user
+            Skrbniški uporabnik
           </Checkbox>
           {updateUserError ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
         </form>
@@ -435,12 +435,12 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           }
         }}
         size="sm"
-        title="Add new user"
+        title="Dodaj novega uporabnika"
         footer={
           <DialogFormFooterActions
             formId="create-user-form"
-            submitLabel="Create user"
-            loadingSubmitLabel="Creating..."
+            submitLabel="Ustvari uporabnika"
+            loadingSubmitLabel="Ustvarjam..."
             loading={createUserLoading}
             onCancel={() => setCreateUserDialogOpen(false)}
           />
@@ -448,7 +448,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
       >
         <form id="create-user-form" className="grid gap-3" onSubmit={handleCreateUser}>
           <label className="grid gap-1 text-sm text-slate-200">
-            Username
+            Uporabniško ime
             <Input
               value={newUsername}
               onChange={(event) => setNewUsername(event.target.value)}
@@ -457,7 +457,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            Full name
+            Polno ime
             <Input
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
@@ -465,7 +465,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            Password
+            Geslo
             <Input
               type="password"
               value={newPassword}
@@ -475,7 +475,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <label className="grid gap-1 text-sm text-slate-200">
-            Email (optional)
+            E-pošta (neobvezno)
             <Input
               type="email"
               value={newEmail}
@@ -483,7 +483,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
             />
           </label>
           <Checkbox checked={newIsAdmin} onChange={(event) => setNewIsAdmin(event.target.checked)}>
-            Grant admin rights
+            Dodeli skrbniške pravice
           </Checkbox>
           {createUserError ? <p className="m-0 text-sm text-rose-300">{createUserError}</p> : null}
         </form>
@@ -496,11 +496,11 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
           }
         }}
         size="sm"
-        title="Confirm user deletion"
+        title="Potrdi brisanje uporabnika"
         description={
           deleteConfirmUser ? (
             <>
-              You are about to permanently delete <strong>{deleteConfirmUser.username}</strong>.
+              Trajno boš izbrisal/a <strong>{deleteConfirmUser.username}</strong>.
             </>
           ) : undefined
         }
@@ -514,10 +514,10 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                 onClick={() => void handleDeleteUser(deleteConfirmUser)}
                 disabled={deleteUserLoadingId === deleteConfirmUser.id}
               >
-                {deleteUserLoadingId === deleteConfirmUser.id ? "Deleting..." : "Confirm delete"}
+                {deleteUserLoadingId === deleteConfirmUser.id ? "Brišem..." : "Potrdi brisanje"}
               </Button>
               <Button color="white" appearance="outline" type="button" onClick={cancelDeleteUserConfirmation}>
-                Cancel
+                Prekliči
               </Button>
             </>
           ) : null
@@ -526,7 +526,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
         {deleteConfirmUser ? (
           <div className="grid gap-2">
             <label className="grid gap-1 text-sm text-slate-200">
-              Transfer owned lists to
+              Prenesi lastništvo seznamov na
               <Select
                 value={deleteTransferToUserId ? String(deleteTransferToUserId) : ""}
                 onChange={(event) => {
@@ -535,7 +535,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
                 }}
               >
                 <option value="" disabled>
-                  Select user
+                  Izberi uporabnika
                 </option>
                 {users
                   .filter((user) => user.id !== deleteConfirmUser.id)

@@ -125,7 +125,7 @@ export function Dialog({
               iconOnly
               size="sm"
               type="button"
-              aria-label="Close dialog"
+              aria-label="Zapri pogovorno okno"
               className="absolute right-2 top-2"
               onClick={() => onOpenChange(false)}
             />

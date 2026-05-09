@@ -19,7 +19,7 @@ type LoaderProps = {
   placement?: "inline" | "overlay";
 };
 
-export function Loader({ label = "Loading...", placement = "inline" }: LoaderProps) {
+export function Loader({ label = "Nalaganje...", placement = "inline" }: LoaderProps) {
   return (
     <div className={loaderContainerClassName({ placement })} role="status" aria-live="polite" aria-busy="true">
       <p className={loaderContentClassName()}>

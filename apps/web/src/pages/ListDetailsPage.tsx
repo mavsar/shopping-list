@@ -96,7 +96,7 @@ function ItemQuantityUnitControls({
         iconOnly
         size={buttonSize}
         icon={<Minus animateOnHover />}
-        aria-label="Decrease quantity"
+        aria-label="Zmanjšaj količino"
         disabled={disabled}
         onClick={() => onQuantityChange(Math.max(1, Number((quantity - quantityStep).toFixed(2))))}
       />
@@ -120,7 +120,7 @@ function ItemQuantityUnitControls({
         iconOnly
         size={buttonSize}
         icon={<Plus animateOnHover />}
-        aria-label="Increase quantity"
+        aria-label="Povečaj količino"
         disabled={disabled}
         onClick={() => onQuantityChange(Number((quantity + quantityStep).toFixed(2)))}
       />
@@ -264,7 +264,7 @@ function SharedItemFormFields({
         <Input
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
-          placeholder="Item name"
+          placeholder="Ime izdelka"
           minLength={1}
           maxLength={200}
           required
@@ -307,7 +307,7 @@ function SharedItemFormFields({
           >
             <img
               src={imagePreviewUrl || imageUrl}
-              alt={name || 'Preview'}
+              alt={name || 'Predogled'}
               className="block h-full w-full object-cover object-center"
               loading="lazy"
             />
@@ -324,7 +324,7 @@ function SharedItemFormFields({
               disabled={findImageLoading || disabled}
               onClick={() => setImageToolsVisible(true)}
             >
-              Change image
+              Spremeni sliko
             </Button>
             <Button
               type="button"
@@ -338,7 +338,7 @@ function SharedItemFormFields({
                 setImageToolsVisible(true);
               }}
             >
-              Delete image
+              Izbriši sliko
             </Button>
           </div>
         ) : null}
@@ -351,11 +351,11 @@ function SharedItemFormFields({
                 setImageMode(value as 'find-online' | 'upload' | 'clipboard')
               }
               items={[
-                { value: 'find-online', label: 'Find image online', disabled },
-                { value: 'upload', label: 'Upload', disabled },
+                { value: 'find-online', label: 'Poišči sliko na spletu', disabled },
+                { value: 'upload', label: 'Naloži', disabled },
                 {
                   value: 'clipboard',
-                  label: 'Paste from clipboard',
+                  label: 'Prilepi iz odložišča',
                   disabled: disabled || !clipboardHasImage,
                 },
               ]}
@@ -369,7 +369,7 @@ function SharedItemFormFields({
                     onChange={(event) => onImageSearchQueryChange(event.target.value)}
                     placeholder="Išči ..."
                     maxLength={200}
-                    aria-label="Image search phrase"
+                    aria-label="Iskalna fraza slike"
                   />
                   <Button
                     type="button"
@@ -377,7 +377,7 @@ function SharedItemFormFields({
                     color="white"
                     iconOnly
                     icon={<Search animateOnHover />}
-                    aria-label={findImageLoading ? 'Finding image' : 'Find image'}
+                    aria-label={findImageLoading ? 'Iščem sliko' : 'Poišči sliko'}
                     disabled={findImageLoading || disabled}
                     onClick={() => void onFindImage()}
                   />
@@ -386,8 +386,8 @@ function SharedItemFormFields({
                   <Loader
                     label={
                       selectingImageCandidateUrl
-                        ? 'Applying selected image...'
-                        : 'Searching image candidates...'
+                        ? 'Uporabljam izbrano sliko...'
+                        : 'Iščem predloge slik...'
                     }
                   />
                 ) : null}
@@ -405,11 +405,11 @@ function SharedItemFormFields({
                         )}
                         onClick={() => onSelectImageCandidate(candidate)}
                         disabled={findImageLoading || disabled}
-                        title="Use this image"
+                        title="Uporabi to sliko"
                       >
                         <img
                           src={candidate.imageUrl}
-                          alt="Image candidate"
+                          alt="Predlog slike"
                           className="block h-full w-full object-contain object-center"
                           loading="lazy"
                           onError={() =>
@@ -449,7 +449,7 @@ function SharedItemFormFields({
                   disabled={findImageLoading || disabled}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  Choose from gallery/computer
+                  Izberi iz galerije/računalnika
                 </Button>
               </div>
             ) : null}
@@ -462,7 +462,7 @@ function SharedItemFormFields({
                   disabled={findImageLoading || disabled || !clipboardHasImage}
                   onClick={() => void onPasteImageFromClipboard()}
                 >
-                  Paste image now
+                  Prilepi sliko zdaj
                 </Button>
               </div>
             ) : null}
@@ -652,7 +652,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
   useEffect(() => {
     if (!listSlug?.trim()) {
-      setListError('Invalid list URL.');
+      setListError('Neveljaven URL seznama.');
       setResolvedListId(null);
       setList(null);
       return;
@@ -665,7 +665,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       try {
         const response = await fetch('/api/lists', { headers: authHeaders });
         if (!response.ok) {
-          throw new Error(`Lists API failed with status ${response.status}`);
+          throw new Error(`Pridobivanje seznamov ni uspelo (status ${response.status}).`);
         }
         const payload = (await response.json()) as { lists: ShoppingList[] };
         const matched =
@@ -673,13 +673,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         if (!matched) {
           setList(null);
           setResolvedListId(null);
-          setListError('List not found.');
+          setListError('Seznam ni najden.');
           return;
         }
         setList(matched);
         setResolvedListId(matched.id);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = error instanceof Error ? error.message : 'Neznana napaka';
         setListError(message);
         setResolvedListId(null);
       } finally {
@@ -705,14 +705,14 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         });
 
         if (!itemsResponse.ok) {
-          throw new Error(`Items API failed with status ${itemsResponse.status}`);
+          throw new Error(`Pridobivanje izdelkov ni uspelo (status ${itemsResponse.status}).`);
         }
 
         const itemsPayload = (await itemsResponse.json()) as { items: ShoppingListItem[] };
         setItems(itemsPayload.items.filter((row) => isVisibleListItemStatus(row.status)));
         setLastSyncedAt(new Date());
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = error instanceof Error ? error.message : 'Neznana napaka';
         setUpdatingItemError(message);
       } finally {
         setItemsLoading(false);
@@ -754,7 +754,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             },
           );
           if (!response.ok) {
-            throw new Error(`Search failed with status ${response.status}`);
+            throw new Error(`Iskanje ni uspelo (status ${response.status}).`);
           }
 
           const payload = (await response.json()) as { items: CatalogItem[] };
@@ -765,7 +765,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           if (error instanceof Error && error.name === 'AbortError') {
             return;
           }
-          const message = error instanceof Error ? error.message : 'Unknown error';
+          const message = error instanceof Error ? error.message : 'Neznana napaka';
           if (searchRequestIdRef.current === requestId) {
             setSearchError(message);
           }
@@ -835,7 +835,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
   async function addExistingItem(itemTitle: string) {
     if (!resolvedListId) {
-      setAddItemError('List is not loaded yet.');
+      setAddItemError('Seznam še ni naložen.');
       return;
     }
     setAddItemLoading(true);
@@ -856,7 +856,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
       if (!response.ok || !payload.listItem) {
-        throw new Error(payload.error ?? `Adding item failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`);
       }
 
       setItems((currentItems) => {
@@ -870,7 +870,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       });
       resetDialogState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setAddItemError(message);
     } finally {
       setAddItemLoading(false);
@@ -880,11 +880,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   async function handleCreateItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!resolvedListId) {
-      setAddItemError('List is not loaded yet.');
+      setAddItemError('Seznam še ni naložen.');
       return;
     }
     if (!newItemName.trim()) {
-      setAddItemError('Item name is required.');
+      setAddItemError('Ime izdelka je obvezno.');
       return;
     }
 
@@ -910,7 +910,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
       if (!response.ok || !payload.listItem) {
-        throw new Error(payload.error ?? `Adding item failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`);
       }
 
       setItems((currentItems) => {
@@ -924,7 +924,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       });
       resetDialogState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setAddItemError(message);
     } finally {
       setAddItemLoading(false);
@@ -939,7 +939,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setSelectingCandidateUrl: (value: string) => void,
   ) {
     if (!searchTarget) {
-      setError('Enter item name or an image search phrase.');
+      setError('Vnesi ime izdelka ali iskalno frazo slike.');
       return;
     }
 
@@ -962,16 +962,16 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       };
       if (!response.ok) {
         throw new Error(
-          payload.error ?? `Image candidate search failed with status ${response.status}`,
+          payload.error ?? `Iskanje predlogov slik ni uspelo (status ${response.status}).`,
         );
       }
       if (!payload.found || !payload.candidates?.length) {
-        throw new Error(payload.error ?? 'No image candidates found for this item yet.');
+        throw new Error(payload.error ?? 'Za ta izdelek ni najdenih predlogov slik.');
       }
 
       setCandidates(payload.candidates);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setError(message);
     } finally {
       setLoading(false);
@@ -990,7 +990,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setSelectingCandidateUrl: (value: string) => void,
   ) {
     if (!searchTarget) {
-      setError('Enter item name or an image search phrase.');
+      setError('Vnesi ime izdelka ali iskalno frazo slike.');
       return;
     }
 
@@ -1019,7 +1019,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       };
       if (!response.ok || !payload.found || !payload.imageUrl) {
         throw new Error(
-          payload.error ?? `Applying selected image failed with status ${response.status}`,
+          payload.error ?? `Uporaba izbrane slike ni uspela (status ${response.status}).`,
         );
       }
 
@@ -1028,7 +1028,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setSourceUrl(payload.sourceUrl ?? candidate.sourceUrl ?? '');
       setCandidates([]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setError(message);
     } finally {
       setSelectingCandidateUrl('');
@@ -1048,7 +1048,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setSelectingCandidateUrl: (value: string) => void,
   ) {
     if (!searchTarget) {
-      setError('Enter item name first.');
+      setError('Najprej vnesi ime izdelka.');
       return;
     }
 
@@ -1074,7 +1074,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         error?: string;
       };
       if (!response.ok || !payload.found || !payload.imageUrl) {
-        throw new Error(payload.error ?? `Image upload failed with status ${response.status}`);
+        throw new Error(payload.error ?? `Nalaganje slike ni uspelo (status ${response.status}).`);
       }
 
       setImageUrl(payload.imageUrl);
@@ -1082,7 +1082,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setSourceUrl('');
       setCandidates([]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setError(message);
     } finally {
       setLoading(false);
@@ -1156,7 +1156,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   async function pasteNewItemImageFromClipboard() {
     const clipboardImage = await readImageFromClipboard();
     if (!clipboardImage) {
-      setFindImageError('No image found in clipboard.');
+      setFindImageError('V odložišču ni slike.');
       return;
     }
     await uploadNewItemImage(clipboardImage);
@@ -1208,7 +1208,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   async function pasteDetailsImageFromClipboard() {
     const clipboardImage = await readImageFromClipboard();
     if (!clipboardImage) {
-      setDetailsFindImageError('No image found in clipboard.');
+      setDetailsFindImageError('V odložišču ni slike.');
       return;
     }
     await uploadDetailsItemImage(clipboardImage);
@@ -1234,7 +1234,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     },
   ): Promise<boolean> {
     if (!resolvedListId) {
-      setUpdatingItemError('List is not loaded yet.');
+      setUpdatingItemError('Seznam še ni naložen.');
       return false;
     }
     setUpdatingItemId(listItemId);
@@ -1255,7 +1255,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       };
       if (!response.ok || !responsePayload.listItem) {
         throw new Error(
-          responsePayload.error ?? `Item update failed with status ${response.status}`,
+          responsePayload.error ?? `Posodobitev izdelka ni uspela (status ${response.status}).`,
         );
       }
 
@@ -1273,7 +1273,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       setUpdatingItemError('');
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Neznana napaka';
       setUpdatingItemError(message);
       return false;
     } finally {
@@ -1321,7 +1321,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       return;
     }
     if (!detailsEditName.trim()) {
-      setUpdatingItemError('Item name is required.');
+      setUpdatingItemError('Ime izdelka je obvezno.');
       return;
     }
     const ok = await patchListItem(detailsItem.id, {
@@ -1353,7 +1353,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   return (
     <>
       <AppHeader
-        title={list ? list.name : initialListName || 'List'}
+        title={list ? list.name : initialListName || 'Seznam'}
         syncInfo={{
           lastSyncedAt,
           refreshing: listLoading || itemsLoading,
@@ -1367,8 +1367,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               type="button"
               icon={<ArrowLeft animateOnHover />}
               iconOnly
-              aria-label="Back"
-              title="Back"
+              aria-label="Nazaj"
+              title="Nazaj"
               onClick={() => navigate('/')}
             />
             {authUser.isAdmin ? (
@@ -1378,8 +1378,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 type="button"
                 icon={<SettingsCog animation="default" />}
                 iconOnly
-                aria-label="Admin"
-                title="Admin"
+                aria-label="Skrbništvo"
+                title="Skrbništvo"
                 onClick={() => navigate('/admin/users')}
               />
             ) : null}
@@ -1394,7 +1394,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       >
         <section className="relative mt-6 min-h-[calc(100lvh-(74px+env(safe-area-inset-top)+1.5rem))]">
           {listLoading || itemsLoading ? (
-            <Loader placement="overlay" label="Loading list..." />
+            <Loader placement="overlay" label="Nalagam seznam..." />
           ) : null}
           {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
           {!listLoading && !itemsLoading && !listError ? (
@@ -1452,8 +1452,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               ))}
               {!groupedActiveItems.length && !completedVisibleItems.length ? (
                 <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                  No items yet. Tap the + button in the bottom-right corner to add your first
-                  product.
+                  Še ni izdelkov. Za dodajanje prvega uporabi gumb + spodaj desno.
                 </li>
               ) : null}
             </ul>
@@ -1469,8 +1468,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           icon={<Plus animateOnHover />}
           iconOnly
           size="lg"
-          aria-label="Add item"
-          title="Add item"
+          aria-label="Dodaj izdelek"
+          title="Dodaj izdelek"
           className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
           onClick={() => {
             setAddDialogOpen(true);
@@ -1488,12 +1487,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         }}
         size="md"
         fullHeight
-        title="Add item"
+        title="Dodaj izdelek"
         footer={
           showCreateItemStep ? (
             <>
               <Button type="submit" form="create-item-form" disabled={addItemLoading}>
-                {addItemLoading ? 'Adding...' : 'Add item'}
+                {addItemLoading ? 'Dodajam...' : 'Dodaj izdelek'}
               </Button>
               <Button
                 type="button"
@@ -1513,7 +1512,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 }}
                 disabled={addItemLoading}
               >
-                Back to search
+                Nazaj na iskanje
               </Button>
             </>
           ) : (
@@ -1525,7 +1524,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               onClick={() => openCreateItemStep(searchValue.trim())}
               disabled={addItemLoading}
             >
-              ADD NEW ITEM
+              DODAJ NOV IZDELEK
             </Button>
           )
         }
@@ -1545,7 +1544,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
                   onKeyDown={handleSearchEnter}
-                  placeholder="Search item..."
+                  placeholder="Išči izdelek..."
                   autoFocus
                 />
                 {searchError ? <p className="m-0 text-xs text-rose-200">{searchError}</p> : null}
@@ -1574,7 +1573,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                           size="sm"
                           iconOnly
                           icon={<Edit animateOnHover />}
-                          aria-label={`Edit ${formatItemTitle(item.title)}`}
+                          aria-label={`Uredi ${formatItemTitle(item.title)}`}
                           disabled={addItemLoading}
                           onClick={() => openCreateItemEditStep(item)}
                         />
@@ -1604,7 +1603,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   onUnitChange={setNewItemUnit}
                   note={newItemNote}
                   onNoteChange={setNewItemNote}
-                  notePlaceholder="Optional note"
+                  notePlaceholder="Opcijska opomba"
                   noteRows={2}
                   category={newItemCategory}
                   onCategoryChange={(value) => {
