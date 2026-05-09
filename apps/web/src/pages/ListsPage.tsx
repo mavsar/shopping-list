@@ -1,13 +1,13 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { motion } from "motion/react";
-import { useNavigate } from "react-router-dom";
+import { motion } from 'motion/react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from "../components/lordicon/icons";
-import { AppHeader } from "../components/AppHeader";
-import { Button, Card, Dialog, Input, Loader } from "../components/ui";
-import { toListSlug } from "../domain/list-slug";
-import type { AuthUser } from "../types/auth";
-import type { ShoppingList } from "../types/lists";
+import { AppHeader } from '../components/AppHeader';
+import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from '../components/lordicon/icons';
+import { Button, Card, Checkbox, Dialog, Input, Loader } from '../components/ui';
+import { toListSlug } from '../domain/list-slug';
+import type { AuthUser } from '../types/auth';
+import type { ShoppingList } from '../types/lists';
 
 type ListsPageProps = {
   token: string;
@@ -18,74 +18,79 @@ type ListsPageProps = {
 export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   const navigate = useNavigate();
   const [lists, setLists] = useState<ShoppingList[]>([]);
-  const [listsError, setListsError] = useState("");
+  const [listsError, setListsError] = useState('');
   const [listsLoading, setListsLoading] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   const [createListDialogOpen, setCreateListDialogOpen] = useState(false);
-  const [newListName, setNewListName] = useState("");
+  const [newListName, setNewListName] = useState('');
+  const [newListIsPrivate, setNewListIsPrivate] = useState(true);
   const [createListLoading, setCreateListLoading] = useState(false);
-  const [createListError, setCreateListError] = useState("");
+  const [createListError, setCreateListError] = useState('');
 
   const [editingListId, setEditingListId] = useState<number | null>(null);
-  const [editingListName, setEditingListName] = useState("");
+  const [editingListName, setEditingListName] = useState('');
+  const [editingListIsPrivate, setEditingListIsPrivate] = useState(true);
   const [updateListLoading, setUpdateListLoading] = useState(false);
-  const [updateListError, setUpdateListError] = useState("");
+  const [updateListError, setUpdateListError] = useState('');
 
   const [deleteConfirmListId, setDeleteConfirmListId] = useState<number | null>(null);
   const [deleteListLoadingId, setDeleteListLoadingId] = useState<number | null>(null);
-  const [deleteListError, setDeleteListError] = useState("");
+  const [deleteListError, setDeleteListError] = useState('');
 
   const authHeaders = useMemo(
     () => ({
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
     }),
-    [token]
+    [token],
   );
   const deleteConfirmList = useMemo(
     () => lists.find((list) => list.id === deleteConfirmListId) ?? null,
-    [lists, deleteConfirmListId]
+    [lists, deleteConfirmListId],
   );
 
-  useEffect(() => {
-    async function loadLists() {
-      setListsLoading(true);
-      setListsError("");
-      try {
-        const response = await fetch("/api/lists", {
-          headers: authHeaders
-        });
-        if (!response.ok) {
-          throw new Error(`Lists API failed with status ${response.status}`);
-        }
-
-        const payload = (await response.json()) as { lists: ShoppingList[] };
-        setLists(payload.lists);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        setListsError(message);
-      } finally {
-        setListsLoading(false);
+  const loadLists = useCallback(async () => {
+    setListsLoading(true);
+    setListsError('');
+    try {
+      const response = await fetch('/api/lists', {
+        headers: authHeaders,
+      });
+      if (!response.ok) {
+        throw new Error(`Lists API failed with status ${response.status}`);
       }
-    }
 
-    void loadLists();
+      const payload = (await response.json()) as { lists: ShoppingList[] };
+      setLists(payload.lists);
+      setLastSyncedAt(new Date());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setListsError(message);
+    } finally {
+      setListsLoading(false);
+    }
   }, [authHeaders]);
+
+  useEffect(() => {
+    void loadLists();
+  }, [loadLists]);
 
   async function handleCreateList(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCreateListError("");
+    setCreateListError('');
     setCreateListLoading(true);
 
     try {
-      const response = await fetch("/api/lists", {
-        method: "POST",
+      const response = await fetch('/api/lists', {
+        method: 'POST',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: newListName.trim()
-        })
+          name: newListName.trim(),
+          isPrivate: newListIsPrivate,
+        }),
       });
 
       const payload = (await response.json()) as { list?: ShoppingList; error?: string };
@@ -94,10 +99,11 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       }
 
       setLists((currentLists) => [payload.list as ShoppingList, ...currentLists]);
-      setNewListName("");
+      setNewListName('');
+      setNewListIsPrivate(true);
       setCreateListDialogOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setCreateListError(message);
     } finally {
       setCreateListLoading(false);
@@ -106,26 +112,28 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
   function beginEditList(list: ShoppingList) {
     setDeleteConfirmListId(null);
-    setDeleteListError("");
+    setDeleteListError('');
     setEditingListId(list.id);
     setEditingListName(list.name);
-    setUpdateListError("");
+    setEditingListIsPrivate(list.isPrivate);
+    setUpdateListError('');
   }
 
   function cancelEditList() {
     setEditingListId(null);
-    setEditingListName("");
-    setUpdateListError("");
+    setEditingListName('');
+    setEditingListIsPrivate(true);
+    setUpdateListError('');
   }
 
   function beginDeleteListConfirmation(listId: number) {
     setDeleteConfirmListId(listId);
-    setDeleteListError("");
+    setDeleteListError('');
   }
 
   function cancelDeleteListConfirmation() {
     setDeleteConfirmListId(null);
-    setDeleteListError("");
+    setDeleteListError('');
   }
 
   async function handleUpdateList(event: FormEvent<HTMLFormElement>) {
@@ -135,18 +143,19 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
     }
 
     setUpdateListLoading(true);
-    setUpdateListError("");
+    setUpdateListError('');
 
     try {
       const response = await fetch(`/api/lists/${editingListId}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: {
           ...authHeaders,
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: editingListName.trim()
-        })
+          name: editingListName.trim(),
+          isPrivate: editingListIsPrivate,
+        }),
       });
 
       const payload = (await response.json()) as { list?: ShoppingList; error?: string };
@@ -154,10 +163,12 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         throw new Error(payload.error ?? `List update failed with status ${response.status}`);
       }
 
-      setLists((currentLists) => currentLists.map((list) => (list.id === payload.list?.id ? payload.list : list)));
+      setLists((currentLists) =>
+        currentLists.map((list) => (list.id === payload.list?.id ? payload.list : list)),
+      );
       cancelEditList();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setUpdateListError(message);
     } finally {
       setUpdateListLoading(false);
@@ -167,12 +178,12 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   async function handleDeleteList(list: ShoppingList) {
     const listId = list.id;
     setDeleteListLoadingId(listId);
-    setDeleteListError("");
+    setDeleteListError('');
 
     try {
       const response = await fetch(`/api/lists/${listId}`, {
-        method: "DELETE",
-        headers: authHeaders
+        method: 'DELETE',
+        headers: authHeaders,
       });
 
       if (!response.ok) {
@@ -186,7 +197,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       }
       cancelDeleteListConfirmation();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : 'Unknown error';
       setDeleteListError(message);
     } finally {
       setDeleteListLoadingId(null);
@@ -197,6 +208,11 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
     <>
       <AppHeader
         title="Shopping Lists"
+        syncInfo={{
+          lastSyncedAt,
+          refreshing: listsLoading,
+          onRefresh: loadLists,
+        }}
         actions={
           <>
             {authUser.isAdmin ? (
@@ -208,7 +224,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 iconOnly
                 aria-label="Admin"
                 title="Admin"
-                onClick={() => navigate("/admin/users")}
+                onClick={() => navigate('/admin/users')}
               />
             ) : null}
           </>
@@ -233,11 +249,13 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 transition={{ duration: 0.25 }}
                 key={list.id}
                 className="group cursor-pointer focus-visible:outline-none"
-                onClick={() => navigate(`/lists/${toListSlug(list.name)}`)}
+                onClick={() =>
+                  navigate(`/lists/${toListSlug(list.name)}`, { state: { listName: list.name } })
+                }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    navigate(`/lists/${toListSlug(list.name)}`);
+                    navigate(`/lists/${toListSlug(list.name)}`, { state: { listName: list.name } });
                   }
                 }}
                 role="button"
@@ -249,9 +267,14 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                       <p className="m-0 text-xl font-semibold text-slate-50">{list.name}</p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {list.isPrivate ? (
+                        <span className="inline-flex rounded-full border border-white/20 bg-slate-950/45 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-200 uppercase">
+                          Private
+                        </span>
+                      ) : null}
                       <Button
                         color="white"
-                        appearance="outline"
+                        appearance="transparent"
                         type="button"
                         icon={<Edit animateOnHover />}
                         iconOnly
@@ -260,20 +283,6 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                         onClick={(event) => {
                           event.stopPropagation();
                           beginEditList(list);
-                        }}
-                        disabled={deleteListLoadingId === list.id}
-                      />
-                      <Button
-                        color="danger"
-                        appearance="outline"
-                        type="button"
-                        icon={<Trash2 animateOnHover />}
-                        iconOnly
-                        aria-label={`Delete ${list.name}`}
-                        title={`Delete ${list.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          beginDeleteListConfirmation(list.id);
                         }}
                         disabled={deleteListLoadingId === list.id}
                       />
@@ -300,8 +309,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           title="Create list"
           className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
           onClick={() => {
-            setNewListName("");
-            setCreateListError("");
+            setNewListName('');
+            setNewListIsPrivate(true);
+            setCreateListError('');
             setCreateListDialogOpen(true);
           }}
         />
@@ -312,8 +322,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         onOpenChange={(isOpen) => {
           if (!isOpen) {
             setCreateListDialogOpen(false);
-            setCreateListError("");
-            setNewListName("");
+            setCreateListError('');
+            setNewListName('');
+            setNewListIsPrivate(true);
           }
         }}
         size="sm"
@@ -326,7 +337,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               disabled={createListLoading}
               icon={<CheckCheck animation="default" />}
             >
-              {createListLoading ? "Saving..." : "Save"}
+              {createListLoading ? 'Saving...' : 'Save'}
             </Button>
             <Button
               color="white"
@@ -334,8 +345,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
               type="button"
               onClick={() => {
                 setCreateListDialogOpen(false);
-                setCreateListError("");
-                setNewListName("");
+                setCreateListError('');
+                setNewListName('');
+                setNewListIsPrivate(true);
               }}
             >
               Cancel
@@ -352,6 +364,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             placeholder="Weekly groceries"
             required
           />
+          <Checkbox checked={newListIsPrivate} onCheckedChange={setNewListIsPrivate}>
+            Private list
+          </Checkbox>
           {createListError ? <p className="m-0 text-xs text-rose-200">{createListError}</p> : null}
         </form>
       </Dialog>
@@ -368,10 +383,31 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         footer={
           <>
             <Button type="submit" form="edit-list-form" disabled={updateListLoading}>
-              {updateListLoading ? "Saving..." : "Save"}
+              {updateListLoading ? 'Saving...' : 'Save'}
             </Button>
-            <Button color="white" appearance="outline" type="button" onClick={cancelEditList} disabled={updateListLoading}>
+            <Button
+              color="white"
+              appearance="outline"
+              type="button"
+              onClick={cancelEditList}
+              disabled={updateListLoading}
+            >
               Cancel
+            </Button>
+            <Button
+              color="danger"
+              appearance="outline"
+              type="button"
+              className="ml-auto"
+              icon={<Trash2 animateOnHover />}
+              onClick={() => {
+                if (editingListId !== null) {
+                  beginDeleteListConfirmation(editingListId);
+                }
+              }}
+              disabled={updateListLoading || editingListId === null}
+            >
+              Delete
             </Button>
           </>
         }
@@ -384,6 +420,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             maxLength={200}
             required
           />
+          <Checkbox checked={editingListIsPrivate} onCheckedChange={setEditingListIsPrivate}>
+            Private list
+          </Checkbox>
           {updateListError ? <p className="m-0 text-xs text-rose-200">{updateListError}</p> : null}
         </form>
       </Dialog>
@@ -400,7 +439,8 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         description={
           deleteConfirmList ? (
             <>
-              You are about to permanently delete <strong>{deleteConfirmList.name}</strong>. This action cannot be undone.
+              You are about to permanently delete <strong>{deleteConfirmList.name}</strong>. This
+              action cannot be undone.
             </>
           ) : undefined
         }
@@ -414,9 +454,14 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 onClick={() => void handleDeleteList(deleteConfirmList)}
                 disabled={deleteListLoadingId === deleteConfirmList.id}
               >
-                {deleteListLoadingId === deleteConfirmList.id ? "Deleting..." : "Confirm delete"}
+                {deleteListLoadingId === deleteConfirmList.id ? 'Deleting...' : 'Confirm delete'}
               </Button>
-              <Button color="white" appearance="outline" type="button" onClick={cancelDeleteListConfirmation}>
+              <Button
+                color="white"
+                appearance="outline"
+                type="button"
+                onClick={cancelDeleteListConfirmation}
+              >
                 Cancel
               </Button>
             </>
@@ -424,7 +469,9 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
         }
       >
         {deleteConfirmList ? (
-          deleteListError ? <p className="m-0 text-xs text-rose-200">{deleteListError}</p> : null
+          deleteListError ? (
+            <p className="m-0 text-xs text-rose-200">{deleteListError}</p>
+          ) : null
         ) : null}
       </Dialog>
     </>

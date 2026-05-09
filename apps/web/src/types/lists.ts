@@ -4,6 +4,7 @@ export type ShoppingList = {
   id: number;
   name: string;
   createdByUserId: number;
+  isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,7 +1,7 @@
 import { cx } from 'class-variance-authority';
 import { AnimatePresence, motion } from 'motion/react';
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppHeader } from '../components/AppHeader';
 import { ItemCategoryIcon, itemCategoryLabels } from '../components/ItemCategoryIcon';
@@ -201,6 +201,9 @@ function SharedItemFormFields({
 }: SharedItemFormFieldsProps) {
   const [brokenCandidateUrls, setBrokenCandidateUrls] = useState<Set<string>>(new Set());
   const [imageMode, setImageMode] = useState<'find-online' | 'upload' | 'clipboard'>('find-online');
+  const [imageToolsVisible, setImageToolsVisible] = useState(
+    !(Boolean(imageUrl) && Boolean(onRemoveImage)),
+  );
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const visibleImageCandidates = useMemo(
@@ -211,6 +214,12 @@ function SharedItemFormFields({
   useEffect(() => {
     setBrokenCandidateUrls(new Set());
   }, [imageCandidates]);
+
+  useEffect(() => {
+    if (!imageUrl || !onRemoveImage) {
+      setImageToolsVisible(true);
+    }
+  }, [imageUrl, onRemoveImage]);
 
   useEffect(() => {
     let isMounted = true;
@@ -289,130 +298,10 @@ function SharedItemFormFields({
         rows={noteRows}
       />
       <div className="grid gap-3 rounded-2xl">
-        <div className="h-px w-full bg-white/12" />
-        <SharedTabs
-          value={imageMode}
-          onValueChange={(value) => setImageMode(value as 'find-online' | 'upload' | 'clipboard')}
-          items={[
-            { value: 'find-online', label: 'Find image online', disabled },
-            { value: 'upload', label: 'Upload', disabled },
-            {
-              value: 'clipboard',
-              label: 'Paste from clipboard',
-              disabled: disabled || !clipboardHasImage,
-            },
-          ]}
-          listClassName="grid-cols-3"
-        />
-        {imageMode === 'find-online' ? (
-          <>
-            <div className="flex items-center gap-2">
-              <Input
-                value={imageSearchQuery}
-                onChange={(event) => onImageSearchQueryChange(event.target.value)}
-                placeholder="Image search (optional) — e.g. bela sirova štručka"
-                maxLength={200}
-                aria-label="Image search phrase"
-              />
-              <Button
-                type="button"
-                appearance="outline"
-                color="white"
-                iconOnly
-                icon={<Search animateOnHover />}
-                aria-label={findImageLoading ? 'Finding image' : 'Find image'}
-                disabled={findImageLoading || disabled}
-                onClick={() => void onFindImage()}
-              />
-            </div>
-            {findImageLoading ? (
-              <Loader
-                label={
-                  selectingImageCandidateUrl
-                    ? 'Applying selected image...'
-                    : 'Searching image candidates...'
-                }
-              />
-            ) : null}
-            {visibleImageCandidates.length ? (
-              <div className="grid grid-cols-3 gap-2">
-                {visibleImageCandidates.map((candidate) => (
-                  <button
-                    key={candidate.imageUrl}
-                    type="button"
-                    className={cx(
-                      'aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition',
-                      selectingImageCandidateUrl === candidate.imageUrl &&
-                        'border-cyan-300/60 opacity-70',
-                      !findImageLoading && 'hover:border-cyan-300/45',
-                    )}
-                    onClick={() => onSelectImageCandidate(candidate)}
-                    disabled={findImageLoading || disabled}
-                    title="Use this image"
-                  >
-                    <img
-                      src={candidate.imageUrl}
-                      alt="Image candidate"
-                      className="block h-full w-full object-cover object-center"
-                      loading="lazy"
-                      onError={() =>
-                        setBrokenCandidateUrls((currentBrokenUrls) => {
-                          const nextBrokenUrls = new Set(currentBrokenUrls);
-                          nextBrokenUrls.add(candidate.imageUrl);
-                          return nextBrokenUrls;
-                        })
-                      }
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ) : null}
-        {imageMode === 'upload' ? (
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(event) => {
-                const selectedFile = event.target.files?.[0];
-                if (!selectedFile) {
-                  return;
-                }
-                void onUploadImageFile(selectedFile);
-                event.target.value = '';
-              }}
-            />
-            <Button
-              type="button"
-              color="white"
-              appearance="outline"
-              disabled={findImageLoading || disabled}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Choose from gallery/computer
-            </Button>
-          </div>
-        ) : null}
-        {imageMode === 'clipboard' ? (
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              color="white"
-              appearance="outline"
-              disabled={findImageLoading || disabled || !clipboardHasImage}
-              onClick={() => void onPasteImageFromClipboard()}
-            >
-              Paste image now
-            </Button>
-          </div>
-        ) : null}
         {imageUrl ? (
           <div
             className={cx(
-              'aspect-square w-full overflow-hidden rounded-xl bg-slate-900/50',
+              'aspect-square w-full overflow-hidden rounded-xl bg-white',
               findImageLoading && 'opacity-60',
             )}
           >
@@ -424,34 +313,160 @@ function SharedItemFormFields({
             />
           </div>
         ) : null}
-        {sourceUrl || (imageUrl && onRemoveImage) ? (
-          <div className="flex items-center justify-between gap-2">
-            {sourceUrl ? (
-              <a
-                className="text-xs text-cyan-200/90 underline underline-offset-2"
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Source page
-              </a>
-            ) : (
-              <span />
-            )}
-            {imageUrl && onRemoveImage ? (
-              <Button
-                type="button"
-                size="xs"
-                color="white"
-                appearance="outline"
-                icon={<Trash2 animateOnHover />}
-                onClick={onRemoveImage}
-                disabled={findImageLoading || disabled}
-              >
-                Odstrani sliko
-              </Button>
-            ) : null}
+        {imageUrl && onRemoveImage ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="xs"
+              color="white"
+              appearance="outline"
+              icon={<Edit animateOnHover />}
+              disabled={findImageLoading || disabled}
+              onClick={() => setImageToolsVisible(true)}
+            >
+              Change image
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              color="white"
+              appearance="outline"
+              icon={<Trash2 animateOnHover />}
+              disabled={findImageLoading || disabled}
+              onClick={() => {
+                onRemoveImage();
+                setImageToolsVisible(true);
+              }}
+            >
+              Delete image
+            </Button>
           </div>
+        ) : null}
+        {imageToolsVisible ? (
+          <>
+            <div className="h-px w-full bg-white/12" />
+            <SharedTabs
+              value={imageMode}
+              onValueChange={(value) =>
+                setImageMode(value as 'find-online' | 'upload' | 'clipboard')
+              }
+              items={[
+                { value: 'find-online', label: 'Find image online', disabled },
+                { value: 'upload', label: 'Upload', disabled },
+                {
+                  value: 'clipboard',
+                  label: 'Paste from clipboard',
+                  disabled: disabled || !clipboardHasImage,
+                },
+              ]}
+              listClassName="grid-cols-3"
+            />
+            {imageMode === 'find-online' ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={imageSearchQuery}
+                    onChange={(event) => onImageSearchQueryChange(event.target.value)}
+                    placeholder="Išči ..."
+                    maxLength={200}
+                    aria-label="Image search phrase"
+                  />
+                  <Button
+                    type="button"
+                    appearance="outline"
+                    color="white"
+                    iconOnly
+                    icon={<Search animateOnHover />}
+                    aria-label={findImageLoading ? 'Finding image' : 'Find image'}
+                    disabled={findImageLoading || disabled}
+                    onClick={() => void onFindImage()}
+                  />
+                </div>
+                {findImageLoading ? (
+                  <Loader
+                    label={
+                      selectingImageCandidateUrl
+                        ? 'Applying selected image...'
+                        : 'Searching image candidates...'
+                    }
+                  />
+                ) : null}
+                {visibleImageCandidates.length ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {visibleImageCandidates.map((candidate) => (
+                      <button
+                        key={candidate.imageUrl}
+                        type="button"
+                        className={cx(
+                          'aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition',
+                          selectingImageCandidateUrl === candidate.imageUrl &&
+                            'border-cyan-300/60 opacity-70',
+                          !findImageLoading && 'hover:border-cyan-300/45',
+                        )}
+                        onClick={() => onSelectImageCandidate(candidate)}
+                        disabled={findImageLoading || disabled}
+                        title="Use this image"
+                      >
+                        <img
+                          src={candidate.imageUrl}
+                          alt="Image candidate"
+                          className="block h-full w-full object-contain object-center"
+                          loading="lazy"
+                          onError={() =>
+                            setBrokenCandidateUrls((currentBrokenUrls) => {
+                              const nextBrokenUrls = new Set(currentBrokenUrls);
+                              nextBrokenUrls.add(candidate.imageUrl);
+                              return nextBrokenUrls;
+                            })
+                          }
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {imageMode === 'upload' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const selectedFile = event.target.files?.[0];
+                    if (!selectedFile) {
+                      return;
+                    }
+                    void onUploadImageFile(selectedFile);
+                    event.target.value = '';
+                  }}
+                />
+                <Button
+                  type="button"
+                  color="white"
+                  appearance="outline"
+                  disabled={findImageLoading || disabled}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Choose from gallery/computer
+                </Button>
+              </div>
+            ) : null}
+            {imageMode === 'clipboard' ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  color="white"
+                  appearance="outline"
+                  disabled={findImageLoading || disabled || !clipboardHasImage}
+                  onClick={() => void onPasteImageFromClipboard()}
+                >
+                  Paste image now
+                </Button>
+              </div>
+            ) : null}
+          </>
         ) : null}
         {findImageError ? <p className="m-0 text-xs text-rose-200">{findImageError}</p> : null}
       </div>
@@ -460,21 +475,24 @@ function SharedItemFormFields({
 }
 
 export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDetailsPageProps) {
+  const location = useLocation();
   const navigate = useNavigate();
   const { listSlug } = useParams();
+  const initialListName = ((location.state as { listName?: string } | null)?.listName ?? '').trim();
   const [list, setList] = useState<ShoppingList | null>(null);
   const [resolvedListId, setResolvedListId] = useState<number | null>(null);
   const [items, setItems] = useState<ShoppingListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState('');
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [showAddNewItemButton, setShowAddNewItemButton] = useState(false);
 
   const [showCreateItemStep, setShowCreateItemStep] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -500,7 +518,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [hoveredQuantityItemId, setHoveredQuantityItemId] = useState<number | null>(null);
   const [expandedQuantityItemId, setExpandedQuantityItemId] = useState<number | null>(null);
   const [detailsListItemId, setDetailsListItemId] = useState<number | null>(null);
-  const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsEditQuantity, setDetailsEditQuantity] = useState(1);
   const [detailsEditUnit, setDetailsEditUnit] = useState<ShoppingItemUnit>('kos');
   const [detailsEditNote, setDetailsEditNote] = useState('');
@@ -517,7 +534,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [detailsFindImageError, setDetailsFindImageError] = useState('');
   const searchRequestIdRef = useRef(0);
   const categoryManualRef = useRef(false);
-  const detailsEditTransitionRef = useRef(false);
   const recentlyCompletedTimeoutRef = useRef<number | null>(null);
 
   const detailsItem = useMemo(
@@ -527,10 +543,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         : (items.find((row) => row.id === detailsListItemId) ?? null),
     [detailsListItemId, items],
   );
-
-  useEffect(() => {
-    setDetailsEditMode(false);
-  }, [detailsListItemId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -676,7 +688,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
 
     void resolveListFromSlug();
-  }, [authHeaders, listSlug]);
+  }, [authHeaders, listSlug, refreshVersion]);
 
   useEffect(() => {
     if (!resolvedListId) {
@@ -698,6 +710,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
         const itemsPayload = (await itemsResponse.json()) as { items: ShoppingListItem[] };
         setItems(itemsPayload.items.filter((row) => isVisibleListItemStatus(row.status)));
+        setLastSyncedAt(new Date());
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         setUpdatingItemError(message);
@@ -707,7 +720,11 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     }
 
     void loadItems();
-  }, [authHeaders, resolvedListId]);
+  }, [authHeaders, resolvedListId, refreshVersion]);
+
+  const refreshData = useCallback(async () => {
+    setRefreshVersion((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     if (!showCreateItemStep || categoryManualRef.current) {
@@ -767,33 +784,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     };
   }, [addDialogOpen, authHeaders, searchValue, showCreateItemStep]);
 
-  useEffect(() => {
-    if (!addDialogOpen || showCreateItemStep) {
-      setShowAddNewItemButton(false);
-      return;
-    }
-
-    if (searchLoading || !searchValue.trim() || searchResults.length > 0) {
-      setShowAddNewItemButton(false);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setShowAddNewItemButton(true);
-    }, 420);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [addDialogOpen, searchLoading, searchResults.length, searchValue, showCreateItemStep]);
-
   function resetDialogState() {
     setAddDialogOpen(false);
     setSearchValue('');
     setSearchResults([]);
     setSearchError('');
     setSearchLoading(false);
-    setShowAddNewItemButton(false);
     setShowCreateItemStep(false);
     setNewItemName('');
     setNewItemQuantity(1);
@@ -826,6 +822,15 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemImagePreviewUrl('');
     setNewItemSourceUrl('');
     setNewItemName(prefillName?.trim() || searchValue.trim());
+  }
+
+  function openCreateItemEditStep(item: CatalogItem) {
+    openCreateItemStep(item.title);
+    categoryManualRef.current = true;
+    setNewItemCategory(item.category);
+    setNewItemImageUrl(item.imageUrl ?? '');
+    setNewItemImagePreviewUrl(item.imageUrl ?? '');
+    setNewItemSourceUrl('');
   }
 
   async function addExistingItem(itemTitle: string) {
@@ -1277,7 +1282,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   }
 
   function openItemDetails(item: ShoppingListItem) {
+    applyDetailsItemToEditState(item);
     setDetailsListItemId(item.id);
+    setUpdatingItemError('');
   }
 
   function resetDetailsEditImageSearchState() {
@@ -1308,16 +1315,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsEditSourceUrl('');
   }
 
-  function beginDetailsEdit(item: ShoppingListItem) {
-    detailsEditTransitionRef.current = true;
-    window.setTimeout(() => {
-      detailsEditTransitionRef.current = false;
-    }, 250);
-    applyDetailsItemToEditState(item);
-    setDetailsEditMode(true);
-    setUpdatingItemError('');
-  }
-
   async function saveDetailsEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detailsItem) {
@@ -1345,23 +1342,23 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           : undefined,
     });
     if (ok) {
-      setDetailsEditMode(false);
+      setDetailsListItemId(null);
     }
   }
 
   function cancelDetailsEdit() {
-    if (!detailsItem) {
-      setDetailsEditMode(false);
-      return;
-    }
-    applyDetailsItemToEditState(detailsItem);
-    setDetailsEditMode(false);
+    setDetailsListItemId(null);
   }
 
   return (
     <>
       <AppHeader
-        title={list ? list.name : 'List'}
+        title={list ? list.name : initialListName || 'List'}
+        syncInfo={{
+          lastSyncedAt,
+          refreshing: listLoading || itemsLoading,
+          onRefresh: refreshData,
+        }}
         actions={
           <>
             <Button
@@ -1519,7 +1516,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 Back to search
               </Button>
             </>
-          ) : showAddNewItemButton ? (
+          ) : (
             <Button
               type="button"
               stretch
@@ -1530,7 +1527,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             >
               ADD NEW ITEM
             </Button>
-          ) : null
+          )
         }
       >
         <div className="h-full overflow-hidden">
@@ -1554,18 +1551,35 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 {searchError ? <p className="m-0 text-xs text-rose-200">{searchError}</p> : null}
                 <div className="grid content-start flex-1 gap-2 overflow-y-auto pr-1">
                   {searchResults.map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/16 bg-slate-900/30 p-2 text-left text-slate-100 transition hover:border-cyan-300/45"
-                      onClick={() => void addExistingItem(item.title)}
-                      disabled={addItemLoading}
+                      className="flex w-full items-center gap-2 rounded-2xl border border-white/16 bg-slate-900/30 p-2 text-slate-100 transition hover:border-cyan-300/45"
                     >
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left text-slate-100"
+                        onClick={() => void addExistingItem(item.title)}
+                        disabled={addItemLoading}
+                      >
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+                          <ItemCategoryIcon category={item.category} size={22} />
+                        </div>
+                        <span className="text-sm line-clamp-2">{formatItemTitle(item.title)}</span>
+                      </button>
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center">
-                        <ItemCategoryIcon category={item.category} size={22} />
+                        <Button
+                          type="button"
+                          color="white"
+                          appearance="transparent"
+                          size="sm"
+                          iconOnly
+                          icon={<Edit animateOnHover />}
+                          aria-label={`Edit ${formatItemTitle(item.title)}`}
+                          disabled={addItemLoading}
+                          onClick={() => openCreateItemEditStep(item)}
+                        />
                       </div>
-                      <span className="truncate text-sm">{formatItemTitle(item.title)}</span>
-                    </button>
+                    </div>
                   ))}
                 </div>
                 {addItemError ? <p className="m-0 text-xs text-rose-200">{addItemError}</p> : null}
@@ -1623,141 +1637,83 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         open={detailsListItemId !== null}
         onOpenChange={(open) => {
           if (!open) {
-            if (detailsEditTransitionRef.current) {
-              return;
-            }
             setDetailsListItemId(null);
-            setDetailsEditMode(false);
           }
         }}
         size="md"
-        closeOnOverlayClick={false}
         title={
-          detailsItem && detailsEditMode ? (
+          detailsItem ? (
             <span className="break-words">Uredi: {formatItemTitle(detailsItem.title)}</span>
-          ) : detailsItem ? (
-            <span className="flex items-center gap-2.5 break-words text-2xl font-semibold">
-              <ItemCategoryIcon category={detailsItem.category} size={36} />
-              <span>{formatItemTitle(detailsItem.title)}</span>
-            </span>
           ) : (
             <span className="break-words">Podrobnosti</span>
           )
         }
         footer={
           detailsItem ? (
-            detailsEditMode ? (
-              <>
-                <Button
-                  type="submit"
-                  form="details-edit-form"
-                  icon={<CheckCheck animateOnHover />}
-                  disabled={updatingItemId === detailsItem.id}
-                >
-                  {updatingItemId === detailsItem.id ? 'Shranjujem...' : 'Shrani'}
-                </Button>
-                <Button
-                  type="button"
-                  color="white"
-                  appearance="outline"
-                  disabled={updatingItemId === detailsItem.id}
-                  onClick={cancelDetailsEdit}
-                >
-                  Prekliči
-                </Button>
-              </>
-            ) : null
+            <>
+              <Button
+                type="submit"
+                form="details-edit-form"
+                icon={<CheckCheck animateOnHover />}
+                disabled={updatingItemId === detailsItem.id}
+              >
+                {updatingItemId === detailsItem.id ? 'Shranjujem...' : 'Shrani'}
+              </Button>
+              <Button
+                type="button"
+                color="white"
+                appearance="outline"
+                disabled={updatingItemId === detailsItem.id}
+                onClick={cancelDetailsEdit}
+              >
+                Prekliči
+              </Button>
+            </>
           ) : null
         }
       >
         {detailsItem ? (
-          detailsEditMode ? (
-            <form id="details-edit-form" className="grid gap-3" onSubmit={saveDetailsEdit}>
-              <p className="m-0 text-xs text-slate-400">
-                Stanje:{' '}
-                <span className="text-slate-200">
-                  {detailsItem.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
-                </span>
-              </p>
-              <SharedItemFormFields
-                name={detailsEditName}
-                onNameChange={setDetailsEditName}
-                quantity={detailsEditQuantity}
-                onQuantityChange={setDetailsEditQuantity}
-                unit={detailsEditUnit}
-                onUnitChange={setDetailsEditUnit}
-                note={detailsEditNote}
-                onNoteChange={setDetailsEditNote}
-                notePlaceholder="Opcijska opomba"
-                noteRows={3}
-                category={detailsEditCategory}
-                onCategoryChange={setDetailsEditCategory}
-                imageSearchQuery={detailsImageSearchQuery}
-                onImageSearchQueryChange={setDetailsImageSearchQuery}
-                onFindImage={findDetailsImage}
-                imageCandidates={detailsImageCandidates}
-                onSelectImageCandidate={selectDetailsImageCandidate}
-                selectingImageCandidateUrl={detailsSelectingImageCandidateUrl}
-                findImageLoading={detailsFindImageLoading}
-                imageUrl={detailsEditImageUrl}
-                imagePreviewUrl={detailsEditImagePreviewUrl}
-                sourceUrl={detailsEditSourceUrl}
-                findImageError={detailsFindImageError}
-                onRemoveImage={removeDetailsEditImage}
-                onUploadImageFile={uploadDetailsItemImage}
-                onPasteImageFromClipboard={pasteDetailsImageFromClipboard}
-                disabled={updatingItemId === detailsItem.id}
-                quantityButtonSize="md"
-              />
-              {updatingItemError ? (
-                <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
-              ) : null}
-            </form>
-          ) : (
-            <div className="grid gap-3">
-              <p className="m-0 text-xs text-slate-300">
-                Kategorija:{' '}
-                <span className="text-slate-100">{itemCategoryLabels[detailsItem.category]}</span>
-              </p>
-              <p className="m-0 text-xs text-slate-300">
-                Količina:{' '}
-                <span className="text-slate-100">
-                  {detailsItem.quantity} {getItemUnitLabel(detailsItem.unit)}
-                </span>
-              </p>
-              {detailsItem.note?.trim() ? (
-                <div className="grid gap-1">
-                  <span className="text-xs text-slate-300">Opomba</span>
-                  <p className="m-0 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-xs text-slate-200/95 whitespace-pre-wrap">
-                    {detailsItem.note}
-                  </p>
-                </div>
-              ) : null}
-              {updatingItemError ? (
-                <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
-              ) : null}
-              {detailsItem.imageUrl ? (
-                <div className="aspect-square w-full overflow-hidden rounded-xl border border-white/12 bg-slate-900/50">
-                  <img
-                    src={detailsItem.imageUrl}
-                    alt={formatItemTitle(detailsItem.title)}
-                    className="block h-full w-full object-cover object-center"
-                    loading="lazy"
-                  />
-                </div>
-              ) : null}
-              <div className="pt-1">
-                <Button
-                  type="button"
-                  icon={<Edit animateOnHover />}
-                  disabled={updatingItemId === detailsItem.id}
-                  onClick={() => beginDetailsEdit(detailsItem)}
-                >
-                  Uredi
-                </Button>
-              </div>
-            </div>
-          )
+          <form id="details-edit-form" className="grid gap-3" onSubmit={saveDetailsEdit}>
+            <p className="m-0 text-xs text-slate-400">
+              Stanje:{' '}
+              <span className="text-slate-200">
+                {detailsItem.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
+              </span>
+            </p>
+            <SharedItemFormFields
+              name={detailsEditName}
+              onNameChange={setDetailsEditName}
+              quantity={detailsEditQuantity}
+              onQuantityChange={setDetailsEditQuantity}
+              unit={detailsEditUnit}
+              onUnitChange={setDetailsEditUnit}
+              note={detailsEditNote}
+              onNoteChange={setDetailsEditNote}
+              notePlaceholder="Opcijska opomba"
+              noteRows={3}
+              category={detailsEditCategory}
+              onCategoryChange={setDetailsEditCategory}
+              imageSearchQuery={detailsImageSearchQuery}
+              onImageSearchQueryChange={setDetailsImageSearchQuery}
+              onFindImage={findDetailsImage}
+              imageCandidates={detailsImageCandidates}
+              onSelectImageCandidate={selectDetailsImageCandidate}
+              selectingImageCandidateUrl={detailsSelectingImageCandidateUrl}
+              findImageLoading={detailsFindImageLoading}
+              imageUrl={detailsEditImageUrl}
+              imagePreviewUrl={detailsEditImagePreviewUrl}
+              sourceUrl={detailsEditSourceUrl}
+              findImageError={detailsFindImageError}
+              onRemoveImage={removeDetailsEditImage}
+              onUploadImageFile={uploadDetailsItemImage}
+              onPasteImageFromClipboard={pasteDetailsImageFromClipboard}
+              disabled={updatingItemId === detailsItem.id}
+              quantityButtonSize="md"
+            />
+            {updatingItemError ? (
+              <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
+            ) : null}
+          </form>
         ) : null}
       </Dialog>
     </>

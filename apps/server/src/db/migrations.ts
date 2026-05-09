@@ -190,6 +190,13 @@ const migrations: Migration[] = [
 
       PRAGMA foreign_keys = ON;
     `
+  },
+  {
+    name: "008_shopping_lists_private_flag",
+    sql: `
+      ALTER TABLE shopping_lists
+      ADD COLUMN is_private INTEGER NOT NULL DEFAULT 1 CHECK(is_private IN (0, 1));
+    `
   }
 ];
 

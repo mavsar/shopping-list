@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 
@@ -47,6 +47,7 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [usersError, setUsersError] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -80,30 +81,31 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
     [users, deleteConfirmUserId]
   );
 
-  useEffect(() => {
-    async function loadUsers() {
-      setUsersLoading(true);
-      setUsersError("");
-      try {
-        const response = await fetch("/api/users", {
-          headers: authHeaders
-        });
-        if (!response.ok) {
-          throw new Error(`Users API failed with status ${response.status}`);
-        }
-
-        const payload = (await response.json()) as { users: ManagedUser[] };
-        setUsers(payload.users);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        setUsersError(message);
-      } finally {
-        setUsersLoading(false);
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true);
+    setUsersError("");
+    try {
+      const response = await fetch("/api/users", {
+        headers: authHeaders
+      });
+      if (!response.ok) {
+        throw new Error(`Users API failed with status ${response.status}`);
       }
-    }
 
-    void loadUsers();
+      const payload = (await response.json()) as { users: ManagedUser[] };
+      setUsers(payload.users);
+      setLastSyncedAt(new Date());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setUsersError(message);
+    } finally {
+      setUsersLoading(false);
+    }
   }, [authHeaders]);
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -263,6 +265,11 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
     <>
       <AppHeader
         title="Shopping List Admin"
+        syncInfo={{
+          lastSyncedAt,
+          refreshing: usersLoading,
+          onRefresh: loadUsers
+        }}
         actions={
           <>
             <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>

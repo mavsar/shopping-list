@@ -155,11 +155,13 @@ async function saveSquareImageBufferLocally(query: string, rawImageBuffer: Buffe
   }
 
   try {
-    const squareImageBuffer = await sharp(rawImageBuffer)
-      .rotate()
+    const preparedImage = sharp(rawImageBuffer).rotate();
+    const squareStrategy = await resolveSquareFitStrategy(preparedImage);
+    const squareImageBuffer = await preparedImage
       .resize(generatedImageSize, generatedImageSize, {
-        fit: "cover",
-        position: "attention"
+        fit: "contain",
+        position: "centre",
+        background: squareStrategy.background
       })
       .webp({ quality: 86 })
       .toBuffer();
@@ -170,6 +172,104 @@ async function saveSquareImageBufferLocally(query: string, rawImageBuffer: Buffe
   } catch {
     return null;
   }
+}
+
+type SquareFitStrategy = {
+  background: { r: number; g: number; b: number; alpha: number };
+};
+
+async function resolveSquareFitStrategy(image: sharp.Sharp): Promise<SquareFitStrategy> {
+  const { data, info } = await image
+    .clone()
+    .ensureAlpha()
+    .resize(96, 96, { fit: "inside", withoutEnlargement: false })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const width = info.width;
+  const height = info.height;
+  if (!width || !height || data.length === 0) {
+    return {
+      background: { r: 15, g: 23, b: 42, alpha: 1 }
+    };
+  }
+
+  const borderThickness = Math.max(1, Math.round(Math.min(width, height) * 0.08));
+  let whiteBorderPixels = 0;
+  let borderPixels = 0;
+  let edgeR = 0;
+  let edgeG = 0;
+  let edgeB = 0;
+  let edgeSamples = 0;
+  let hasTransparency = false;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3] / 255;
+      if (alpha < 0.995) {
+        hasTransparency = true;
+      }
+
+      const isBorder =
+        x < borderThickness ||
+        y < borderThickness ||
+        x >= width - borderThickness ||
+        y >= height - borderThickness;
+      if (!isBorder) {
+        continue;
+      }
+
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      if (alpha < 0.1) {
+        continue;
+      }
+
+      borderPixels += 1;
+      const maxChannel = Math.max(r, g, b);
+      const minChannel = Math.min(r, g, b);
+      const isWhiteLike = maxChannel >= 240 && minChannel >= 220 && maxChannel - minChannel <= 16;
+      if (isWhiteLike) {
+        whiteBorderPixels += 1;
+      }
+
+      edgeR += r;
+      edgeG += g;
+      edgeB += b;
+      edgeSamples += 1;
+    }
+  }
+
+  const whiteBorderRatio = borderPixels > 0 ? whiteBorderPixels / borderPixels : 0;
+  if (hasTransparency) {
+    return {
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    };
+  }
+  if (whiteBorderRatio >= 0.72) {
+    // Product packshots on white usually need full contain and white padding to avoid cropping.
+    return {
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    };
+  }
+
+  if (edgeSamples === 0) {
+    return {
+      background: { r: 15, g: 23, b: 42, alpha: 1 }
+    };
+  }
+
+  // Real-world photos: still use contain, but with edge-derived color so no white letterbox borders.
+  return {
+    background: {
+      r: Math.round(edgeR / edgeSamples),
+      g: Math.round(edgeG / edgeSamples),
+      b: Math.round(edgeB / edgeSamples),
+      alpha: 1
+    }
+  };
 }
 
 async function pruneOrphanedLocalImages(preservePublicUrls: string[] = []): Promise<void> {
@@ -315,11 +415,34 @@ function scoreImageCandidate(imageUrl: string, sourceUrl: string, pageTitle: str
     score += 1;
   }
 
+  score += wholeImageLikelihoodBonus(imageUrl);
+  score += croppedImagePenalty(imageUrl);
+
   if (/\/(products?|artikli|izdelek)\//i.test(sourceUrl)) {
     score += 2;
   }
 
   return score;
+}
+
+function croppedImagePenalty(imageUrl: string): number {
+  const normalizedUrl = normalizeTerm(imageUrl);
+  if (
+    /crop|cropped|center.?crop|thumb|thumbnail|small|preview|tile|sprite|icon|banner|hero|fit=crop|c_fill|w=\d{1,3}(&|$)|h=\d{1,3}(&|$)|phpthumb/i.test(
+      normalizedUrl
+    )
+  ) {
+    return -10;
+  }
+  return 0;
+}
+
+function wholeImageLikelihoodBonus(imageUrl: string): number {
+  const normalizedUrl = normalizeTerm(imageUrl);
+  if (/original|full|large|zoom|detail|highres|fit=max|image_front|packshot/i.test(normalizedUrl)) {
+    return 4;
+  }
+  return 0;
 }
 
 function extractResultLinks(html: string): string[] {
@@ -500,6 +623,8 @@ function scoreWebImageSearchUrl(imageUrl: string, query: string, rankIndex: numb
 
   score += queryVisualHintBonus(imageUrl, primaryWord);
   score += mimovrsteBareTilePenalty(imageUrl);
+  score += wholeImageLikelihoodBonus(imageUrl);
+  score += croppedImagePenalty(imageUrl);
 
   if (/\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(imageUrl)) {
     score += 4;

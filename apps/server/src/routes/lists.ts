@@ -8,9 +8,13 @@ import { getAuthUser, requireAuth } from "../middleware/auth.js";
 import { parseId } from "../utils/ids.js";
 
 const createListSchema = z.object({
-  name: z.string().trim().min(1).max(200)
+  name: z.string().trim().min(1).max(200),
+  isPrivate: z.boolean().default(true)
 });
-const updateListSchema = createListSchema;
+const updateListSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  isPrivate: z.boolean().optional()
+});
 
 const addMemberSchema = z.object({
   userId: z.number().int().positive(),
@@ -57,6 +61,22 @@ export const listsRouter = Router();
 
 type ListRole = "owner" | "editor" | "viewer";
 
+type ShoppingListRow = {
+  id: number;
+  name: string;
+  createdByUserId: number;
+  isPrivate: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function mapShoppingListRow(row: ShoppingListRow) {
+  return {
+    ...row,
+    isPrivate: Boolean(row.isPrivate)
+  };
+}
+
 function getListRole(listId: number, userId: number): ListRole | null {
   const membership = sqlite
     .prepare("SELECT role FROM list_members WHERE list_id = ? AND user_id = ? LIMIT 1")
@@ -74,16 +94,16 @@ listsRouter.get("/", requireAuth, (_req, res) => {
   const lists = sqlite
     .prepare(
       `
-      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.created_at AS createdAt, l.updated_at AS updatedAt
+      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.is_private AS isPrivate, l.created_at AS createdAt, l.updated_at AS updatedAt
       FROM shopping_lists l
       JOIN list_members m ON m.list_id = l.id
       WHERE m.user_id = ?
       ORDER BY l.updated_at DESC
       `
     )
-    .all(authUser.id);
+    .all(authUser.id) as ShoppingListRow[];
 
-  return res.json({ lists });
+  return res.json({ lists: lists.map(mapShoppingListRow) });
 });
 
 listsRouter.get("/:listId", requireAuth, (req, res) => {
@@ -105,19 +125,19 @@ listsRouter.get("/:listId", requireAuth, (req, res) => {
   const list = sqlite
     .prepare(
       `
-      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.created_at AS createdAt, l.updated_at AS updatedAt
+      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.is_private AS isPrivate, l.created_at AS createdAt, l.updated_at AS updatedAt
       FROM shopping_lists l
       WHERE l.id = ?
       LIMIT 1
       `
     )
-    .get(listId);
+    .get(listId) as ShoppingListRow | undefined;
 
   if (!list) {
     return res.status(404).json({ error: "List not found" });
   }
 
-  return res.json({ list });
+  return res.json({ list: mapShoppingListRow(list) });
 });
 
 listsRouter.post("/", requireAuth, (req, res) => {
@@ -138,8 +158,8 @@ listsRouter.post("/", requireAuth, (req, res) => {
 
   const createList = sqlite.transaction(() => {
     const listInsert = sqlite
-      .prepare("INSERT INTO shopping_lists (name, created_by_user_id) VALUES (?, ?)")
-      .run(payload.name, authUser.id);
+      .prepare("INSERT INTO shopping_lists (name, created_by_user_id, is_private) VALUES (?, ?, ?)")
+      .run(payload.name, authUser.id, payload.isPrivate ? 1 : 0);
 
     const listId = Number(listInsert.lastInsertRowid);
 
@@ -149,13 +169,13 @@ listsRouter.post("/", requireAuth, (req, res) => {
 
     return sqlite
       .prepare(
-        "SELECT id, name, created_by_user_id AS createdByUserId, created_at AS createdAt, updated_at AS updatedAt FROM shopping_lists WHERE id = ?"
+        "SELECT id, name, created_by_user_id AS createdByUserId, is_private AS isPrivate, created_at AS createdAt, updated_at AS updatedAt FROM shopping_lists WHERE id = ?"
       )
-      .get(listId);
+      .get(listId) as ShoppingListRow;
   });
 
   const list = createList();
-  return res.status(201).json({ list });
+  return res.status(201).json({ list: mapShoppingListRow(list) });
 });
 
 listsRouter.put("/:listId", requireAuth, (req, res) => {
@@ -192,16 +212,16 @@ listsRouter.put("/:listId", requireAuth, (req, res) => {
   }
 
   sqlite
-    .prepare("UPDATE shopping_lists SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(parsed.data.name, listId);
+    .prepare("UPDATE shopping_lists SET name = ?, is_private = COALESCE(?, is_private), updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(parsed.data.name, parsed.data.isPrivate === undefined ? null : (parsed.data.isPrivate ? 1 : 0), listId);
 
   const updatedList = sqlite
     .prepare(
-      "SELECT id, name, created_by_user_id AS createdByUserId, created_at AS createdAt, updated_at AS updatedAt FROM shopping_lists WHERE id = ?"
+      "SELECT id, name, created_by_user_id AS createdByUserId, is_private AS isPrivate, created_at AS createdAt, updated_at AS updatedAt FROM shopping_lists WHERE id = ?"
     )
-    .get(listId);
+    .get(listId) as ShoppingListRow;
 
-  return res.json({ list: updatedList });
+  return res.json({ list: mapShoppingListRow(updatedList) });
 });
 
 listsRouter.delete("/:listId", requireAuth, (req, res) => {
