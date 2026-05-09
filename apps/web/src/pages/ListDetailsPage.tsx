@@ -499,7 +499,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [newItemQuantity, setNewItemQuantity] = useState(1);
   const [newItemUnit, setNewItemUnit] = useState<ShoppingItemUnit>('kos');
   const [newItemNote, setNewItemNote] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('other');
+  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('drugo');
   const [newItemImageUrl, setNewItemImageUrl] = useState('');
   const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState('');
   const [newItemSourceUrl, setNewItemSourceUrl] = useState('');
@@ -522,7 +522,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [detailsEditUnit, setDetailsEditUnit] = useState<ShoppingItemUnit>('kos');
   const [detailsEditNote, setDetailsEditNote] = useState('');
   const [detailsEditName, setDetailsEditName] = useState('');
-  const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>('other');
+  const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>('drugo');
   const [detailsEditImageUrl, setDetailsEditImageUrl] = useState('');
   const [detailsEditImagePreviewUrl, setDetailsEditImagePreviewUrl] = useState('');
   const [detailsEditSourceUrl, setDetailsEditSourceUrl] = useState('');
@@ -795,7 +795,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemQuantity(1);
     setNewItemUnit('kos');
     setNewItemNote('');
-    setNewItemCategory('other');
+    setNewItemCategory('drugo');
     categoryManualRef.current = false;
     setNewItemImageUrl('');
     setNewItemImagePreviewUrl('');
@@ -1643,7 +1643,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         size="md"
         title={
           detailsItem ? (
-            <span className="break-words">Uredi: {formatItemTitle(detailsItem.title)}</span>
+            <span className="flex items-center gap-2">
+              <ItemCategoryIcon category={detailsEditCategory} size={36} />
+              <span className="break-words">{formatItemTitle(detailsItem.title)}</span>
+            </span>
           ) : (
             <span className="break-words">Podrobnosti</span>
           )
