@@ -8,14 +8,38 @@ import { ListDetailsPage } from "./pages/ListDetailsPage";
 import { ListsPage } from "./pages/ListsPage";
 import { LoginPage } from "./pages/LoginPage";
 import type { AuthUser } from "./types/auth";
-import { tokenStorageKey } from "./ui/constants";
+import { rememberMeCookieKey, tokenStorageKey } from "./ui/constants";
+
+function getCookieValue(name: string): string {
+  const value = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${name}=`))
+    ?.split("=")
+    .slice(1)
+    .join("=");
+  return value ? decodeURIComponent(value) : "";
+}
+
+function setPermanentCookie(name: string, value: string): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${60 * 60 * 24 * 365}; Path=/; SameSite=Lax${secure}`;
+}
+
+function clearCookie(name: string): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+}
 
 export default function App() {
   const location = useLocation();
-  const [token, setToken] = useState<string>(() => localStorage.getItem(tokenStorageKey) ?? "");
+  const [token, setToken] = useState<string>(
+    () => getCookieValue(rememberMeCookieKey) || sessionStorage.getItem(tokenStorageKey) || localStorage.getItem(tokenStorageKey) || ""
+  );
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authError, setAuthError] = useState("");
-  const [authChecking, setAuthChecking] = useState<boolean>(() => Boolean(localStorage.getItem(tokenStorageKey)));
+  const [authChecking, setAuthChecking] = useState<boolean>(
+    () => Boolean(getCookieValue(rememberMeCookieKey) || sessionStorage.getItem(tokenStorageKey) || localStorage.getItem(tokenStorageKey))
+  );
 
   const authHeaders = useMemo(
     () => ({
@@ -40,6 +64,8 @@ export default function App() {
 
         if (!response.ok) {
           setToken("");
+          clearCookie(rememberMeCookieKey);
+          sessionStorage.removeItem(tokenStorageKey);
           localStorage.removeItem(tokenStorageKey);
           setAuthUser(null);
           setAuthError("Session expired.");
@@ -59,9 +85,17 @@ export default function App() {
     void loadMe();
   }, [authHeaders, token]);
 
-  function handleLoginSuccess(newToken: string, user: AuthUser) {
+  function handleLoginSuccess(newToken: string, user: AuthUser, rememberMe: boolean) {
     setToken(newToken);
-    localStorage.setItem(tokenStorageKey, newToken);
+    if (rememberMe) {
+      setPermanentCookie(rememberMeCookieKey, newToken);
+      sessionStorage.removeItem(tokenStorageKey);
+      localStorage.removeItem(tokenStorageKey);
+    } else {
+      clearCookie(rememberMeCookieKey);
+      sessionStorage.setItem(tokenStorageKey, newToken);
+      localStorage.removeItem(tokenStorageKey);
+    }
     setAuthUser(user);
     setAuthError("");
     setAuthChecking(false);
@@ -77,6 +111,8 @@ export default function App() {
       headers: authHeaders
     });
 
+    clearCookie(rememberMeCookieKey);
+    sessionStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(tokenStorageKey);
     setToken("");
     setAuthUser(null);

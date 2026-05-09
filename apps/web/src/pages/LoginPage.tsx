@@ -2,16 +2,17 @@ import { FormEvent, useState } from "react";
 import { motion } from "motion/react";
 
 import { Login } from "../components/lordicon/icons";
-import { Button, Input } from "../components/ui";
+import { Button, Checkbox, Input } from "../components/ui";
 import type { AuthResponse } from "../types/auth";
 
 type LoginPageProps = {
-  onLoginSuccess: (token: string, user: AuthResponse["user"]) => void;
+  onLoginSuccess: (token: string, user: AuthResponse["user"], rememberMe: boolean) => void;
 };
 
 export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [authError, setAuthError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
@@ -37,7 +38,7 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
         throw new Error(payload.error ?? `Login failed with status ${response.status}`);
       }
 
-      onLoginSuccess(payload.token, payload.user);
+      onLoginSuccess(payload.token, payload.user, rememberMe);
       setPassword("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -77,6 +78,9 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
             required
           />
         </label>
+        <Checkbox checked={rememberMe} onCheckedChange={setRememberMe}>
+          Remember me
+        </Checkbox>
         <Button type="submit" disabled={loginLoading} stretch icon={<Login animateOnHover />}>
           {loginLoading ? "Logging in..." : "Log In"}
         </Button>
