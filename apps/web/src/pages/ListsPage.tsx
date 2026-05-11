@@ -24,7 +24,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
   const [createListDialogOpen, setCreateListDialogOpen] = useState(false);
   const [newListName, setNewListName] = useState('');
-  const [newListIsPrivate, setNewListIsPrivate] = useState(true);
+  const [newListIsPrivate, setNewListIsPrivate] = useState(false);
   const [createListLoading, setCreateListLoading] = useState(false);
   const [createListError, setCreateListError] = useState('');
 
@@ -100,7 +100,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
 
       setLists((currentLists) => [payload.list as ShoppingList, ...currentLists]);
       setNewListName('');
-      setNewListIsPrivate(true);
+      setNewListIsPrivate(false);
       setCreateListDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Neznana napaka';
@@ -122,7 +122,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   function cancelEditList() {
     setEditingListId(null);
     setEditingListName('');
-    setEditingListIsPrivate(true);
+    setEditingListIsPrivate(false);
     setUpdateListError('');
   }
 
@@ -310,7 +310,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
           onClick={() => {
             setNewListName('');
-            setNewListIsPrivate(true);
+            setNewListIsPrivate(false);
             setCreateListError('');
             setCreateListDialogOpen(true);
           }}
@@ -324,7 +324,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
             setCreateListDialogOpen(false);
             setCreateListError('');
             setNewListName('');
-            setNewListIsPrivate(true);
+            setNewListIsPrivate(false);
           }
         }}
         size="sm"
@@ -347,7 +347,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 setCreateListDialogOpen(false);
                 setCreateListError('');
                 setNewListName('');
-                setNewListIsPrivate(true);
+                setNewListIsPrivate(false);
               }}
             >
               Prekliči

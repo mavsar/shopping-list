@@ -9,7 +9,7 @@ import { parseId } from "../utils/ids.js";
 
 const createListSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  isPrivate: z.boolean().default(true)
+  isPrivate: z.boolean().default(false)
 });
 const updateListSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -85,6 +85,34 @@ function getListRole(listId: number, userId: number): ListRole | null {
   return membership?.role ?? null;
 }
 
+type ListAccess = {
+  isPrivate: boolean;
+  role: ListRole | null;
+};
+
+function getListAccess(listId: number, userId: number): ListAccess | null {
+  const access = sqlite
+    .prepare(
+      `
+      SELECT l.is_private AS isPrivate, m.role
+      FROM shopping_lists l
+      LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
+      WHERE l.id = ?
+      LIMIT 1
+      `
+    )
+    .get(userId, listId) as { isPrivate: number; role: ListRole | null } | undefined;
+
+  if (!access) {
+    return null;
+  }
+
+  return {
+    isPrivate: Boolean(access.isPrivate),
+    role: access.role
+  };
+}
+
 listsRouter.get("/", requireAuth, (_req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) {
@@ -96,8 +124,8 @@ listsRouter.get("/", requireAuth, (_req, res) => {
       `
       SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.is_private AS isPrivate, l.created_at AS createdAt, l.updated_at AS updatedAt
       FROM shopping_lists l
-      JOIN list_members m ON m.list_id = l.id
-      WHERE m.user_id = ?
+      LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
+      WHERE l.is_private = 0 OR m.user_id IS NOT NULL
       ORDER BY l.updated_at DESC
       `
     )
@@ -117,9 +145,12 @@ listsRouter.get("/:listId", requireAuth, (req, res) => {
     return res.status(400).json({ error: "Invalid listId" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
+  }
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
   }
 
   const list = sqlite
@@ -202,12 +233,16 @@ listsRouter.put("/:listId", requireAuth, (req, res) => {
     return res.status(404).json({ error: "List not found" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
   }
 
-  if (role === "viewer") {
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+
+  if (access.isPrivate && access.role === "viewer") {
     return res.status(403).json({ error: "Viewers cannot rename lists" });
   }
 
@@ -240,12 +275,16 @@ listsRouter.delete("/:listId", requireAuth, (req, res) => {
     return res.status(404).json({ error: "List not found" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
   }
 
-  if (role !== "owner") {
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+
+  if (access.isPrivate && access.role !== "owner") {
     return res.status(403).json({ error: "Only list owners can delete lists" });
   }
 
@@ -277,12 +316,16 @@ listsRouter.post("/:listId/members", requireAuth, (req, res) => {
     return res.status(404).json({ error: "List not found" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
   }
 
-  if (role !== "owner") {
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+
+  if (access.isPrivate && access.role !== "owner") {
     return res.status(403).json({ error: "Only list owners can manage members" });
   }
 
@@ -325,9 +368,12 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
 
   const status = parsed.data.status ?? "active";
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
+  }
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
   }
 
   const statement =
@@ -379,12 +425,16 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
     return res.status(404).json({ error: "List not found" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
   }
 
-  if (role === "viewer") {
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+
+  if (access.isPrivate && access.role === "viewer") {
     return res.status(403).json({ error: "Viewers cannot modify list items" });
   }
 
@@ -539,12 +589,16 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
     return res.status(404).json({ error: "List item not found" });
   }
 
-  const role = getListRole(listId, authUser.id);
-  if (!role) {
-    return res.status(403).json({ error: "You are not a member of this list" });
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
   }
 
-  if (role === "viewer") {
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+
+  if (access.isPrivate && access.role === "viewer") {
     return res.status(403).json({ error: "Viewers cannot modify list items" });
   }
 
