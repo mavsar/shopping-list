@@ -153,6 +153,7 @@ type SharedItemFormFieldsProps = {
   noteRows: 2 | 3;
   category: ItemCategory;
   onCategoryChange: (value: ItemCategory) => void;
+  categoryLoading?: boolean;
   imageSearchQuery: string;
   onImageSearchQueryChange: (value: string) => void;
   onFindImage: () => void;
@@ -185,6 +186,7 @@ function SharedItemFormFields({
   noteRows,
   category,
   onCategoryChange,
+  categoryLoading = false,
   imageSearchQuery,
   onImageSearchQueryChange,
   onFindImage,
@@ -282,16 +284,29 @@ function SharedItemFormFields({
           buttonSize={quantityButtonSize}
         />
       </div>
-      <Select
-        value={category}
-        onChange={(event) => onCategoryChange(event.target.value as ItemCategory)}
-      >
-        {itemCategoryValues.map((itemCategory) => (
-          <option key={itemCategory} value={itemCategory}>
-            {itemCategoryLabels[itemCategory]}
-          </option>
-        ))}
-      </Select>
+      <div className="relative">
+        <Select
+          value={category}
+          onChange={(event) => onCategoryChange(event.target.value as ItemCategory)}
+          disabled={categoryLoading || disabled}
+          className="w-full"
+        >
+          {itemCategoryValues.map((itemCategory) => (
+            <option key={itemCategory} value={itemCategory}>
+              {itemCategoryLabels[itemCategory]}
+            </option>
+          ))}
+        </Select>
+        {categoryLoading ? (
+          <p className="m-0 mt-1 flex items-center gap-1.5 text-xs text-slate-400 italic">
+            <svg className="h-3 w-3 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+            Gemini predlaga kategorijo...
+          </p>
+        ) : null}
+      </div>
       <Textarea
         value={note}
         onChange={(event) => onNoteChange(event.target.value)}
@@ -503,6 +518,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [newItemUnit, setNewItemUnit] = useState<ShoppingItemUnit>('kos');
   const [newItemNote, setNewItemNote] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('drugo');
+  const [newItemCategoryLoading, setNewItemCategoryLoading] = useState(false);
   const [newItemImageUrl, setNewItemImageUrl] = useState('');
   const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState('');
   const [newItemSourceUrl, setNewItemSourceUrl] = useState('');
@@ -535,6 +551,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [detailsSelectingImageCandidateUrl, setDetailsSelectingImageCandidateUrl] = useState('');
   const [detailsFindImageLoading, setDetailsFindImageLoading] = useState(false);
   const [detailsFindImageError, setDetailsFindImageError] = useState('');
+  const [detailsCategoryLoading, setDetailsCategoryLoading] = useState(false);
   const searchRequestIdRef = useRef(0);
   const categoryManualRef = useRef(false);
   const recentlyCompletedTimeoutRef = useRef<number | null>(null);
@@ -745,6 +762,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       if (categoryManualRef.current) {
         return;
       }
+      setNewItemCategoryLoading(true);
       try {
         const response = await fetch(
           `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
@@ -759,10 +777,15 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         }
       } catch {
         // silently ignore — local guess remains
+      } finally {
+        setNewItemCategoryLoading(false);
       }
     }, 500);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      setNewItemCategoryLoading(false);
+    };
   }, [newItemName, showCreateItemStep, authHeaders]);
 
   useEffect(() => {
@@ -828,6 +851,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemUnit('kos');
     setNewItemNote('');
     setNewItemCategory('drugo');
+    setNewItemCategoryLoading(false);
     categoryManualRef.current = false;
     setNewItemImageUrl('');
     setNewItemImagePreviewUrl('');
@@ -1346,11 +1370,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     const trimmed = title.trim();
     if (detailsCategoryTimeoutRef.current !== null) {
       window.clearTimeout(detailsCategoryTimeoutRef.current);
+      setDetailsCategoryLoading(false);
     }
     if (!trimmed) {
       return;
     }
     detailsCategoryTimeoutRef.current = window.setTimeout(async () => {
+      setDetailsCategoryLoading(true);
       try {
         const response = await fetch(
           `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
@@ -1363,6 +1389,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         setDetailsEditCategory(data.category as ItemCategory);
       } catch {
         // silently ignore — local guess remains
+      } finally {
+        setDetailsCategoryLoading(false);
       }
     }, 500);
   }
@@ -1678,6 +1706,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                     categoryManualRef.current = true;
                     setNewItemCategory(value);
                   }}
+                  categoryLoading={newItemCategoryLoading}
                   imageSearchQuery={imageSearchQuery}
                   onImageSearchQueryChange={setImageSearchQuery}
                   onFindImage={findImage}
@@ -1764,6 +1793,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               noteRows={3}
               category={detailsEditCategory}
               onCategoryChange={setDetailsEditCategory}
+              categoryLoading={detailsCategoryLoading}
               imageSearchQuery={detailsImageSearchQuery}
               onImageSearchQueryChange={setDetailsImageSearchQuery}
               onFindImage={findDetailsImage}
