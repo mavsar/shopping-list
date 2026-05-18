@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
-import { inferCategoryFromTitle, itemCategoryValues } from "../domain/item-category.js";
+import { itemCategoryValues } from "../domain/item-category.js";
 import { formatItemTitle, normalizeTitle, unitValues } from "../domain/items.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
+import { classifyCategory } from "../services/category-classifier.js";
 import { parseId } from "../utils/ids.js";
 
 const createListSchema = z.object({
@@ -401,7 +402,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
   return res.json({ items });
 });
 
-listsRouter.post("/:listId/items", requireAuth, (req, res) => {
+listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) {
     return res.status(401).json({ error: "Authentication required" });
@@ -442,7 +443,9 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
   const formattedTitle = formatItemTitle(payload.title);
   const normalizedTitle = normalizeTitle(formattedTitle);
 
-  const assignItem = sqlite.transaction(() => {
+  const preResolvedCategory = payload.category ?? await classifyCategory(formattedTitle);
+
+  const assignItem = sqlite.transaction((resolvedCategory: string) => {
     let createdItem = false;
     let itemId: number;
 
@@ -461,7 +464,6 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
         sqlite.prepare("UPDATE items SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(payload.category, itemId);
       }
     } else {
-      const resolvedCategory = payload.category ?? inferCategoryFromTitle(formattedTitle);
       const itemInsert = sqlite
         .prepare(
           "INSERT INTO items (normalized_title, title, image_url, source_url, category) VALUES (?, ?, ?, ?, ?)"
@@ -542,7 +544,7 @@ listsRouter.post("/:listId/items", requireAuth, (req, res) => {
     return { listItem, createdItem, reusedAssignment: false };
   });
 
-  const result = assignItem();
+  const result = assignItem(preResolvedCategory);
   return res.status(201).json(result);
 });
 

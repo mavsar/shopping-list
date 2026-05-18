@@ -538,6 +538,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const searchRequestIdRef = useRef(0);
   const categoryManualRef = useRef(false);
   const recentlyCompletedTimeoutRef = useRef<number | null>(null);
+  const detailsCategoryTimeoutRef = useRef<number | null>(null);
 
   const detailsItem = useMemo(
     () =>
@@ -734,7 +735,35 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       return;
     }
     setNewItemCategory(inferCategoryFromTitle(newItemName));
-  }, [newItemName, showCreateItemStep]);
+
+    const trimmed = newItemName.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      if (categoryManualRef.current) {
+        return;
+      }
+      try {
+        const response = await fetch(
+          `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
+          { headers: authHeaders },
+        );
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { category: string };
+        if (!categoryManualRef.current) {
+          setNewItemCategory(data.category as ItemCategory);
+        }
+      } catch {
+        // silently ignore — local guess remains
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [newItemName, showCreateItemStep, authHeaders]);
 
   useEffect(() => {
     if (!addDialogOpen || showCreateItemStep) {
@@ -1313,6 +1342,29 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
   function applyDetailsCategoryGuessFromTitle(title: string) {
     setDetailsEditCategory(inferCategoryFromTitle(title));
+
+    const trimmed = title.trim();
+    if (detailsCategoryTimeoutRef.current !== null) {
+      window.clearTimeout(detailsCategoryTimeoutRef.current);
+    }
+    if (!trimmed) {
+      return;
+    }
+    detailsCategoryTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
+          { headers: authHeaders },
+        );
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { category: string };
+        setDetailsEditCategory(data.category as ItemCategory);
+      } catch {
+        // silently ignore — local guess remains
+      }
+    }, 500);
   }
 
   function handleDetailsEditNameChange(value: string) {

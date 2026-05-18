@@ -13,11 +13,13 @@ export const itemCategoryValues = [
   "pekovski_izdelki",
   "pijace",
   "pisalne_potrebscine",
-  "prigrizki_in_sladkarije",
+  "prigrizki",
+  "sladkarije",
   "pripravljeni_obroki",
   "rastlinski_izdelki",
   "ribe_in_morski_sadezi",
-  "sadje_in_zelenjava",
+  "sadje",
+  "zelenjava",
   "suhi_izdelki",
   "za_otroke",
   "zamrznjeni_izdelki",
@@ -263,20 +265,32 @@ const CATEGORY_SIGNALS: Record<ItemCategory, CategorySignals> = {
     phrases: ["pisalne", "svincnik", "svinčnik", "kemicni", "kemični", "marker", "zvezek", "papir", "flomaster"],
     tokens: ["radirka", "lepilo", "mapa", "flomaster", "nalivno", "korektor", "blok", "sestilo", "ravnilo", "selotejp", "fascikel"]
   },
-  prigrizki_in_sladkarije: {
+  prigrizki: {
+    strongPhrases: [
+      "slan krompircek",
+      "slan krompirček",
+      "slani prestici",
+      "slane palcke",
+      "slani krasenci",
+      "slani orescki",
+      "slani arašidi"
+    ],
+    phrases: ["prigriz", "snack", "chips", "cips", "čips", "pokovka", "kokice"],
+    tokens: ["palcke", "palčke", "pokovka", "kokice", "doritos", "pringles", "nachos", "krasenci", "preste", "receljc", "pistacija", "arašid"],
+    avoid: ["cokolad", "čokolad", "bonbon", "keks", "sladkar"]
+  },
+  sladkarije: {
     strongPhrases: [
       "mlecna cokolada",
       "mlečna čokolada",
-      "slan krompircek",
-      "slan krompirček",
       "gumijasti bonboni",
       "cokoladni bonboni",
       "cokoladni namaz",
-      "slani prestici",
-      "slane palcke"
+      "zelatinasti bonboni"
     ],
-    phrases: ["prigriz", "sladkar", "snack", "chips", "cips", "čips", "cokolad", "čokolad", "bonbon", "keks", "cookie", "candy", "vafelj", "napolitanke"],
-    tokens: ["oreo", "milka", "kinder", "nutella", "pokovka", "kokice", "palcke", "palčke", "vafelj", "haribo", "twix", "snickers", "doritos"]
+    phrases: ["sladkar", "cokolad", "čokolad", "bonbon", "keks", "cookie", "candy", "vafelj", "napolitanke"],
+    tokens: ["oreo", "milka", "kinder", "nutella", "vafelj", "haribo", "twix", "snickers", "lizzies", "ferrero", "raffaello"],
+    avoid: ["chips", "cips", "čips", "prigriz", "pokovka", "kokice"]
   },
   pripravljeni_obroki: {
     strongPhrases: [
@@ -324,23 +338,31 @@ const CATEGORY_SIGNALS: Record<ItemCategory, CategorySignals> = {
     phrases: ["riba", "fish", "losos", "tuna", "tun", "lignji", "hobotnica", "morski", "sardela", "skuša", "skusa"],
     tokens: ["sardina", "postrv", "brancin", "orada", "skampi", "škampi", "shrimp", "clam", "dagnje", "trska", "oslic", "lososov"]
   },
-  sadje_in_zelenjava: {
+  sadje: {
+    strongPhrases: [
+      "sveze sadje",
+      "sveže sadje",
+      "sveze jagode",
+      "sveže jagode",
+      "mesano sadje",
+      "svezo sadje"
+    ],
+    phrases: ["sadje", "fruit", "jabol", "banan", "jagod", "grozd"],
+    tokens: ["avokado", "limona", "pomaranca", "pomaranča", "hruška", "hruska", "mandarina", "kivi", "ananas", "mango", "breskev", "marelica", "sliva", "figa", "malina", "borovnica", "ribez", "ribež"]
+  },
+  zelenjava: {
     strongPhrases: [
       "sveza zelenjava",
       "sveža zelenjava",
-      "sveze sadje",
-      "sveže sadje",
       "cesnjev paradiznik",
       "češnjev paradižnik",
       "mesana solata",
       "zelena solata",
-      "sveze jagode",
-      "sveže jagode",
       "sladek krompir",
       "rdeca cebula"
     ],
-    phrases: ["sadje", "zelenjava", "fruit", "vegetable", "jabol", "banan", "paradiznik", "krompir", "solata", "korenje", "paprika", "kumara", "brokoli"],
-    tokens: ["cvetaca", "cvetača", "cebula", "čebula", "cesen", "česen", "avokado", "limona", "pomaranca", "pomaranča", "hruška", "hruska", "mandarina", "bučka", "bucka"]
+    phrases: ["zelenjava", "vegetable", "paradiznik", "krompir", "solata", "korenje", "paprika", "kumara", "brokoli"],
+    tokens: ["cvetaca", "cvetača", "cebula", "čebula", "cesen", "česen", "bučka", "bucka", "por", "koleraba", "repa", "zelje", "špinača", "spinaca", "rukola", "artičoka", "špargelj", "batat", "fižol", "fizol", "grah"]
   },
   suhi_izdelki: {
     strongPhrases: [
@@ -451,12 +473,14 @@ const CATEGORY_PRIORITY: ItemCategory[] = [
   "mlecni_izdelki_in_jajca",
   "meso_in_perutnina",
   "ribe_in_morski_sadezi",
-  "sadje_in_zelenjava",
+  "sadje",
+  "zelenjava",
   "pekovski_izdelki",
   "suhi_izdelki",
   "konzervirana_zivila",
   "zamrznjeni_izdelki",
-  "prigrizki_in_sladkarije",
+  "prigrizki",
+  "sladkarije",
   "zacimbe_omake_in_olja",
   "rastlinski_izdelki",
   "pripravljeni_obroki",

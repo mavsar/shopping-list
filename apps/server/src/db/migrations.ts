@@ -252,6 +252,69 @@ const migrations: Migration[] = [
 
       PRAGMA foreign_keys = ON;
     `
+  },
+  {
+    name: "010_items_category_split_sadje_prigrizki",
+    sql: `
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE IF NOT EXISTS items_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        normalized_title TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        image_url TEXT,
+        source_url TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        category TEXT NOT NULL DEFAULT 'drugo'
+        CHECK(category IN (
+          'alkoholi',
+          'dom_in_vrt',
+          'drugo',
+          'elektronika',
+          'hisni_ljubljencki',
+          'kava_in_caj',
+          'konzervirana_zivila',
+          'meso_in_perutnina',
+          'mlecni_izdelki_in_jajca',
+          'oblacila',
+          'osebna_nega',
+          'pekovski_izdelki',
+          'pijace',
+          'pisalne_potrebscine',
+          'prigrizki',
+          'sladkarije',
+          'pripravljeni_obroki',
+          'rastlinski_izdelki',
+          'ribe_in_morski_sadezi',
+          'sadje',
+          'zelenjava',
+          'suhi_izdelki',
+          'za_otroke',
+          'zamrznjeni_izdelki',
+          'zacimbe_omake_in_olja',
+          'zdravje',
+          'ciscenje_in_pranje'
+        ))
+      );
+
+      INSERT INTO items_new (id, normalized_title, title, image_url, source_url, created_at, updated_at, category)
+      SELECT
+        id, normalized_title, title, image_url, source_url, created_at, updated_at,
+        CASE category
+          WHEN 'sadje_in_zelenjava' THEN 'drugo'
+          WHEN 'prigrizki_in_sladkarije' THEN 'drugo'
+          ELSE category
+        END
+      FROM items;
+
+      DROP TABLE items;
+      ALTER TABLE items_new RENAME TO items;
+
+      CREATE INDEX IF NOT EXISTS idx_items_normalized_title ON items(normalized_title);
+
+      PRAGMA foreign_keys = ON;
+    `
   }
 ];
 
@@ -275,7 +338,8 @@ export function runMigrations(sqlite: Database.Database): void {
     if (
       migration.name === "006_items_category_eggs_split" ||
       migration.name === "007_expand_list_item_units" ||
-      migration.name === "009_items_category_taxonomy_refresh"
+      migration.name === "009_items_category_taxonomy_refresh" ||
+      migration.name === "010_items_category_split_sadje_prigrizki"
     ) {
       // These migrations rebuild tables; run outside transaction so foreign key pragma can take effect.
       sqlite.exec("PRAGMA foreign_keys = OFF;");

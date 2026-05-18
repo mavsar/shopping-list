@@ -9,10 +9,15 @@ import { z } from "zod";
 import { sqlite } from "../db/client.js";
 import { normalizeTitle } from "../domain/items.js";
 import { requireAuth } from "../middleware/auth.js";
+import { classifyCategory } from "../services/category-classifier.js";
 
 const suggestQuerySchema = z.object({
   q: z.string().trim().max(200),
   limit: z.coerce.number().int().min(1).max(500).optional()
+});
+
+const suggestCategoryQuerySchema = z.object({
+  title: z.string().trim().min(1).max(200)
 });
 
 const findImageQuerySchema = z.object({
@@ -818,6 +823,19 @@ itemsRouter.get("/suggest", requireAuth, (req, res) => {
     .all(`%${query}%`, limit);
 
   return res.json({ items });
+});
+
+itemsRouter.get("/suggest-category", requireAuth, async (req, res) => {
+  const parsed = suggestCategoryQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid query parameters",
+      details: parsed.error.flatten()
+    });
+  }
+
+  const category = await classifyCategory(parsed.data.title);
+  return res.json({ category });
 });
 
 itemsRouter.get("/search-images", requireAuth, async (req, res) => {
