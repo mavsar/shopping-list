@@ -617,7 +617,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   }, [items]);
 
   const completedVisibleItems = useMemo(
-    () => items.filter((row) => row.status === 'completed').sort(sortShoppingItemsNewestFirst),
+    () =>
+      items
+        .filter((row) => row.status === 'completed')
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [items],
   );
 

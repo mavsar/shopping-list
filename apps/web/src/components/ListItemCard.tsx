@@ -1,4 +1,19 @@
 import { cx } from 'class-variance-authority';
+
+const SLOVENIAN_MONTHS = [
+  'januar', 'februar', 'marec', 'april', 'maj', 'junij',
+  'julij', 'avgust', 'september', 'oktober', 'november', 'december',
+];
+
+function formatCompletedAt(isoString: string): string {
+  const d = new Date(isoString);
+  const day = d.getDate();
+  const month = SLOVENIAN_MONTHS[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year} ob ${hours}:${minutes}`;
+}
 import { motion } from 'motion/react';
 import type { Transition } from 'motion/react';
 
@@ -80,7 +95,7 @@ export function ListItemCard({
             {formatTitle(item.title)}
             {item.status === 'completed' ? (
               <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">
-                · Kupljeno
+                · Kupljeno ({formatCompletedAt(item.updatedAt)})
               </span>
             ) : null}
           </button>
