@@ -18,7 +18,7 @@ import {
 } from '../components/lordicon/icons';
 import { Button, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
 import type { ItemCategory } from '../domain/item-category';
-import { inferCategoryFromTitle, itemCategoryValues } from '../domain/item-category';
+import { itemCategoryValues } from '../domain/item-category';
 import { toListSlug } from '../domain/list-slug';
 import type { AuthUser } from '../types/auth';
 import {
@@ -751,18 +751,19 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     if (!showCreateItemStep || categoryManualRef.current) {
       return;
     }
-    setNewItemCategory(inferCategoryFromTitle(newItemName));
 
     const trimmed = newItemName.trim();
     if (!trimmed) {
+      setNewItemCategoryLoading(false);
       return;
     }
 
+    setNewItemCategoryLoading(true);
     const timeout = window.setTimeout(async () => {
       if (categoryManualRef.current) {
+        setNewItemCategoryLoading(false);
         return;
       }
-      setNewItemCategoryLoading(true);
       try {
         const response = await fetch(
           `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
@@ -1365,18 +1366,18 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   }
 
   function applyDetailsCategoryGuessFromTitle(title: string) {
-    setDetailsEditCategory(inferCategoryFromTitle(title));
-
-    const trimmed = title.trim();
     if (detailsCategoryTimeoutRef.current !== null) {
       window.clearTimeout(detailsCategoryTimeoutRef.current);
-      setDetailsCategoryLoading(false);
     }
+
+    const trimmed = title.trim();
     if (!trimmed) {
+      setDetailsCategoryLoading(false);
       return;
     }
+
+    setDetailsCategoryLoading(true);
     detailsCategoryTimeoutRef.current = window.setTimeout(async () => {
-      setDetailsCategoryLoading(true);
       try {
         const response = await fetch(
           `/api/items/suggest-category?title=${encodeURIComponent(trimmed)}`,
