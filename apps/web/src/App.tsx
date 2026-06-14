@@ -7,6 +7,7 @@ import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { ListDetailsPage } from "./pages/ListDetailsPage";
 import { ListsPage } from "./pages/ListsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RecipesPage } from "./pages/RecipesPage";
 import type { AuthUser } from "./types/auth";
 import { rememberMeCookieKey, tokenStorageKey } from "./ui/constants";
 
@@ -168,6 +169,18 @@ export default function App() {
               <p className="text-slate-300">Checking session...</p>
             ) : authUser ? (
               <ListDetailsPage token={token} authUser={authUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/recipes"
+          element={
+            authChecking ? (
+              <p className="text-slate-300">Checking session...</p>
+            ) : authUser ? (
+              <RecipesPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )

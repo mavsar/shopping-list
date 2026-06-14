@@ -13,7 +13,6 @@ import {
   Minus,
   Plus,
   Search,
-  SettingsCog,
   Trash2,
 } from '../components/lordicon/icons';
 import { Button, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
@@ -1454,36 +1453,24 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     <>
       <AppHeader
         title={list ? list.name : initialListName || 'Seznam'}
+        authUser={authUser}
+        onLogout={_onLogout}
         syncInfo={{
           lastSyncedAt,
           refreshing: listLoading || itemsLoading,
           onRefresh: refreshData,
         }}
         actions={
-          <>
-            <Button
-              color="white"
-              appearance="outline"
-              type="button"
-              icon={<ArrowLeft animateOnHover />}
-              iconOnly
-              aria-label="Nazaj"
-              title="Nazaj"
-              onClick={() => navigate('/')}
-            />
-            {authUser.isAdmin ? (
-              <Button
-                color="white"
-                appearance="outline"
-                type="button"
-                icon={<SettingsCog animation="default" />}
-                iconOnly
-                aria-label="Skrbništvo"
-                title="Skrbništvo"
-                onClick={() => navigate('/admin/users')}
-              />
-            ) : null}
-          </>
+          <Button
+            color="white"
+            appearance="outline"
+            type="button"
+            icon={<ArrowLeft animateOnHover />}
+            iconOnly
+            aria-label="Nazaj"
+            title="Nazaj"
+            onClick={() => navigate('/')}
+          />
         }
       />
 

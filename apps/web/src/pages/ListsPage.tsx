@@ -3,7 +3,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AppHeader } from '../components/AppHeader';
-import { CheckCheck, Edit, Plus, SettingsCog, Trash2 } from '../components/lordicon/icons';
+import { CheckCheck, Edit, Plus, Trash2 } from '../components/lordicon/icons';
 import { Button, Card, Checkbox, Dialog, Input, Loader } from '../components/ui';
 import { toListSlug } from '../domain/list-slug';
 import type { AuthUser } from '../types/auth';
@@ -208,27 +208,13 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
     <>
       <AppHeader
         title="Nakupovalni seznami"
+        authUser={authUser}
+        onLogout={onLogout}
         syncInfo={{
           lastSyncedAt,
           refreshing: listsLoading,
           onRefresh: loadLists,
         }}
-        actions={
-          <>
-            {authUser.isAdmin ? (
-              <Button
-                color="white"
-                appearance="outline"
-                type="button"
-                icon={<SettingsCog animation="default" />}
-                iconOnly
-                aria-label="Skrbništvo"
-                title="Skrbništvo"
-                onClick={() => navigate('/admin/users')}
-              />
-            ) : null}
-          </>
-        }
       />
 
       <motion.section

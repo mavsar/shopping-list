@@ -55,3 +55,15 @@ export function Edit(props: IconProps) {
   return <LordIcon src="/lordicon/edit.json" {...props} />;
 }
 
+export function GridList(props: IconProps) {
+  return <LordIcon src="/lordicon/grid-list.json" {...props} />;
+}
+
+export function BookRecipes(props: IconProps) {
+  return <LordIcon src="/lordicon/items.json" {...props} />;
+}
+
+export function ShoppingBasket(props: IconProps) {
+  return <LordIcon src="/lordicon/basket.json" {...props} />;
+}
+

@@ -1,8 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { useNavigate } from "react-router-dom";
 
-import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
+import { Edit, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
 import { Button, Card, Checkbox, Dialog, Input, Label, Loader, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
@@ -43,7 +42,6 @@ function DialogFormFooterActions({
 }
 
 export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProps) {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [usersError, setUsersError] = useState("");
   const [usersLoading, setUsersLoading] = useState(false);
@@ -265,28 +263,8 @@ export function AdminUsersPage({ token, authUser, onLogout }: AdminUsersPageProp
     <>
       <AppHeader
         title="Skrbništvo"
-        syncInfo={{
-          lastSyncedAt,
-          refreshing: usersLoading,
-          onRefresh: loadUsers
-        }}
-        actions={
-          <>
-            <Button color="white" appearance="outline" type="button" onClick={() => navigate("/")}>
-              Aplikacija
-            </Button>
-            <Button
-              color="white"
-              appearance="outline"
-              type="button"
-              icon={<LogOut animateOnHover />}
-              iconOnly
-              aria-label="Odjava"
-              title="Odjava"
-              onClick={() => void onLogout()}
-            />
-          </>
-        }
+        authUser={authUser}
+        onLogout={onLogout}
       />
 
       <section className="mt-6">
