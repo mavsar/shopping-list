@@ -1021,6 +1021,153 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
   return res.status(201).json({ recipe: mapSavedRecipeRow(row) });
 });
 
+// ---------- Check ingredient against a shopping list (parse + smart dedup) ----------
+
+const VALID_UNITS = [
+  "kos", "g", "dag", "kg", "ml", "dl", "l",
+  "zlicka", "zlica", "skodelica", "paket", "zavoj",
+  "vrecka", "steklenica", "plocevinka", "kozarec",
+  "strok", "sopek", "scepec",
+] as const;
+
+const checkIngredientSchema = z.object({
+  ingredient: z.string().trim().min(1).max(500),
+  baseServings: z.number().positive().default(1),
+  targetServings: z.number().positive().default(1),
+  listId: z.number().int().positive(),
+});
+
+recipesRouter.post("/check-ingredient", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const parsed = checkIngredientSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const { ingredient, baseServings, targetServings, listId } = parsed.data;
+
+  // Verify list access
+  const access = sqlite
+    .prepare(
+      `SELECT l.is_private AS isPrivate, m.role
+       FROM shopping_lists l
+       LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
+       WHERE l.id = ? LIMIT 1`
+    )
+    .get(authUser.id, listId) as { isPrivate: number; role: string | null } | undefined;
+
+  if (!access) return res.status(404).json({ error: "List not found" });
+  if (access.isPrivate && !access.role) return res.status(403).json({ error: "Access denied" });
+
+  // Fetch active items from the target list
+  const listItems = sqlite
+    .prepare(
+      `SELECT li.id, i.title, li.quantity, li.unit
+       FROM list_items li
+       JOIN items i ON i.id = li.item_id
+       WHERE li.list_id = ? AND li.status = 'active'`
+    )
+    .all(listId) as Array<{ id: number; title: string; quantity: number; unit: string }>;
+
+  // Default fallback result
+  let parsedIngredient = { title: ingredient, quantity: 1, unit: "kos" };
+  let match: {
+    type: "exact" | "similar" | "unit_conflict";
+    listItemId: number;
+    listItemTitle: string;
+    listItemQuantity: number;
+    listItemUnit: string;
+    suggestion?: string;
+  } | null = null;
+
+  if (genai) {
+    const scale = targetServings / baseServings;
+    const itemsContext =
+      listItems.length > 0
+        ? `\n\nExisting active items on the shopping list (check for duplicates):\n${JSON.stringify(
+            listItems.map((item) => ({ id: item.id, title: item.title, unit: item.unit }))
+          )}`
+        : "";
+
+    const prompt = `You are helping manage a shopping list. Parse the following recipe ingredient string and check whether it already exists on the shopping list.
+
+Ingredient: "${ingredient}"
+Recipe base servings: ${baseServings}, target servings: ${targetServings} → scale quantities by factor ${scale.toFixed(4)}.
+Valid units (pick the most fitting): ${VALID_UNITS.join(", ")}${itemsContext}
+
+Instructions:
+- Extract the ingredient name (title) without quantity or unit.
+- Calculate the scaled quantity (multiply original quantity by ${scale.toFixed(4)}, round to at most 2 decimal places).
+- Choose the most appropriate unit from the valid units list.
+- If there are existing items: check if any of them is the same ingredient (exact) or very similar (e.g. minor spelling variation, synonym, different language). Do NOT match completely different ingredients.
+- If found: set "match" with the existing item's id and whether it is "exact" or "similar".
+
+Return ONLY valid JSON, no markdown:
+{
+  "parsed": { "title": "...", "quantity": <number>, "unit": "..." },
+  "match": null
+}
+OR when a match is found:
+{
+  "parsed": { "title": "...", "quantity": <number>, "unit": "..." },
+  "match": { "type": "exact" | "similar", "id": <existing item id from the list>, "suggestion": "<optional short explanation>" }
+}`;
+
+    try {
+      const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+      const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+      const result = JSON.parse(raw) as {
+        parsed?: { title?: string; quantity?: number; unit?: string };
+        match?: null | { type?: string; id?: number; suggestion?: string };
+      };
+
+      if (typeof result.parsed?.title === "string" && result.parsed.title) {
+        parsedIngredient.title = result.parsed.title;
+      }
+      if (typeof result.parsed?.quantity === "number" && result.parsed.quantity > 0) {
+        parsedIngredient.quantity = result.parsed.quantity;
+      }
+      if (typeof result.parsed?.unit === "string" && (VALID_UNITS as readonly string[]).includes(result.parsed.unit)) {
+        parsedIngredient.unit = result.parsed.unit;
+      }
+
+      if (result.match && typeof result.match.id === "number") {
+        const matchedItem = listItems.find((item) => item.id === result.match!.id);
+        if (matchedItem) {
+          const hasSameUnit = matchedItem.unit === parsedIngredient.unit;
+          match = {
+            type: !hasSameUnit ? "unit_conflict" : result.match.type === "exact" ? "exact" : "similar",
+            listItemId: matchedItem.id,
+            listItemTitle: matchedItem.title,
+            listItemQuantity: matchedItem.quantity,
+            listItemUnit: matchedItem.unit,
+            suggestion: result.match.suggestion,
+          };
+        }
+      }
+    } catch {
+      // Fallback: scale leading number if present
+      const scale = targetServings / baseServings;
+      const numMatch = /^(\d+(?:[.,]\d+)?)\s*/.exec(ingredient.trim());
+      if (numMatch) {
+        parsedIngredient.quantity = parseFloat(numMatch[1].replace(",", ".")) * scale;
+      }
+    }
+  } else {
+    // No Gemini: basic numeric scaling from leading number
+    const scale = targetServings / baseServings;
+    const numMatch = /^(\d+(?:[.,]\d+)?)\s*/.exec(ingredient.trim());
+    if (numMatch) {
+      parsedIngredient.quantity = Math.round(parseFloat(numMatch[1].replace(",", ".")) * scale * 100) / 100;
+    }
+    parsedIngredient.title = ingredient.replace(/^\d+(?:[.,]\d+)?\s*\S*\s*/, "").trim() || ingredient;
+  }
+
+  return res.json({ parsed: parsedIngredient, match });
+});
+
 recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) {

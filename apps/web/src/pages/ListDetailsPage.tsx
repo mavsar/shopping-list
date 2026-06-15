@@ -15,7 +15,7 @@ import {
   Search,
   Trash2,
 } from '../components/lordicon/icons';
-import { Button, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
+import { Button, Checkbox, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
 import type { ItemCategory } from '../domain/item-category';
 import { itemCategoryValues } from '../domain/item-category';
 import { toListSlug } from '../domain/list-slug';
@@ -114,7 +114,7 @@ function ItemQuantityUnitControls({
         ref={inputRef}
         type="text"
         inputMode="decimal"
-        className="w-12 text-center"
+        className="w-20 text-center"
         value={inputText}
         onChange={(event) => {
           setInputText(event.target.value);
@@ -586,6 +586,10 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [detailsFindImageLoading, setDetailsFindImageLoading] = useState(false);
   const [detailsFindImageError, setDetailsFindImageError] = useState('');
   const [detailsCategoryLoading, setDetailsCategoryLoading] = useState(false);
+  const [deleteConfirmItemId, setDeleteConfirmItemId] = useState<number | null>(null);
+  const [deleteFromCatalog, setDeleteFromCatalog] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
+  const [deleteItemError, setDeleteItemError] = useState('');
   const searchRequestIdRef = useRef(0);
   const categoryManualRef = useRef(false);
   const recentlyCompletedTimeoutRef = useRef<number | null>(null);
@@ -1542,6 +1546,27 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setDetailsListItemId(null);
   }
 
+  async function deleteListItem(listItemId: number, fromCatalog: boolean) {
+    if (!resolvedListId) return;
+    setDeletingItemId(listItemId);
+    setDeleteItemError('');
+    try {
+      const url = `/api/lists/${resolvedListId}/items/${listItemId}?deleteFromCatalog=${fromCatalog}`;
+      const response = await fetch(url, { method: 'DELETE', headers: authHeaders });
+      if (!response.ok && response.status !== 204) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Brisanje ni uspelo (status ${response.status}).`);
+      }
+      setItems((current) => current.filter((item) => item.id !== listItemId));
+      setDeleteConfirmItemId(null);
+      setDetailsListItemId(null);
+    } catch (error) {
+      setDeleteItemError(error instanceof Error ? error.message : 'Neznana napaka');
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
+
   return (
     <>
       <AppHeader
@@ -1845,6 +1870,22 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               >
                 Prekliči
               </Button>
+              <Button
+                type="button"
+                color="danger"
+                appearance="outline"
+                icon={<Trash2 animateOnHover />}
+                iconOnly
+                aria-label="Izbriši artikel"
+                title="Izbriši artikel"
+                className="ml-auto"
+                disabled={updatingItemId === detailsItem.id}
+                onClick={() => {
+                  setDeleteConfirmItemId(detailsItem.id);
+                  setDeleteFromCatalog(false);
+                  setDeleteItemError('');
+                }}
+              />
             </>
           ) : null
         }
@@ -1895,6 +1936,81 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           </form>
         ) : null}
       </Dialog>
+
+      {/* Delete confirmation dialog */}
+      {(() => {
+        const itemToDelete = deleteConfirmItemId !== null
+          ? items.find((item) => item.id === deleteConfirmItemId) ?? null
+          : null;
+        return (
+          <Dialog
+            open={deleteConfirmItemId !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDeleteConfirmItemId(null);
+                setDeleteItemError('');
+              }
+            }}
+            size="sm"
+            closeOnOverlayClick={deletingItemId === null}
+            title="Izbriši artikel"
+            description={
+              itemToDelete ? (
+                <>
+                  Ali res želiš trajno izbrisati{' '}
+                  <strong className="text-slate-100">{formatItemTitle(itemToDelete.title)}</strong>?
+                </>
+              ) : undefined
+            }
+            footer={
+              <>
+                <Button
+                  type="button"
+                  color="danger"
+                  disabled={deletingItemId !== null}
+                  onClick={() => {
+                    if (deleteConfirmItemId !== null) {
+                      void deleteListItem(deleteConfirmItemId, deleteFromCatalog);
+                    }
+                  }}
+                >
+                  {deletingItemId !== null ? 'Brišem...' : 'Izbriši'}
+                </Button>
+                <Button
+                  type="button"
+                  color="white"
+                  appearance="outline"
+                  disabled={deletingItemId !== null}
+                  onClick={() => {
+                    setDeleteConfirmItemId(null);
+                    setDeleteItemError('');
+                  }}
+                >
+                  Prekliči
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-3">
+              <Checkbox
+                checked={deleteFromCatalog}
+                onCheckedChange={setDeleteFromCatalog}
+                disabled={deletingItemId !== null}
+              >
+                Izbriši tudi iz kataloga artiklov
+              </Checkbox>
+              {deleteFromCatalog && (
+                <p className="text-xs text-amber-300/80">
+                  Artikel bo trajno odstranjen s prav vseh nakupovalnih seznamov.
+                </p>
+              )}
+              {deleteItemError && (
+                <p className="text-xs text-rose-300">{deleteItemError}</p>
+              )}
+            </div>
+          </Dialog>
+        );
+      })()}
     </>
   );
 }

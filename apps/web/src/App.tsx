@@ -11,6 +11,7 @@ const ListDetailsPage = lazy(() => import("./pages/ListDetailsPage").then((m) =>
 const ListsPage = lazy(() => import("./pages/ListsPage").then((m) => ({ default: m.ListsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const RecipesPage = lazy(() => import("./pages/RecipesPage").then((m) => ({ default: m.RecipesPage })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
 function getCookieValue(name: string): string {
   const value = document.cookie
@@ -161,6 +162,18 @@ export default function App() {
               <AdminUsersPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (
               <Navigate to={authUser ? "/" : "/login"} replace />
+            )
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            authChecking ? (
+              <p className="text-slate-300">Checking session...</p>
+            ) : authUser ? (
+              <SettingsPage token={token} authUser={authUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
             )
           }
         />

@@ -560,6 +560,49 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
   return res.status(201).json(result);
 });
 
+listsRouter.delete("/:listId/items/:listItemId", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const listId = typeof req.params.listId === "string" ? parseId(req.params.listId) : null;
+  const listItemId = typeof req.params.listItemId === "string" ? parseId(req.params.listItemId) : null;
+
+  if (!listId || !listItemId) {
+    return res.status(400).json({ error: "Invalid listId or listItemId" });
+  }
+
+  const access = getListAccess(listId, authUser.id);
+  if (!access) {
+    return res.status(404).json({ error: "List not found" });
+  }
+  if (access.isPrivate && !access.role) {
+    return res.status(403).json({ error: "This list is private" });
+  }
+  if (access.isPrivate && access.role === "viewer") {
+    return res.status(403).json({ error: "Viewers cannot delete items" });
+  }
+
+  const listItem = sqlite
+    .prepare("SELECT id, item_id AS itemId FROM list_items WHERE id = ? AND list_id = ? LIMIT 1")
+    .get(listItemId, listId) as { id: number; itemId: number } | undefined;
+
+  if (!listItem) {
+    return res.status(404).json({ error: "List item not found" });
+  }
+
+  const deleteFromCatalog = req.query.deleteFromCatalog === "true";
+
+  sqlite.prepare("DELETE FROM list_items WHERE id = ?").run(listItemId);
+
+  if (deleteFromCatalog) {
+    sqlite.prepare("DELETE FROM items WHERE id = ?").run(listItem.itemId);
+  }
+
+  return res.status(204).send();
+});
+
 listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) {

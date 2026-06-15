@@ -157,21 +157,21 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
 
             {/* footer row: settings + logout */}
             <div className="flex items-center gap-3 rounded-2xl border border-white/20 bg-slate-900/85 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
-              {authUser?.isAdmin && (
+              {authUser && (
                 <button
                   type="button"
-                  onClick={() => { setOpen(false); navigate('/admin/users'); }}
+                  onClick={() => { setOpen(false); navigate('/settings'); }}
                   className={`flex flex-1 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45 ${
-                    location.pathname === '/admin/users'
+                    location.pathname === '/settings'
                       ? 'bg-cyan-500/12 text-cyan-300'
                       : 'text-slate-300 hover:bg-white/6 hover:text-slate-100'
                   }`}
                 >
                   <SettingsCog size={20} animateOnHover />
-                  Skrbništvo
+                  Nastavitve
                 </button>
               )}
-              {authUser?.isAdmin && onLogout && (
+              {authUser && onLogout && (
                 <div className="h-5 w-px bg-white/10" />
               )}
               {onLogout && (
