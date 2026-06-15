@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
-import { Minus, Plus, Search, Trash2, X } from '../components/lordicon/icons';
+import { Minus, Plus, ReadyToEat, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/fields/checkbox';
 import { Dialog } from '../components/ui/dialog';
@@ -1579,9 +1579,7 @@ function SearchOverlay({
 
                 {!searching && !searched && (
                   <div className="flex flex-col items-center gap-3 py-16 text-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                      <Search size={32} animate />
-                    </div>
+                    <ReadyToEat size={96} animate />
                     <p className="text-sm text-slate-400">Vnesi ime jedi ali sestavine</p>
                   </div>
                 )}

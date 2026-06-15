@@ -67,3 +67,7 @@ export function ShoppingBasket(props: IconProps) {
   return <LordIcon src="/lordicon/basket.json" {...props} />;
 }
 
+export function ReadyToEat(props: IconProps) {
+  return <LordIcon src="/lordicon/ready-to-eat.json" {...props} />;
+}
+

@@ -618,6 +618,40 @@ async function findFirstLargeImage(
   return undefined;
 }
 
+/**
+ * Asks Gemini to select the most relevant recipe/food images from a list of candidate URLs.
+ * Falls back to the first 8 candidates when Gemini is not configured or fails.
+ */
+async function filterGalleryImagesWithGemini(
+  candidates: string[],
+  recipeTitle: string,
+): Promise<string[]> {
+  if (candidates.length === 0) return [];
+  if (!genai || candidates.length <= 2) return candidates.slice(0, 8);
+
+  const prompt = `You are curating a photo gallery for a recipe page titled "${recipeTitle}".
+From the following image URLs, select only those that likely show: the finished dish, ingredients, or step-by-step cooking photos.
+Reject any that look like: author/avatar photos, site logos, advertisement banners, related-article thumbnails, social media icons, or decorative unrelated assets.
+
+URLs:
+${candidates.map((u, i) => `${i + 1}. ${u}`).join("\n")}
+
+Return ONLY a JSON array of the URLs to keep (maximum 8, most relevant first). No markdown, no explanation.`;
+
+  try {
+    const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+    const kept = JSON.parse(raw) as unknown;
+    if (Array.isArray(kept)) {
+      const candidateSet = new Set(candidates);
+      return (kept as unknown[])
+        .filter((u): u is string => typeof u === "string" && candidateSet.has(u))
+        .slice(0, 8);
+    }
+  } catch { /* fall through */ }
+  return candidates.slice(0, 8);
+}
+
 function stripHtmlToText(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -704,27 +738,55 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
     instructions = normalizeInstructions(jsonLd.recipeInstructions);
   }
 
-  if (ingredients.length === 0) {
-    const g = await parseRecipeWithGemini(html, url);
-    if (g) {
-      if (!title && g.title) title = g.title;
-      if (!description && g.description) description = g.description;
-      if (!prepTime && g.prepTime) prepTime = g.prepTime;
-      if (!cookTime && g.cookTime) cookTime = g.cookTime;
-      if (!totalTime && g.totalTime) totalTime = g.totalTime;
-      if (!servings && g.servings) servings = g.servings;
-      if (Array.isArray(g.ingredients) && g.ingredients.length > 0) {
-        ingredients = (g.ingredients as unknown[])
-          .filter((s): s is string => typeof s === "string")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
-      if (Array.isArray(g.instructions) && g.instructions.length > 0) {
-        instructions = (g.instructions as unknown[])
-          .filter((s): s is string => typeof s === "string")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
+  const ogImage = extractOgMeta(html, "image") || undefined;
+  if (!imageUrl) imageUrl = ogImage;
+
+  // Collect all image candidates up front so we can probe dimensions in
+  // parallel with the Gemini ingredient parse when that is needed.
+  const allImageCandidates = dedupeImageUrls([
+    imageUrl,
+    ogImage,
+    ...jsonLdImages,
+    ...instructionImages,
+    ...extractContentImages(html, url),
+  ], 24);
+
+  // Run Gemini ingredient parsing (only when JSON-LD had none) and image
+  // dimension probing in parallel — this saves 2–5 s on pages without JSON-LD.
+  const [geminiRecipe, largeImageSet] = await Promise.all([
+    ingredients.length === 0 ? parseRecipeWithGemini(html, url) : Promise.resolve(null),
+    Promise.allSettled(
+      allImageCandidates.map(async (u) => {
+        const dims = await probeImageDimensions(u);
+        return dims && dims.width >= MIN_IMAGE_DIM && dims.height >= MIN_IMAGE_DIM ? u : null;
+      })
+    ).then((results) =>
+      new Set<string>(
+        results
+          .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && r.value !== null)
+          .map((r) => r.value)
+      )
+    ),
+  ]);
+
+  if (geminiRecipe) {
+    if (!title && geminiRecipe.title) title = geminiRecipe.title;
+    if (!description && geminiRecipe.description) description = geminiRecipe.description;
+    if (!prepTime && geminiRecipe.prepTime) prepTime = geminiRecipe.prepTime;
+    if (!cookTime && geminiRecipe.cookTime) cookTime = geminiRecipe.cookTime;
+    if (!totalTime && geminiRecipe.totalTime) totalTime = geminiRecipe.totalTime;
+    if (!servings && geminiRecipe.servings) servings = geminiRecipe.servings;
+    if (Array.isArray(geminiRecipe.ingredients) && geminiRecipe.ingredients.length > 0) {
+      ingredients = (geminiRecipe.ingredients as unknown[])
+        .filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    if (Array.isArray(geminiRecipe.instructions) && geminiRecipe.instructions.length > 0) {
+      instructions = (geminiRecipe.instructions as unknown[])
+        .filter((s): s is string => typeof s === "string")
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
   }
 
@@ -734,34 +796,20 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
     if (d) description = decodeHtmlEntities(d);
   }
 
-  // Build a prioritised candidate list for the cover photo:
-  // JSON-LD images first (already size-filtered + sorted by declared area),
-  // then og:image (no prior filtering), then scraped content images as last resort.
-  const ogImage = extractOgMeta(html, "image") || undefined;
-  const coverCandidates = dedupeImageUrls([
-    imageUrl,
-    ogImage,
-    ...jsonLdImages,
-    ...instructionImages,
-    ...extractContentImages(html, url),
-  ]);
+  // Cover: first large image from priority-ordered candidates; fall back to any
+  // large image found, then to the first candidate if nothing met the threshold.
+  const coverPriority = dedupeImageUrls([imageUrl, ogImage, ...jsonLdImages]);
+  imageUrl =
+    coverPriority.find((u) => largeImageSet.has(u)) ??
+    [...largeImageSet][0] ??
+    coverPriority[0];
 
-  // Probe actual pixel dimensions and pick the first image that is genuinely large.
-  const verifiedCover = await findFirstLargeImage(coverCandidates);
-  // If nothing passes the threshold, fall back to the first candidate rather than
-  // showing nothing — but prefer the verified one when available.
-  imageUrl = verifiedCover ?? coverCandidates[0];
-
-  // Gallery: structured images minus the cover, up to 8 entries.
-  const structuredImages = dedupeImageUrls([
-    ogImage,
-    ...jsonLdImages,
-    ...instructionImages
-  ]);
-  const images =
-    structuredImages.length >= 2
-      ? structuredImages
-      : dedupeImageUrls([...structuredImages, ...extractContentImages(html, url)], 8);
+  // Gallery: large images (cover excluded), with Gemini curating which ones
+  // are actually food / recipe photos vs. logos, ads, author avatars, etc.
+  const galleryCandidates = allImageCandidates.filter(
+    (u) => largeImageSet.has(u) && u !== imageUrl
+  );
+  const images = await filterGalleryImagesWithGemini(galleryCandidates, title);
 
   return {
     title,
@@ -775,7 +823,7 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
     instructions,
     images,
     url,
-    source
+    source,
   };
 }
 
