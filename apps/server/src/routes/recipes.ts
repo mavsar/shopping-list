@@ -822,23 +822,50 @@ recipesRouter.get("/search", requireAuth, async (req, res) => {
   }
 
   const query = parsed.data.q;
+
+  // Stream results as NDJSON so the client can render them as they arrive.
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("X-Accel-Buffering", "no"); // disable nginx/proxy buffering
+  res.flushHeaders();
+
+  const emit = (data: object) => {
+    if (!res.writableEnded) {
+      res.write(JSON.stringify(data) + "\n");
+      // flush() is injected by compression middleware when present
+      const r = res as unknown as { flush?: () => void };
+      if (typeof r.flush === "function") r.flush();
+    }
+  };
+
   const grounded = await searchWithGeminiGrounding(query);
 
   if (grounded.length === 0) {
-    return res.json({ results: [] });
+    emit({ type: "done" });
+    return res.end();
   }
 
-  // Resolve redirect URLs + fetch metadata in parallel
-  const settled = await Promise.allSettled(grounded.slice(0, 14).map((g) => resolveGroundedResult(g)));
+  // Fetch up to 12 recipe pages in parallel; emit each result as soon as it resolves.
+  const rawResults: RecipeSearchResult[] = [];
+  await Promise.allSettled(
+    grounded.slice(0, 12).map(async (g) => {
+      const result = await resolveGroundedResult(g);
+      if (result) {
+        rawResults.push(result);
+        emit({ type: "result", result });
+      }
+    })
+  );
 
-  let results = settled
-    .filter((r): r is PromiseFulfilledResult<RecipeSearchResult> => r.status === "fulfilled" && r.value !== null)
-    .map((r) => r.value);
+  // Batch-translate all non-Slovenian results and send the updated list.
+  const deduped = dedupeBySourceAndUrl(rawResults);
+  if (deduped.length > 0) {
+    const translated = await batchTranslateToSlovenian(deduped);
+    emit({ type: "translated", results: translated });
+  }
 
-  results = dedupeBySourceAndUrl(results);
-  results = await batchTranslateToSlovenian(results);
-
-  return res.json({ results });
+  emit({ type: "done" });
+  return res.end();
 });
 
 recipesRouter.get("/fetch", requireAuth, async (req, res) => {

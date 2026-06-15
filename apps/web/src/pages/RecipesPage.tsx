@@ -1324,6 +1324,7 @@ function SearchOverlay({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<RecipeSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<ParsedRecipe | null>(null);
@@ -1360,6 +1361,7 @@ function SearchOverlay({
       setResults([]);
       setSearched(false);
       setError('');
+      setTranslating(false);
       setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [open]);
@@ -1383,24 +1385,55 @@ function SearchOverlay({
     const q = query.trim();
     if (!q) return;
     setSearching(true);
+    setTranslating(false);
     setError('');
     setResults([]);
+    setSearched(false);
     try {
       const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(q)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? `Napaka ${response.status}`);
       }
-      const data = (await response.json()) as { results: RecipeSearchResult[] };
-      setResults(data.results);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line) as
+              | { type: 'result'; result: RecipeSearchResult }
+              | { type: 'translated'; results: RecipeSearchResult[] }
+              | { type: 'done' };
+            if (msg.type === 'result') {
+              setResults((prev) => [...prev, msg.result]);
+              setSearched(true);
+              setSearching(false);
+              setTranslating(true);
+            } else if (msg.type === 'translated') {
+              setResults(msg.results);
+              setTranslating(false);
+            } else if (msg.type === 'done') {
+              setTranslating(false);
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      }
       setSearched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Iskanje ni uspelo.');
       setSearched(true);
     } finally {
       setSearching(false);
+      setTranslating(false);
     }
   }, [query, token]);
 
@@ -1496,7 +1529,7 @@ function SearchOverlay({
             {/* results area */}
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8 md:px-8">
               <div className="mx-auto max-w-2xl space-y-3">
-                {searching && (
+                {searching && results.length === 0 && (
                   <div className="flex flex-col items-center gap-3 py-16">
                     <AnimatedStepsLoader
                       steps={[
@@ -1504,7 +1537,7 @@ function SearchOverlay({
                         'Preiskujem receptne strani…',
                         'Zbiram najboljše rezultate…',
                       ]}
-                      secondaryMessage="To lahko traja 10–15 sekund"
+                      secondaryMessage="Rezultati se bodo prikazali sproti"
                     />
                   </div>
                 )}
@@ -1521,14 +1554,22 @@ function SearchOverlay({
                   </div>
                 )}
 
-                {!searching && results.length > 0 && (
+                {results.length > 0 && (
                   <>
-                    <p className="pb-1 text-xs text-slate-500">
-                      {results.length} {results.length === 1 ? 'rezultat' : 'rezultati'}
-                    </p>
-                    {results.map((result, i) => (
+                    <div className="flex items-center justify-between pb-1">
+                      <p className="text-xs text-slate-500">
+                        {results.length} {results.length === 1 ? 'rezultat' : 'rezultati'}
+                      </p>
+                      {translating && (
+                        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                          Prevajam naslove…
+                        </span>
+                      )}
+                    </div>
+                    {results.map((result) => (
                       <RecipeResultCard
-                        key={i}
+                        key={result.url}
                         result={result}
                         onClick={() => void handleOpenRecipe(result.url)}
                       />
