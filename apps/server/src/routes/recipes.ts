@@ -395,20 +395,69 @@ function parseDuration(d: unknown): string | undefined {
   return undefined;
 }
 
+/** Minimum pixel dimension (width or height) for a usable image. */
+const MIN_IMAGE_DIM = 400;
+
+/** Returns true when a URL contains explicit small dimensions in its path or query string. */
+function isSmallImageUrl(url: string): boolean {
+  const low = url.toLowerCase();
+  // path segment like -150x150. or _100x75.
+  const dimMatch = /[-_](\d+)x(\d+)\.(?:jpe?g|png|webp|gif|avif)/i.exec(low);
+  if (dimMatch) {
+    if (Number(dimMatch[1]) < MIN_IMAGE_DIM || Number(dimMatch[2]) < MIN_IMAGE_DIM) return true;
+  }
+  // query param ?w=150 or ?width=150
+  const wParam = /[?&](?:w|width)=(\d+)(?:&|$)/i.exec(low);
+  if (wParam && Number(wParam[1]) < MIN_IMAGE_DIM) return true;
+  return false;
+}
+
+/** Returns declared pixel area for a schema.org ImageObject, or 0 when unknown. */
+function imageObjectArea(obj: Record<string, unknown>): number {
+  const w = Number(obj.width);
+  const h = Number(obj.height);
+  if (Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0) return w * h;
+  if (Number.isFinite(w) && w > 0) return w * w;
+  if (Number.isFinite(h) && h > 0) return h * h;
+  return 0;
+}
+
+/** Returns true when an ImageObject declares dimensions that are below the threshold. */
+function imageObjectTooSmall(obj: Record<string, unknown>): boolean {
+  const w = Number(obj.width);
+  const h = Number(obj.height);
+  if (Number.isFinite(w) && w > 0 && w < MIN_IMAGE_DIM) return true;
+  if (Number.isFinite(h) && h > 0 && h < MIN_IMAGE_DIM) return true;
+  return false;
+}
+
 function extractImageFromJsonLd(recipe: Record<string, unknown>, html: string): string | undefined {
-  if (typeof recipe.image === "string") return recipe.image;
-  if (Array.isArray(recipe.image)) {
-    const first = recipe.image[0];
-    if (typeof first === "string") return first;
-    if (first && typeof first === "object") {
-      const u = (first as Record<string, unknown>).url;
-      if (typeof u === "string") return u;
+  const candidates: Array<{ url: string; area: number }> = [];
+
+  const consider = (value: unknown) => {
+    if (typeof value === "string") {
+      if (!isSmallImageUrl(value)) candidates.push({ url: value, area: 0 });
+    } else if (value && typeof value === "object") {
+      const o = value as Record<string, unknown>;
+      if (imageObjectTooSmall(o)) return;
+      const u = typeof o.url === "string" ? o.url : undefined;
+      if (u && !isSmallImageUrl(u)) candidates.push({ url: u, area: imageObjectArea(o) });
     }
+  };
+
+  if (Array.isArray(recipe.image)) {
+    for (const entry of recipe.image) consider(entry);
+  } else {
+    consider(recipe.image);
   }
-  if (recipe.image && typeof recipe.image === "object") {
-    const u = (recipe.image as Record<string, unknown>).url;
-    if (typeof u === "string") return u;
+
+  // Prefer the image with the largest declared area; fall back to first candidate.
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => b.area - a.area);
+    return candidates[0].url;
   }
+
+  // Last resort: OG image tag (no size check — og:image is typically the main photo).
   return extractOgMeta(html, "image") || undefined;
 }
 
@@ -416,10 +465,12 @@ function collectImageUrlsFromJsonLd(recipe: Record<string, unknown>): string[] {
   const out: string[] = [];
   const pushFrom = (value: unknown) => {
     if (typeof value === "string") {
-      out.push(value);
+      if (!isSmallImageUrl(value)) out.push(value);
     } else if (value && typeof value === "object") {
-      const u = (value as Record<string, unknown>).url;
-      if (typeof u === "string") out.push(u);
+      const o = value as Record<string, unknown>;
+      if (imageObjectTooSmall(o)) return;
+      const u = typeof o.url === "string" ? o.url : undefined;
+      if (u && !isSmallImageUrl(u)) out.push(u);
     }
   };
   if (Array.isArray(recipe.image)) {
@@ -494,19 +545,14 @@ function extractContentImages(html: string, pageUrl: string): string[] {
           lowered
         );
 
-      // Honour declared dimensions: skip clearly small images, keep ones declared large.
+      // Honour declared dimensions: skip images smaller than our threshold.
       const width = Number(getImgAttr(raw, "width"));
       const height = Number(getImgAttr(raw, "height"));
       const tooSmall =
-        (Number.isFinite(width) && width > 0 && width < 200) ||
-        (Number.isFinite(height) && height > 0 && height < 200);
-      // Skip explicit small renditions encoded in the URL (e.g. -150x150, ?w=100).
-      const smallRendition = /[-_](\d{2,3})x(\d{2,3})\.(?:jpe?g|png|webp)/i.test(lowered)
-        ? (() => {
-            const dim = /[-_](\d{2,3})x(\d{2,3})\./i.exec(lowered);
-            return dim ? Number(dim[1]) < 300 || Number(dim[2]) < 300 : false;
-          })()
-        : /[?&](?:w|width)=(\d{1,3})(?:&|$)/i.test(lowered);
+        (Number.isFinite(width) && width > 0 && width < MIN_IMAGE_DIM) ||
+        (Number.isFinite(height) && height > 0 && height < MIN_IMAGE_DIM);
+      // Skip small renditions encoded in the URL (e.g. -150x150, ?w=100).
+      const smallRendition = isSmallImageUrl(src);
 
       if (!isJunk && !tooSmall && !smallRendition) {
         try {
@@ -533,6 +579,43 @@ function dedupeImageUrls(urls: Array<string | undefined>, limit = 12): string[] 
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * Fetches only the leading bytes of an image (enough for the format header) and
+ * returns its actual pixel dimensions. Returns null on any failure.
+ */
+async function probeImageDimensions(url: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { ...browserHtmlHeaders, Range: "bytes=0-65535" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok && res.status !== 206) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const meta = await sharp(buf).metadata();
+    return meta.width && meta.height ? { width: meta.width, height: meta.height } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Iterates candidate URLs and returns the first whose actual dimensions both meet
+ * the minimum threshold. Falls back to the first candidate when none qualify.
+ */
+async function findFirstLargeImage(
+  candidates: string[],
+  minDim = MIN_IMAGE_DIM,
+): Promise<string | undefined> {
+  let firstCandidate: string | undefined;
+  for (const url of candidates) {
+    if (!firstCandidate) firstCandidate = url;
+    const dims = await probeImageDimensions(url);
+    if (dims && dims.width >= minDim && dims.height >= minDim) return url;
+  }
+  // Nothing passed the size check — return undefined so the caller can decide.
+  return undefined;
 }
 
 function stripHtmlToText(html: string): string {
@@ -650,17 +733,31 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
     const d = extractOgMeta(html, "description");
     if (d) description = decodeHtmlEntities(d);
   }
-  if (!imageUrl) imageUrl = extractOgMeta(html, "image") || undefined;
 
-  // Prefer structured, recipe-specific images: the recipe's own image(s) plus per-step photos.
-  const structuredImages = dedupeImageUrls([
+  // Build a prioritised candidate list for the cover photo:
+  // JSON-LD images first (already size-filtered + sorted by declared area),
+  // then og:image (no prior filtering), then scraped content images as last resort.
+  const ogImage = extractOgMeta(html, "image") || undefined;
+  const coverCandidates = dedupeImageUrls([
     imageUrl,
-    extractOgMeta(html, "image") || undefined,
+    ogImage,
+    ...jsonLdImages,
+    ...instructionImages,
+    ...extractContentImages(html, url),
+  ]);
+
+  // Probe actual pixel dimensions and pick the first image that is genuinely large.
+  const verifiedCover = await findFirstLargeImage(coverCandidates);
+  // If nothing passes the threshold, fall back to the first candidate rather than
+  // showing nothing — but prefer the verified one when available.
+  imageUrl = verifiedCover ?? coverCandidates[0];
+
+  // Gallery: structured images minus the cover, up to 8 entries.
+  const structuredImages = dedupeImageUrls([
+    ogImage,
     ...jsonLdImages,
     ...instructionImages
   ]);
-
-  // Only fall back to scraping the article body when structured data barely has images.
   const images =
     structuredImages.length >= 2
       ? structuredImages
@@ -1098,7 +1195,7 @@ Recipe base servings: ${baseServings}, target servings: ${targetServings} → sc
 Valid units (pick the most fitting): ${VALID_UNITS.join(", ")}${itemsContext}
 
 Instructions:
-- Extract the ingredient name (title) without quantity or unit.
+- Extract the ingredient name (title) without quantity or unit. Write it in the singular nominative form in the ingredient's language (e.g. "piščančje prsi" not "piščančjih prsi", "krompir" not "krompirjev", "rdeča paprika" not "rdečih paprik", "chicken breast" not "chicken breasts").
 - Calculate the scaled quantity (multiply original quantity by ${scale.toFixed(4)}, round to at most 2 decimal places).
 - Choose the most appropriate unit from the valid units list.
 - If there are existing items: check if any of them is the same ingredient (exact) or very similar (e.g. minor spelling variation, synonym, different language). Do NOT match completely different ingredients.

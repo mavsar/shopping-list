@@ -1,6 +1,6 @@
 import { cx } from 'class-variance-authority';
 import { AnimatePresence, motion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
 import { Minus, Plus, Search, Trash2, X } from '../components/lordicon/icons';
@@ -459,7 +459,148 @@ interface BulkAddItem {
   scaled: string;
   parsed: CheckIngredientResult['parsed'];
   match: CheckIngredientResult['match'];
-  choice: 'new' | 'existing';
+  // 'new' = add as new item; String(listItemId) = link to an existing list item
+  selectedValue: string;
+}
+
+interface ShoppingListItem {
+  id: number;
+  title: string;
+}
+
+// ---------- Inline searchable combobox for picking a list item ----------
+
+function InlineItemCombobox({
+  listItems,
+  parsedTitle,
+  parsedQuantity,
+  parsedUnit,
+  value,
+  onChange,
+  disabled,
+}: {
+  listItems: ShoppingListItem[];
+  parsedTitle: string;
+  parsedQuantity: number;
+  parsedUnit: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
+
+  const newLabel = `${parsedTitle} · ${parsedQuantity} ${parsedUnit}`;
+  const existingItem = listItems.find((li) => String(li.id) === value);
+  const displayLabel = value === 'new'
+    ? `+ Novo: ${newLabel}`
+    : (existingItem ? existingItem.title : `+ Novo: ${newLabel}`);
+
+  const filtered = query.trim()
+    ? listItems.filter((li) => li.title.toLowerCase().includes(query.toLowerCase()))
+    : listItems;
+
+  function openDropdown() {
+    if (disabled) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 240),
+        zIndex: 9999,
+      });
+    }
+    setQuery('');
+    setOpen(true);
+  }
+
+  function closeDropdown() {
+    setOpen(false);
+    setQuery('');
+  }
+
+  function select(val: string) {
+    onChange(val);
+    closeDropdown();
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        containerRef.current && !containerRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
+        closeDropdown();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <>
+      <div className="relative" ref={containerRef}>
+        <input
+          type="text"
+          readOnly={!open}
+          value={open ? query : displayLabel}
+          placeholder={open ? 'Išči po seznamu…' : ''}
+          onFocus={openDropdown}
+          onChange={(e) => { if (open) setQuery(e.target.value); }}
+          disabled={disabled}
+          className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-1.5 pr-7 text-xs text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-1 focus:ring-cyan-300/25 disabled:opacity-50"
+        />
+        <svg aria-hidden className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" viewBox="0 0 20 20" fill="none">
+          <path d="M6 8L10 12L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          style={dropdownStyle}
+          className="overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-2xl"
+        >
+          <div className="max-h-56 overflow-y-auto">
+            <button
+              type="button"
+              onMouseDown={() => select('new')}
+              className={cx(
+                'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
+                value === 'new' ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300',
+              )}
+            >
+              <span className="font-medium">+ Dodaj novo:</span>{' '}
+              <span className="text-slate-400">{parsedTitle} · {parsedQuantity} {parsedUnit}</span>
+            </button>
+            {listItems.length > 0 && <div className="mx-2 border-t border-white/8" />}
+            {filtered.map((li) => (
+              <button
+                key={li.id}
+                type="button"
+                onMouseDown={() => select(String(li.id))}
+                className={cx(
+                  'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
+                  String(li.id) === value ? 'bg-emerald-500/10 text-emerald-300' : 'text-slate-300',
+                )}
+              >
+                {li.title}
+              </button>
+            ))}
+            {filtered.length === 0 && query && (
+              <p className="px-3 py-2.5 text-xs text-slate-500">Ni zadetkov za „{query}"</p>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
 }
 
 // ---------- Bulk-add review dialog ----------
@@ -467,15 +608,17 @@ interface BulkAddItem {
 function BulkAddReviewDialog({
   open,
   items,
+  listItems,
   busy,
-  onChoiceChange,
+  onItemSelect,
   onConfirm,
   onClose,
 }: {
   open: boolean;
   items: BulkAddItem[];
+  listItems: ShoppingListItem[];
   busy: boolean;
-  onChoiceChange: (index: number, choice: 'new' | 'existing') => void;
+  onItemSelect: (index: number, value: string) => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -499,7 +642,7 @@ function BulkAddReviewDialog({
     >
       <ul className="space-y-2.5">
         {items.map((item, i) => {
-          const canToggle = item.match && (item.match.type === 'similar' || item.match.type === 'unit_conflict');
+          const hasUnitConflict = item.match?.type === 'unit_conflict' && item.selectedValue !== 'new';
           return (
             <li key={i} className="rounded-xl border border-white/10 bg-white/4 p-3">
               <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-4">
@@ -510,46 +653,23 @@ function BulkAddReviewDialog({
                   </p>
                   <p className="text-sm leading-snug text-slate-200">{item.scaled}</p>
                 </div>
-                {/* Right: what gets added to the list */}
-                <div className="shrink-0">
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-slate-500 sm:text-right">
+                {/* Right: searchable combobox to pick a list item */}
+                <div className="shrink-0 sm:min-w-[220px]">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-slate-500">
                     Doda v seznam
                   </p>
-                  {canToggle ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onChoiceChange(i, 'new')}
-                        className={cx(
-                          'rounded-lg px-2.5 py-1 text-xs font-medium transition',
-                          item.choice === 'new'
-                            ? 'border border-cyan-400/40 bg-cyan-500/20 text-cyan-300'
-                            : 'border border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-300',
-                        )}
-                      >
-                        Novo: {item.parsed.title}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onChoiceChange(i, 'existing')}
-                        className={cx(
-                          'rounded-lg px-2.5 py-1 text-xs font-medium transition',
-                          item.choice === 'existing'
-                            ? 'border border-emerald-400/40 bg-emerald-500/20 text-emerald-300'
-                            : 'border border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-300',
-                        )}
-                      >
-                        Obstoječe: {item.match!.listItemTitle}
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="inline-block rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300">
-                      {item.parsed.title} · {item.parsed.quantity} {item.parsed.unit}
-                    </span>
-                  )}
-                  {item.match?.type === 'unit_conflict' && item.choice === 'existing' && (
-                    <p className="mt-1 text-[10px] text-amber-400/80 sm:text-right">
-                      Enota: {item.parsed.unit} (seznam: {item.match.listItemUnit})
+                  <InlineItemCombobox
+                    listItems={listItems}
+                    parsedTitle={item.parsed.title}
+                    parsedQuantity={item.parsed.quantity}
+                    parsedUnit={item.parsed.unit}
+                    value={item.selectedValue}
+                    onChange={(val) => onItemSelect(i, val)}
+                    disabled={busy}
+                  />
+                  {hasUnitConflict && (
+                    <p className="mt-1 text-[10px] text-amber-400/80">
+                      Enota: {item.parsed.unit} (seznam: {item.match!.listItemUnit})
                     </p>
                   )}
                 </div>
@@ -602,6 +722,7 @@ function RecipeDetailModal({
   const [checkedIngredients, setCheckedIngredients] = useState<Set<string>>(new Set());
   const [pendingBulkIngredients, setPendingBulkIngredients] = useState<string[]>([]);
   const [bulkItems, setBulkItems] = useState<BulkAddItem[]>([]);
+  const [listItems, setListItems] = useState<ShoppingListItem[]>([]);
 
   // Lists for picker
   const [lists, setLists] = useState<ShoppingList[]>([]);
@@ -623,6 +744,7 @@ function RecipeDetailModal({
       setCheckedIngredients(new Set());
       setPendingBulkIngredients([]);
       setBulkItems([]);
+      setListItems([]);
     }
   }, [open]);
 
@@ -707,29 +829,42 @@ function RecipeDetailModal({
       setAddPhase('bulk-checking');
       setAddError('');
       try {
-        const results = await Promise.all(
-          ingredients.map(async (raw) => {
-            const res = await fetch('/api/recipes/check-ingredient', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ingredient: raw,
-                baseServings,
-                targetServings: servingSize,
-                listId,
-              }),
-            });
-            if (!res.ok) throw new Error(`Napaka ${res.status}`);
-            const data = (await res.json()) as CheckIngredientResult;
-            return { raw, data };
-          })
-        );
-        const items: BulkAddItem[] = results.map(({ raw, data }) => ({
+        const [checkResults, itemsRes] = await Promise.all([
+          Promise.all(
+            ingredients.map(async (raw) => {
+              const res = await fetch('/api/recipes/check-ingredient', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ingredient: raw,
+                  baseServings,
+                  targetServings: servingSize,
+                  listId,
+                }),
+              });
+              if (!res.ok) throw new Error(`Napaka ${res.status}`);
+              const data = (await res.json()) as CheckIngredientResult;
+              return { raw, data };
+            })
+          ),
+          fetch(`/api/lists/${listId}/items?status=active`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (itemsRes.ok) {
+          const itemsData = (await itemsRes.json()) as { items: ShoppingListItem[] };
+          setListItems(itemsData.items);
+        }
+
+        const items: BulkAddItem[] = checkResults.map(({ raw, data }) => ({
           raw,
           scaled: scaleIngredientText(raw, scale),
           parsed: data.parsed,
           match: data.match,
-          choice: (data.match && data.match.type === 'similar') ? 'existing' : 'new',
+          selectedValue: (data.match && data.match.type === 'similar')
+            ? String(data.match.listItemId)
+            : 'new',
         }));
         setBulkItems(items);
         setAddPhase('bulk-review');
@@ -752,8 +887,8 @@ function RecipeDetailModal({
     }
   }
 
-  function handleBulkChoiceChange(index: number, choice: 'new' | 'existing') {
-    setBulkItems((prev) => prev.map((item, i) => i === index ? { ...item, choice } : item));
+  function handleBulkChoiceChange(index: number, value: string) {
+    setBulkItems((prev) => prev.map((item, i) => i === index ? { ...item, selectedValue: value } : item));
   }
 
   async function handleBulkReviewConfirm() {
@@ -761,9 +896,9 @@ function RecipeDetailModal({
     setAddPhase('bulk-adding');
     try {
       for (const item of bulkItems) {
-        const title = item.choice === 'existing' && item.match
-          ? item.match.listItemTitle
-          : item.parsed.title;
+        const isNew = item.selectedValue === 'new';
+        const chosenListItem = isNew ? null : listItems.find((li) => String(li.id) === item.selectedValue);
+        const title = chosenListItem ? chosenListItem.title : item.parsed.title;
         await fetch(`/api/lists/${selectedListId}/items`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -774,6 +909,7 @@ function RecipeDetailModal({
       setAddPhase('idle');
       setBulkItems([]);
       setCheckedIngredients(new Set());
+      setListItems([]);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : 'Napaka pri dodajanju');
       setAddPhase('error');
@@ -1158,10 +1294,11 @@ function RecipeDetailModal({
       <BulkAddReviewDialog
         open={addPhase === 'bulk-review'}
         items={bulkItems}
+        listItems={listItems}
         busy={addPhase === 'bulk-adding'}
-        onChoiceChange={handleBulkChoiceChange}
+        onItemSelect={handleBulkChoiceChange}
         onConfirm={() => void handleBulkReviewConfirm()}
-        onClose={() => { setAddPhase('idle'); setBulkItems([]); setCheckedIngredients(new Set()); }}
+        onClose={() => { setAddPhase('idle'); setBulkItems([]); setCheckedIngredients(new Set()); setListItems([]); }}
       />
     </>
   );
