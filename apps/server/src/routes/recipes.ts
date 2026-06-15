@@ -1,0 +1,1046 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { GoogleGenAI } from "@google/genai";
+import { Router } from "express";
+import sharp from "sharp";
+import { z } from "zod";
+import { sqlite } from "../db/client.js";
+import { getAuthUser, requireAuth } from "../middleware/auth.js";
+
+export const recipesRouter = Router();
+
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirectoryPath = path.dirname(currentFilePath);
+const recipeImagesDirectoryPath = process.env.RECIPE_IMAGES_PATH?.trim()
+  ? path.resolve(process.env.RECIPE_IMAGES_PATH)
+  : path.resolve(currentDirectoryPath, "..", "..", "storage", "recipe-images");
+const recipeImagesPublicPath = "/api/recipe-images";
+
+if (!fs.existsSync(recipeImagesDirectoryPath)) {
+  fs.mkdirSync(recipeImagesDirectoryPath, { recursive: true });
+}
+
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const genai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
+
+const recipeSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200)
+});
+
+const recipeFetchQuerySchema = z.object({
+  url: z.string().trim().url().max(2000)
+});
+
+// Domains that are clearly not single recipe pages — drop them from results
+const BLOCKED_HOSTNAMES = [
+  "youtube.com",
+  "youtu.be",
+  "instagram.com",
+  "facebook.com",
+  "pinterest.com",
+  "pinterest.co.uk",
+  "tiktok.com",
+  "reddit.com",
+  "wikipedia.org",
+  "amazon.com",
+  "books.google.com",
+  "google.com",
+  "x.com",
+  "twitter.com",
+];
+
+// Hosts considered Slovenian (results from these are NOT translated)
+const SLOVENIAN_HOSTNAMES = [
+  "kulinarika.net",
+  "recepti.si",
+  "okusno.je",
+  "gurman.eu",
+  "kuham.com",
+  "recepti.net",
+  "slo-recepti.si",
+  "kuhaj.com",
+  "mojirecepti.com",
+  "jernejkitchen.com",
+  "zacimbe.si",
+  "odprtakuhinja.delo.si",
+  "delo.si",
+  "svet24.si",
+  "dobrejedi.si",
+];
+
+// ---------- HTTP helpers ----------
+
+const browserHtmlHeaders: HeadersInit = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7"
+};
+
+/** Fetch a URL following redirects; returns the final resolved URL and HTML body. */
+async function fetchWithResolvedUrl(
+  url: string,
+  timeoutMs = 8000
+): Promise<{ finalUrl: string; html: string } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: browserHtmlHeaders,
+      redirect: "follow",
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    return { finalUrl: response.url || url, html };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { headers: browserHtmlHeaders, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------- HTML parsing helpers ----------
+
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, c: string) => String.fromCharCode(parseInt(c, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, c: string) => String.fromCharCode(parseInt(c, 16)));
+}
+
+function extractOgMeta(html: string, property: string): string {
+  const p1 = new RegExp(`<meta[^>]+property=["']og:${property}["'][^>]+content=["']([^"']+)["']`, "i");
+  const p2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:${property}["']`, "i");
+  const m = p1.exec(html) ?? p2.exec(html);
+  return m?.[1] ? decodeHtmlEntities(m[1]) : "";
+}
+
+function extractMetaName(html: string, name: string): string {
+  const re = new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, "i");
+  const m = re.exec(html);
+  return m?.[1] ? decodeHtmlEntities(m[1]) : "";
+}
+
+function extractPageTitle(html: string): string {
+  const m = /<title[^>]*>([^<]+)<\/title>/i.exec(html);
+  return m?.[1] ? decodeHtmlEntities(m[1].trim()) : "";
+}
+
+function stripSiteSuffix(title: string): string {
+  return title.replace(/\s*[-|–—]\s*[^-|–—]+$/, "").trim();
+}
+
+function hostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function stripQueryAndFragment(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+function isBlockedHost(url: string): boolean {
+  const h = hostname(url);
+  return BLOCKED_HOSTNAMES.some((d) => h === d || h.endsWith(`.${d}`));
+}
+
+function looksSlovenian(url: string): boolean {
+  const h = hostname(url);
+  if (h.endsWith(".si")) return true;
+  if (SLOVENIAN_HOSTNAMES.some((d) => h === d || h.endsWith(`.${d}`))) return true;
+  try {
+    if (new URL(url).pathname.includes("/sl/")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/** Block SSRF: only allow public http(s) hosts. */
+function isPublicHttpUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const h = parsed.hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".local")) return false;
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
+  if (h === "0.0.0.0" || h === "::1" || h === "[::1]") return false;
+  return true;
+}
+
+// ---------- Gemini grounding (primary & only search engine) ----------
+
+interface GroundedResult {
+  redirectUri: string;
+  domainHint: string;
+}
+
+async function searchWithGeminiGrounding(query: string): Promise<GroundedResult[]> {
+  if (!genai) return [];
+  try {
+    const response = await genai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Find 12 different recipes for "${query}". Include both Slovenian recipe websites (like kulinarika.net, recepti.si, okusno.je, jernejkitchen.com, mojirecepti.com) and popular international recipe websites (like allrecipes.com, bbcgoodfood.com, simplyrecipes.com). For each, give the recipe name and the direct URL to the recipe page.`,
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    });
+
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+    const results: GroundedResult[] = [];
+    for (const chunk of chunks) {
+      const web = (chunk as { web?: { uri?: string; title?: string } }).web;
+      if (web?.uri) {
+        results.push({ redirectUri: web.uri, domainHint: web.title ?? "" });
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+// ---------- Per-result resolution + metadata ----------
+
+export interface RecipeSearchResult {
+  title: string;
+  description: string;
+  url: string;
+  imageUrl?: string;
+  source: string;
+}
+
+/** Resolve a grounding redirect URL to the real page and extract display metadata. */
+async function resolveGroundedResult(grounded: GroundedResult): Promise<RecipeSearchResult | null> {
+  const fetched = await fetchWithResolvedUrl(grounded.redirectUri, 8000);
+  if (!fetched) return null;
+
+  const { finalUrl, html } = fetched;
+  if (isBlockedHost(finalUrl) || !isPublicHttpUrl(finalUrl)) return null;
+
+  const cleanUrl = stripQueryAndFragment(finalUrl);
+  const rawTitle = extractOgMeta(html, "title") || extractPageTitle(html);
+  const title = stripSiteSuffix(rawTitle);
+  if (!title || title.length < 3) return null;
+
+  const description = (extractOgMeta(html, "description") || extractMetaName(html, "description")).slice(0, 350);
+  const imageUrl = extractOgMeta(html, "image") || undefined;
+
+  return { title, description, imageUrl, url: cleanUrl, source: hostname(cleanUrl) };
+}
+
+function dedupeBySourceAndUrl(results: RecipeSearchResult[]): RecipeSearchResult[] {
+  const seen = new Set<string>();
+  const out: RecipeSearchResult[] = [];
+  for (const r of results) {
+    if (seen.has(r.url)) continue;
+    seen.add(r.url);
+    out.push(r);
+  }
+  return out;
+}
+
+// ---------- Translation ----------
+
+async function batchTranslateToSlovenian(results: RecipeSearchResult[]): Promise<RecipeSearchResult[]> {
+  if (!genai) return results;
+
+  const foreign = results.map((r, i) => ({ i, r })).filter(({ r }) => !looksSlovenian(r.url));
+  if (!foreign.length) return results;
+
+  const payload = foreign.map(({ r }) => ({ title: r.title, description: r.description }));
+  const prompt = `Translate each recipe title and description into natural Slovenian culinary language. Return ONLY a JSON array of objects with "title" and "description" keys, in the same order as the input. No markdown, no extra text.
+
+Input: ${JSON.stringify(payload)}`;
+
+  try {
+    const response = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+    const translated = JSON.parse(raw) as Array<{ title: string; description: string }>;
+
+    const output = [...results];
+    foreign.forEach(({ i }, idx) => {
+      const t = translated[idx];
+      if (t?.title) {
+        output[i] = { ...output[i], title: t.title, description: t.description ?? output[i].description };
+      }
+    });
+    return output;
+  } catch {
+    return results;
+  }
+}
+
+// ---------- Structured recipe parsing (for /fetch endpoint) ----------
+
+interface ParsedRecipe {
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  prepTime?: string;
+  cookTime?: string;
+  totalTime?: string;
+  servings?: string;
+  ingredients: string[];
+  instructions: string[];
+  images: string[];
+  url: string;
+  source: string;
+}
+
+function extractJsonLdBlocks(html: string): unknown[] {
+  const results: unknown[] = [];
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m = re.exec(html);
+  while (m) {
+    try {
+      results.push(JSON.parse(m[1]));
+    } catch {
+      /* skip malformed JSON */
+    }
+    m = re.exec(html);
+  }
+  return results;
+}
+
+function findRecipeJsonLd(html: string): Record<string, unknown> | null {
+  for (const block of extractJsonLdBlocks(html)) {
+    if (!block || typeof block !== "object") continue;
+    const obj = block as Record<string, unknown>;
+    const type = obj["@type"];
+    const isRecipe = type === "Recipe" || (Array.isArray(type) && type.includes("Recipe"));
+    if (isRecipe) return obj;
+    if (Array.isArray(obj["@graph"])) {
+      const r = (obj["@graph"] as unknown[]).find((x) => {
+        if (!x || typeof x !== "object") return false;
+        const t = (x as Record<string, unknown>)["@type"];
+        return t === "Recipe" || (Array.isArray(t) && t.includes("Recipe"));
+      });
+      if (r) return r as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+function normalizeInstructions(raw: unknown): string[] {
+  if (typeof raw === "string") return raw ? [raw] : [];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .flatMap((item) => {
+      if (typeof item === "string") return [item];
+      if (item && typeof item === "object") {
+        const o = item as Record<string, unknown>;
+        if (typeof o.text === "string") return [o.text];
+        if (typeof o.name === "string") return [o.name];
+        if (Array.isArray(o.itemListElement)) {
+          return (o.itemListElement as unknown[]).flatMap((s) => {
+            if (typeof s === "string") return [s];
+            if (s && typeof s === "object") {
+              const so = s as Record<string, unknown>;
+              if (typeof so.text === "string") return [so.text];
+            }
+            return [];
+          });
+        }
+      }
+      return [];
+    })
+    .map((s) => decodeHtmlEntities(s.trim()))
+    .filter(Boolean);
+}
+
+function parseDuration(d: unknown): string | undefined {
+  if (typeof d !== "string") return undefined;
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?/.exec(d);
+  if (!m) return d.length < 20 ? d : undefined;
+  const h = parseInt(m[1] ?? "0", 10);
+  const min = parseInt(m[2] ?? "0", 10);
+  if (h && min) return `${h} h ${min} min`;
+  if (h) return `${h} h`;
+  if (min) return `${min} min`;
+  return undefined;
+}
+
+function extractImageFromJsonLd(recipe: Record<string, unknown>, html: string): string | undefined {
+  if (typeof recipe.image === "string") return recipe.image;
+  if (Array.isArray(recipe.image)) {
+    const first = recipe.image[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first === "object") {
+      const u = (first as Record<string, unknown>).url;
+      if (typeof u === "string") return u;
+    }
+  }
+  if (recipe.image && typeof recipe.image === "object") {
+    const u = (recipe.image as Record<string, unknown>).url;
+    if (typeof u === "string") return u;
+  }
+  return extractOgMeta(html, "image") || undefined;
+}
+
+function collectImageUrlsFromJsonLd(recipe: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const pushFrom = (value: unknown) => {
+    if (typeof value === "string") {
+      out.push(value);
+    } else if (value && typeof value === "object") {
+      const u = (value as Record<string, unknown>).url;
+      if (typeof u === "string") out.push(u);
+    }
+  };
+  if (Array.isArray(recipe.image)) {
+    for (const entry of recipe.image) pushFrom(entry);
+  } else {
+    pushFrom(recipe.image);
+  }
+  return out;
+}
+
+/** Pull images attached to individual recipe steps (HowToStep / HowToSection). These are highly relevant. */
+function collectInstructionImages(raw: unknown): string[] {
+  const out: string[] = [];
+  const pushFrom = (value: unknown) => {
+    if (typeof value === "string") {
+      out.push(value);
+    } else if (Array.isArray(value)) {
+      for (const entry of value) pushFrom(entry);
+    } else if (value && typeof value === "object") {
+      const u = (value as Record<string, unknown>).url;
+      if (typeof u === "string") out.push(u);
+    }
+  };
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const entry of node) walk(entry);
+    } else if (node && typeof node === "object") {
+      const o = node as Record<string, unknown>;
+      if (o.image) pushFrom(o.image);
+      if (Array.isArray(o.itemListElement)) walk(o.itemListElement);
+    }
+  };
+  walk(raw);
+  return out;
+}
+
+/** Restrict the markup to the most likely recipe body so we don't pick up sidebar/related/footer images. */
+function isolateMainContent(html: string): string {
+  const articleMatch = /<article[\s\S]*?<\/article>/i.exec(html);
+  if (articleMatch?.[0] && articleMatch[0].length > 400) return articleMatch[0];
+  const mainMatch = /<main[\s\S]*?<\/main>/i.exec(html);
+  if (mainMatch?.[0] && mainMatch[0].length > 400) return mainMatch[0];
+  return html;
+}
+
+function getImgAttr(tag: string, attr: string): string | undefined {
+  const m = new RegExp(`${attr}=["']([^"']+)["']`, "i").exec(tag);
+  return m?.[1];
+}
+
+/**
+ * Extract only sizeable content photos as a fallback (when structured data lacks images).
+ * Tiny thumbnails, related-post images, avatars, and decorative assets are dropped.
+ */
+function extractContentImages(html: string, pageUrl: string): string[] {
+  const scoped = isolateMainContent(html);
+  const out: string[] = [];
+  const re = /<img[^>]+>/gi;
+  let tag = re.exec(scoped);
+  while (tag) {
+    const raw = tag[0];
+    const src =
+      getImgAttr(raw, "data-src") ??
+      getImgAttr(raw, "data-lazy-src") ??
+      getImgAttr(raw, "data-original") ??
+      getImgAttr(raw, "src");
+
+    if (src && !/^data:/i.test(src)) {
+      const lowered = src.toLowerCase();
+      const isJunk =
+        /logo|icon|sprite|avatar|favicon|placeholder|spacer|pixel|tracking|emoji|badge|banner|advert|thumb|thumbnail|related|widget|gravatar|author|profile|social|share|\/ads?\//i.test(
+          lowered
+        );
+
+      // Honour declared dimensions: skip clearly small images, keep ones declared large.
+      const width = Number(getImgAttr(raw, "width"));
+      const height = Number(getImgAttr(raw, "height"));
+      const tooSmall =
+        (Number.isFinite(width) && width > 0 && width < 200) ||
+        (Number.isFinite(height) && height > 0 && height < 200);
+      // Skip explicit small renditions encoded in the URL (e.g. -150x150, ?w=100).
+      const smallRendition = /[-_](\d{2,3})x(\d{2,3})\.(?:jpe?g|png|webp)/i.test(lowered)
+        ? (() => {
+            const dim = /[-_](\d{2,3})x(\d{2,3})\./i.exec(lowered);
+            return dim ? Number(dim[1]) < 300 || Number(dim[2]) < 300 : false;
+          })()
+        : /[?&](?:w|width)=(\d{1,3})(?:&|$)/i.test(lowered);
+
+      if (!isJunk && !tooSmall && !smallRendition) {
+        try {
+          out.push(new URL(src, pageUrl).toString());
+        } catch {
+          /* skip malformed src */
+        }
+      }
+    }
+    tag = re.exec(scoped);
+  }
+  return out;
+}
+
+function dedupeImageUrls(urls: Array<string | undefined>, limit = 12): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of urls) {
+    if (typeof url !== "string" || !url.startsWith("http")) continue;
+    const key = stripQueryAndFragment(url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(url);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+    .replace(/<header[\s\S]*?<\/header>/gi, "")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+    .replace(/<aside[\s\S]*?<\/aside>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function parseRecipeWithGemini(html: string, url: string): Promise<Partial<ParsedRecipe> | null> {
+  if (!genai) return null;
+  const text = stripHtmlToText(html).slice(0, 24000);
+  const prompt = `Extract the recipe from this webpage. URL: ${url}
+
+Return ONLY valid JSON (no markdown) with these fields (omit missing ones):
+{"title":"","description":"","ingredients":["..."],"instructions":["..."],"prepTime":"","cookTime":"","totalTime":"","servings":""}
+
+Keep content in its original language. Webpage text:
+${text}`;
+
+  try {
+    const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+    return JSON.parse(raw) as Partial<ParsedRecipe>;
+  } catch {
+    return null;
+  }
+}
+
+async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
+  let html: string;
+  try {
+    html = await fetchHtml(url, 10000);
+  } catch {
+    return null;
+  }
+
+  const source = hostname(url);
+  const jsonLd = findRecipeJsonLd(html);
+
+  let title = "";
+  let description: string | undefined;
+  let imageUrl: string | undefined;
+  let prepTime: string | undefined;
+  let cookTime: string | undefined;
+  let totalTime: string | undefined;
+  let servings: string | undefined;
+  let ingredients: string[] = [];
+  let instructions: string[] = [];
+  let jsonLdImages: string[] = [];
+  let instructionImages: string[] = [];
+
+  if (jsonLd) {
+    title = stripSiteSuffix(
+      (typeof jsonLd.name === "string" ? jsonLd.name : null) ?? extractOgMeta(html, "title") ?? extractPageTitle(html)
+    );
+    const rd = typeof jsonLd.description === "string" ? jsonLd.description : extractOgMeta(html, "description");
+    description = rd ? decodeHtmlEntities(rd) : undefined;
+    imageUrl = extractImageFromJsonLd(jsonLd, html);
+    jsonLdImages = collectImageUrlsFromJsonLd(jsonLd);
+    instructionImages = collectInstructionImages(jsonLd.recipeInstructions);
+    prepTime = parseDuration(jsonLd.prepTime);
+    cookTime = parseDuration(jsonLd.cookTime);
+    totalTime = parseDuration(jsonLd.totalTime);
+    servings =
+      typeof jsonLd.recipeYield === "string"
+        ? jsonLd.recipeYield
+        : typeof jsonLd.recipeYield === "number"
+        ? String(jsonLd.recipeYield)
+        : Array.isArray(jsonLd.recipeYield) && typeof jsonLd.recipeYield[0] === "string"
+        ? (jsonLd.recipeYield[0] as string)
+        : undefined;
+    ingredients = Array.isArray(jsonLd.recipeIngredient)
+      ? (jsonLd.recipeIngredient as unknown[])
+          .filter((s): s is string => typeof s === "string")
+          .map((s) => decodeHtmlEntities(s.trim()))
+          .filter(Boolean)
+      : [];
+    instructions = normalizeInstructions(jsonLd.recipeInstructions);
+  }
+
+  if (ingredients.length === 0) {
+    const g = await parseRecipeWithGemini(html, url);
+    if (g) {
+      if (!title && g.title) title = g.title;
+      if (!description && g.description) description = g.description;
+      if (!prepTime && g.prepTime) prepTime = g.prepTime;
+      if (!cookTime && g.cookTime) cookTime = g.cookTime;
+      if (!totalTime && g.totalTime) totalTime = g.totalTime;
+      if (!servings && g.servings) servings = g.servings;
+      if (Array.isArray(g.ingredients) && g.ingredients.length > 0) {
+        ingredients = (g.ingredients as unknown[])
+          .filter((s): s is string => typeof s === "string")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (Array.isArray(g.instructions) && g.instructions.length > 0) {
+        instructions = (g.instructions as unknown[])
+          .filter((s): s is string => typeof s === "string")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+  }
+
+  if (!title) title = stripSiteSuffix(extractOgMeta(html, "title") || extractPageTitle(html));
+  if (!description) {
+    const d = extractOgMeta(html, "description");
+    if (d) description = decodeHtmlEntities(d);
+  }
+  if (!imageUrl) imageUrl = extractOgMeta(html, "image") || undefined;
+
+  // Prefer structured, recipe-specific images: the recipe's own image(s) plus per-step photos.
+  const structuredImages = dedupeImageUrls([
+    imageUrl,
+    extractOgMeta(html, "image") || undefined,
+    ...jsonLdImages,
+    ...instructionImages
+  ]);
+
+  // Only fall back to scraping the article body when structured data barely has images.
+  const images =
+    structuredImages.length >= 2
+      ? structuredImages
+      : dedupeImageUrls([...structuredImages, ...extractContentImages(html, url)], 8);
+
+  return {
+    title,
+    description,
+    imageUrl,
+    prepTime,
+    cookTime,
+    totalTime,
+    servings,
+    ingredients,
+    instructions,
+    images,
+    url,
+    source
+  };
+}
+
+async function translateRecipeToSlovenian(recipe: ParsedRecipe): Promise<ParsedRecipe> {
+  if (!genai || looksSlovenian(recipe.url)) return recipe;
+
+  const payload = {
+    title: recipe.title,
+    description: recipe.description ?? "",
+    ingredients: recipe.ingredients,
+    instructions: recipe.instructions,
+  };
+
+  const prompt = `Translate this recipe into natural Slovenian culinary language. Preserve quantities and units exactly. Return ONLY valid JSON (no markdown) with the same keys: {"title":"","description":"","ingredients":["..."],"instructions":["..."]}
+
+Input: ${JSON.stringify(payload)}`;
+
+  try {
+    const response = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+    const t = JSON.parse(raw) as { title?: string; description?: string; ingredients?: string[]; instructions?: string[] };
+    return {
+      ...recipe,
+      title: typeof t.title === "string" && t.title ? t.title : recipe.title,
+      description: typeof t.description === "string" && t.description ? t.description : recipe.description,
+      ingredients: Array.isArray(t.ingredients) && t.ingredients.length > 0 ? t.ingredients : recipe.ingredients,
+      instructions: Array.isArray(t.instructions) && t.instructions.length > 0 ? t.instructions : recipe.instructions,
+    };
+  } catch {
+    return recipe;
+  }
+}
+
+// ---------- Route handlers ----------
+
+recipesRouter.get("/search", requireAuth, async (req, res) => {
+  const parsed = recipeSearchQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+  }
+
+  if (!genai) {
+    return res.status(503).json({ error: "Recipe search is not configured (missing GEMINI_API_KEY)." });
+  }
+
+  const query = parsed.data.q;
+  const grounded = await searchWithGeminiGrounding(query);
+
+  if (grounded.length === 0) {
+    return res.json({ results: [] });
+  }
+
+  // Resolve redirect URLs + fetch metadata in parallel
+  const settled = await Promise.allSettled(grounded.slice(0, 14).map((g) => resolveGroundedResult(g)));
+
+  let results = settled
+    .filter((r): r is PromiseFulfilledResult<RecipeSearchResult> => r.status === "fulfilled" && r.value !== null)
+    .map((r) => r.value);
+
+  results = dedupeBySourceAndUrl(results);
+  results = await batchTranslateToSlovenian(results);
+
+  return res.json({ results });
+});
+
+recipesRouter.get("/fetch", requireAuth, async (req, res) => {
+  const parsed = recipeFetchQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid URL", details: parsed.error.flatten() });
+  }
+
+  const url = parsed.data.url;
+  if (isBlockedHost(url) || !isPublicHttpUrl(url)) {
+    return res.status(403).json({ error: "URL not allowed." });
+  }
+
+  let recipe = await parseRecipePage(url);
+  if (!recipe) {
+    return res.status(502).json({ error: "Failed to fetch or parse recipe." });
+  }
+
+  recipe = await translateRecipeToSlovenian(recipe);
+
+  return res.json({ recipe });
+});
+
+// ---------- Saved recipes (persistence + local image storage) ----------
+
+async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        ...browserHtmlHeaders,
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+      },
+      redirect: "follow",
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const data = await response.arrayBuffer();
+    return Buffer.from(data);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Download a remote image, normalize it to webp, and store it under /api/recipe-images. */
+async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | null> {
+  if (!isPublicHttpUrl(sourceImageUrl)) return null;
+  const rawBuffer = await fetchImageBuffer(sourceImageUrl);
+  if (!rawBuffer || rawBuffer.length === 0) return null;
+
+  const hash = crypto.createHash("sha1").update(sourceImageUrl).digest("hex").slice(0, 16);
+  const fileName = `${hash}.webp`;
+  const absolutePath = path.join(recipeImagesDirectoryPath, fileName);
+  const publicUrl = `${recipeImagesPublicPath}/${fileName}`;
+
+  if (fs.existsSync(absolutePath)) return publicUrl;
+
+  try {
+    const processed = await sharp(rawBuffer)
+      .rotate()
+      .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer();
+    await fs.promises.writeFile(absolutePath, processed);
+    return publicUrl;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalRecipeImageUrl(value: string): boolean {
+  return value.startsWith(`${recipeImagesPublicPath}/`);
+}
+
+async function pruneOrphanedRecipeImages(): Promise<void> {
+  let referenced: Array<{ imageUrl: string | null; images: string | null }> = [];
+  try {
+    referenced = sqlite.prepare("SELECT image_url AS imageUrl, images FROM recipes").all() as Array<{
+      imageUrl: string | null;
+      images: string | null;
+    }>;
+  } catch {
+    return;
+  }
+
+  const keep = new Set<string>();
+  for (const row of referenced) {
+    if (row.imageUrl && isLocalRecipeImageUrl(row.imageUrl)) keep.add(row.imageUrl);
+    if (row.images) {
+      try {
+        for (const value of JSON.parse(row.images) as unknown[]) {
+          if (typeof value === "string" && isLocalRecipeImageUrl(value)) keep.add(value);
+        }
+      } catch {
+        /* ignore malformed json */
+      }
+    }
+  }
+
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = await fs.promises.readdir(recipeImagesDirectoryPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        if (keep.has(`${recipeImagesPublicPath}/${entry.name}`)) return;
+        try {
+          await fs.promises.unlink(path.join(recipeImagesDirectoryPath, entry.name));
+        } catch {
+          /* ignore */
+        }
+      })
+  );
+}
+
+interface SavedRecipeRow {
+  id: number;
+  url: string;
+  source: string | null;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  prepTime: string | null;
+  cookTime: string | null;
+  totalTime: string | null;
+  servings: string | null;
+  ingredients: string;
+  instructions: string;
+  images: string;
+  createdAt: string;
+}
+
+function parseStringArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
+function mapSavedRecipeRow(row: SavedRecipeRow) {
+  return {
+    id: row.id,
+    url: row.url,
+    source: row.source ?? "",
+    title: row.title,
+    description: row.description ?? undefined,
+    imageUrl: row.imageUrl ?? undefined,
+    prepTime: row.prepTime ?? undefined,
+    cookTime: row.cookTime ?? undefined,
+    totalTime: row.totalTime ?? undefined,
+    servings: row.servings ?? undefined,
+    ingredients: parseStringArray(row.ingredients),
+    instructions: parseStringArray(row.instructions),
+    images: parseStringArray(row.images),
+    createdAt: row.createdAt
+  };
+}
+
+const savedRecipeColumns = `
+  id, url, source, title, description, image_url AS imageUrl,
+  prep_time AS prepTime, cook_time AS cookTime, total_time AS totalTime, servings,
+  ingredients, instructions, images, created_at AS createdAt
+`;
+
+const saveRecipeSchema = z.object({
+  url: z.string().trim().url().max(2000),
+  source: z.string().trim().max(200).optional(),
+  title: z.string().trim().min(1).max(300),
+  description: z.string().trim().max(4000).optional(),
+  imageUrl: z.string().trim().url().max(2000).optional(),
+  prepTime: z.string().trim().max(100).optional(),
+  cookTime: z.string().trim().max(100).optional(),
+  totalTime: z.string().trim().max(100).optional(),
+  servings: z.string().trim().max(100).optional(),
+  ingredients: z.array(z.string().trim().max(1000)).max(200).default([]),
+  instructions: z.array(z.string().trim().max(5000)).max(200).default([]),
+  images: z.array(z.string().trim().url().max(2000)).max(30).default([])
+});
+
+recipesRouter.get("/saved", requireAuth, (_req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const rows = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE user_id = ? ORDER BY created_at DESC`)
+    .all(authUser.id) as SavedRecipeRow[];
+
+  return res.json({ recipes: rows.map(mapSavedRecipeRow) });
+});
+
+recipesRouter.post("/saved", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const parsed = saveRecipeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const payload = parsed.data;
+
+  const existing = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE user_id = ? AND url = ? LIMIT 1`)
+    .get(authUser.id, payload.url) as SavedRecipeRow | undefined;
+  if (existing) {
+    return res.status(200).json({ recipe: mapSavedRecipeRow(existing) });
+  }
+
+  // Persist all remote images locally so the recipe no longer depends on the source site.
+  const galleryCandidates = dedupeImageUrls(
+    [payload.imageUrl, ...payload.images],
+    20
+  );
+
+  const storedGallery: string[] = [];
+  for (const candidate of galleryCandidates) {
+    const localUrl = await saveRecipeImageLocally(candidate);
+    if (localUrl && !storedGallery.includes(localUrl)) {
+      storedGallery.push(localUrl);
+    }
+  }
+
+  let storedMainImage: string | null = null;
+  if (payload.imageUrl) {
+    storedMainImage = await saveRecipeImageLocally(payload.imageUrl);
+  }
+  if (!storedMainImage) {
+    storedMainImage = storedGallery[0] ?? null;
+  }
+
+  const insert = sqlite
+    .prepare(
+      `
+      INSERT INTO recipes (
+        user_id, url, source, title, description, image_url,
+        prep_time, cook_time, total_time, servings,
+        ingredients, instructions, images
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+    )
+    .run(
+      authUser.id,
+      payload.url,
+      payload.source ?? null,
+      payload.title,
+      payload.description ?? null,
+      storedMainImage,
+      payload.prepTime ?? null,
+      payload.cookTime ?? null,
+      payload.totalTime ?? null,
+      payload.servings ?? null,
+      JSON.stringify(payload.ingredients),
+      JSON.stringify(payload.instructions),
+      JSON.stringify(storedGallery)
+    );
+
+  const row = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ?`)
+    .get(Number(insert.lastInsertRowid)) as SavedRecipeRow;
+
+  return res.status(201).json({ recipe: mapSavedRecipeRow(row) });
+});
+
+recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const recipeId = Number(req.params.recipeId);
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return res.status(400).json({ error: "Invalid recipeId" });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipes WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(recipeId, authUser.id);
+  if (!existing) {
+    return res.status(404).json({ error: "Recipe not found" });
+  }
+
+  sqlite.prepare("DELETE FROM recipes WHERE id = ? AND user_id = ?").run(recipeId, authUser.id);
+  void pruneOrphanedRecipeImages();
+
+  return res.status(204).send();
+});

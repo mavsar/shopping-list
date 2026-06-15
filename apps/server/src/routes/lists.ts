@@ -443,7 +443,15 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
   const formattedTitle = formatItemTitle(payload.title);
   const normalizedTitle = normalizeTitle(formattedTitle);
 
-  const preResolvedCategory = payload.category ?? await classifyCategory(formattedTitle);
+  // Only resolve a category when we may need to create a brand-new catalog item.
+  // If the catalog item already exists, the category below is ignored, so we skip
+  // the (slow) LLM classification entirely to keep adds instant.
+  const catalogItemExists = Boolean(
+    sqlite.prepare("SELECT id FROM items WHERE normalized_title = ?").get(normalizedTitle)
+  );
+
+  const preResolvedCategory =
+    payload.category ?? (catalogItemExists ? "drugo" : await classifyCategory(formattedTitle));
 
   const assignItem = sqlite.transaction((resolvedCategory: string) => {
     let createdItem = false;
@@ -473,6 +481,10 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
       itemId = Number(itemInsert.lastInsertRowid);
       createdItem = true;
     }
+
+    sqlite
+      .prepare("UPDATE items SET default_quantity = ?, default_unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(payload.quantity, payload.unit, itemId);
 
     const activeListItem = sqlite
       .prepare("SELECT id, quantity FROM list_items WHERE list_id = ? AND item_id = ? AND status = 'active' LIMIT 1")
@@ -664,6 +676,20 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
       `
     )
     .run(payload.status ?? null, payload.quantity ?? null, payload.unit ?? null, payload.note ?? null, listItemId, listId);
+
+  if (payload.quantity !== undefined || payload.unit !== undefined) {
+    const updatedListItem = sqlite
+      .prepare("SELECT quantity, unit FROM list_items WHERE id = ?")
+      .get(listItemId) as { quantity: number; unit: string } | undefined;
+
+    if (updatedListItem) {
+      sqlite
+        .prepare(
+          "UPDATE items SET default_quantity = ?, default_unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT item_id FROM list_items WHERE id = ?)"
+        )
+        .run(updatedListItem.quantity, updatedListItem.unit, listItemId);
+    }
+  }
 
   const listItem = sqlite
     .prepare(

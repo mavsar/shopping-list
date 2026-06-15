@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useLocation } from "react-router-dom";
 
 import { AppShell } from "./layouts/AppShell";
-import { AdminUsersPage } from "./pages/AdminUsersPage";
-import { ListDetailsPage } from "./pages/ListDetailsPage";
-import { ListsPage } from "./pages/ListsPage";
-import { LoginPage } from "./pages/LoginPage";
-import { RecipesPage } from "./pages/RecipesPage";
 import type { AuthUser } from "./types/auth";
 import { rememberMeCookieKey, tokenStorageKey } from "./ui/constants";
+
+const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage").then((m) => ({ default: m.AdminUsersPage })));
+const ListDetailsPage = lazy(() => import("./pages/ListDetailsPage").then((m) => ({ default: m.ListDetailsPage })));
+const ListsPage = lazy(() => import("./pages/ListsPage").then((m) => ({ default: m.ListsPage })));
+const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
+const RecipesPage = lazy(() => import("./pages/RecipesPage").then((m) => ({ default: m.RecipesPage })));
 
 function getCookieValue(name: string): string {
   const value = document.cookie
@@ -122,6 +123,7 @@ export default function App() {
 
   return (
     <AppShell>
+      <Suspense fallback={null}>
       <Routes location={location}>
         <Route
           path="/login"
@@ -188,6 +190,7 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to={authUser ? "/" : "/login"} replace />} />
       </Routes>
+      </Suspense>
     </AppShell>
   );
 }

@@ -105,4 +105,6 @@ export type CatalogItem = {
   normalizedTitle: string;
   imageUrl: string | null;
   category: ItemCategory;
+  defaultQuantity: number | null;
+  defaultUnit: ShoppingItemUnit | null;
 };

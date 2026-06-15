@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { InputHTMLAttributes } from "react";
 import { cva, cx } from "class-variance-authority";
 
@@ -33,7 +34,9 @@ function hasWidthUtilityClass(className?: string): boolean {
   return /(?:^|\s)(?:[a-z-]+:)*w-[^\s]+/.test(className);
 }
 
-export function Input({ className, uiSize = "md", invalid = false, ...props }: InputProps) {
-  const widthClass = hasWidthUtilityClass(className) ? "" : "w-full";
-  return <input className={cx(widthClass, inputClassName({ size: uiSize, invalid }), className)} {...props} />;
-}
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  function Input({ className, uiSize = "md", invalid = false, ...props }, ref) {
+    const widthClass = hasWidthUtilityClass(className) ? "" : "w-full";
+    return <input ref={ref} className={cx(widthClass, inputClassName({ size: uiSize, invalid }), className)} {...props} />;
+  }
+);

@@ -1,5 +1,5 @@
 import { cx } from 'class-variance-authority';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 
 import type { ItemCategory } from '../domain/item-category';
 import { LordIcon } from './lordicon/lord-icon';
@@ -89,7 +89,7 @@ type ItemCategoryIconProps = {
   size?: number;
 };
 
-export function ItemCategoryIcon({ category, className, size = 24 }: ItemCategoryIconProps) {
+function ItemCategoryIconComponent({ category, className, size = 24 }: ItemCategoryIconProps) {
   const [showRevealOverlay, setShowRevealOverlay] = useState(true);
   const [revealReady, setRevealReady] = useState(false);
   const iconSet = ICONS[category] ?? {
@@ -126,3 +126,5 @@ export function ItemCategoryIcon({ category, className, size = 24 }: ItemCategor
     </span>
   );
 }
+
+export const ItemCategoryIcon = memo(ItemCategoryIconComponent);

@@ -1,4 +1,5 @@
 import { cx } from 'class-variance-authority';
+import { memo } from 'react';
 
 const SLOVENIAN_MONTHS = [
   'januar', 'februar', 'marec', 'april', 'maj', 'junij',
@@ -40,7 +41,7 @@ type ListItemCardProps = {
   onIncreaseQuantity: (item: ShoppingListItem) => void;
 };
 
-export function ListItemCard({
+function ListItemCardComponent({
   item,
   updating,
   sparkleOnMount,
@@ -191,3 +192,5 @@ export function ListItemCard({
     </Card>
   );
 }
+
+export const ListItemCard = memo(ListItemCardComponent);

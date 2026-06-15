@@ -11,6 +11,7 @@ import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { itemsRouter } from "./routes/items.js";
 import { listsRouter } from "./routes/lists.js";
+import { recipesRouter } from "./routes/recipes.js";
 import { usersRouter } from "./routes/users.js";
 
 ensureBootstrapAdmin();
@@ -26,6 +27,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/lists", listsRouter);
 app.use("/api/items", itemsRouter);
+app.use("/api/recipes", recipesRouter);
 
 app.get("/api/version", (_req, res) => {
   const [{ version }] = sqlite.prepare("SELECT sqlite_version() AS version").all() as Array<{ version: string }>;
@@ -38,13 +40,20 @@ const webDistPath = path.resolve(currentDirectoryPath, "..", "..", "web", "dist"
 const itemImagesDirectoryPath = process.env.ITEM_IMAGES_PATH?.trim()
   ? path.resolve(process.env.ITEM_IMAGES_PATH)
   : path.resolve(currentDirectoryPath, "..", "storage", "item-images");
+const recipeImagesDirectoryPath = process.env.RECIPE_IMAGES_PATH?.trim()
+  ? path.resolve(process.env.RECIPE_IMAGES_PATH)
+  : path.resolve(currentDirectoryPath, "..", "storage", "recipe-images");
 
 if (!fs.existsSync(itemImagesDirectoryPath)) {
   fs.mkdirSync(itemImagesDirectoryPath, { recursive: true });
 }
+if (!fs.existsSync(recipeImagesDirectoryPath)) {
+  fs.mkdirSync(recipeImagesDirectoryPath, { recursive: true });
+}
 
 app.use("/api/item-images", express.static(itemImagesDirectoryPath));
 app.use("/item-images", express.static(itemImagesDirectoryPath));
+app.use("/api/recipe-images", express.static(recipeImagesDirectoryPath));
 
 if (fs.existsSync(webDistPath)) {
   app.use(express.static(webDistPath));

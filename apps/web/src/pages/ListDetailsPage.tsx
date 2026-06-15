@@ -43,6 +43,8 @@ type ImageCandidate = {
 
 const quantityStep = 1;
 
+const quantityControlsTransition = { duration: 0.16, ease: 'easeOut' } as const;
+
 function formatItemTitle(title: string): string {
   const normalized = title.trim().replace(/\s+/g, ' ');
   if (!normalized) {
@@ -86,6 +88,15 @@ function ItemQuantityUnitControls({
   disabled = false,
   buttonSize,
 }: ItemQuantityUnitControlsProps) {
+  const [inputText, setInputText] = useState(String(quantity));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setInputText(String(quantity));
+    }
+  }, [quantity]);
+
   return (
     <div className="flex no-wrap items-center gap-2">
       <Button
@@ -100,15 +111,23 @@ function ItemQuantityUnitControls({
         onClick={() => onQuantityChange(Math.max(1, Number((quantity - quantityStep).toFixed(2))))}
       />
       <Input
+        ref={inputRef}
         type="text"
+        inputMode="decimal"
         className="w-12 text-center"
-        min={1}
-        max={9999}
-        step={0.5}
-        value={quantity}
+        value={inputText}
         onChange={(event) => {
-          const parsed = Number(event.target.value);
-          onQuantityChange(Number.isFinite(parsed) && parsed > 0 ? parsed : 1);
+          setInputText(event.target.value);
+          const parsed = parseFloat(event.target.value);
+          if (Number.isFinite(parsed) && parsed > 0) {
+            onQuantityChange(Number(parsed.toFixed(2)));
+          }
+        }}
+        onBlur={() => {
+          const parsed = parseFloat(inputText);
+          const valid = Number.isFinite(parsed) && parsed > 0 ? Number(parsed.toFixed(2)) : 1;
+          onQuantityChange(valid);
+          setInputText(String(valid));
         }}
         required
       />
@@ -298,9 +317,25 @@ function SharedItemFormFields({
         </Select>
         {categoryLoading ? (
           <p className="m-0 mt-1 flex items-center gap-1.5 text-xs text-slate-400 italic">
-            <svg className="h-3 w-3 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            <svg
+              className="h-3 w-3 shrink-0 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+              />
             </svg>
             Gemini predlaga kategorijo...
           </p>
@@ -636,8 +671,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setExpandedQuantityItemId((current) => (current === itemId ? null : itemId));
   }
 
-  const quantityControlsTransition = { duration: 0.16, ease: 'easeOut' } as const;
-
   function handleCompletionToggle(item: ShoppingListItem) {
     const nextStatus = item.status === 'completed' ? 'active' : 'completed';
 
@@ -671,6 +704,46 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       Authorization: `Bearer ${token}`,
     }),
     [token],
+  );
+
+  // Stable callback identities so memoized ListItemCard children only re-render
+  // when their own item/visibility props change (not on every parent render).
+  const handleCompletionToggleRef = useRef(handleCompletionToggle);
+  handleCompletionToggleRef.current = handleCompletionToggle;
+  const decreaseItemQuantityRef = useRef(decreaseItemQuantity);
+  decreaseItemQuantityRef.current = decreaseItemQuantity;
+  const increaseItemQuantityRef = useRef(increaseItemQuantity);
+  increaseItemQuantityRef.current = increaseItemQuantity;
+  const handleQuantityLabelClickRef = useRef(handleQuantityLabelClick);
+  handleQuantityLabelClickRef.current = handleQuantityLabelClick;
+  const openItemDetailsRef = useRef(openItemDetails);
+  openItemDetailsRef.current = openItemDetails;
+
+  const stableCompletionToggle = useCallback(
+    (item: ShoppingListItem) => handleCompletionToggleRef.current(item),
+    [],
+  );
+  const stableDecreaseQuantity = useCallback(
+    (item: ShoppingListItem) => decreaseItemQuantityRef.current(item),
+    [],
+  );
+  const stableIncreaseQuantity = useCallback(
+    (item: ShoppingListItem) => increaseItemQuantityRef.current(item),
+    [],
+  );
+  const stableQuantityLabelClick = useCallback(
+    (itemId: number) => handleQuantityLabelClickRef.current(itemId),
+    [],
+  );
+  const stableOpenDetails = useCallback(
+    (item: ShoppingListItem) => openItemDetailsRef.current(item),
+    [],
+  );
+  const stableHoverStart = useCallback((itemId: number) => setHoveredQuantityItemId(itemId), []);
+  const stableHoverEnd = useCallback(
+    (itemId: number) =>
+      setHoveredQuantityItemId((current) => (current === itemId ? null : current)),
+    [],
   );
 
   useEffect(() => {
@@ -883,6 +956,17 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemName(prefillName?.trim() || searchValue.trim());
   }
 
+  function resolveItemDefaults(catalogItemId: number, globalItem: CatalogItem): { quantity: number; unit: ShoppingItemUnit } {
+    const existing = items.find((li) => li.itemId === catalogItemId);
+    if (existing) {
+      return { quantity: existing.quantity, unit: normalizeShoppingItemUnit(existing.unit) };
+    }
+    return {
+      quantity: globalItem.defaultQuantity ?? 1,
+      unit: globalItem.defaultUnit != null ? normalizeShoppingItemUnit(globalItem.defaultUnit) : 'kos',
+    };
+  }
+
   function openCreateItemEditStep(item: CatalogItem) {
     openCreateItemStep(item.title);
     categoryManualRef.current = true;
@@ -890,13 +974,17 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     setNewItemImageUrl(item.imageUrl ?? '');
     setNewItemImagePreviewUrl(item.imageUrl ?? '');
     setNewItemSourceUrl('');
+    const defaults = resolveItemDefaults(item.id, item);
+    setNewItemQuantity(defaults.quantity);
+    setNewItemUnit(defaults.unit);
   }
 
-  async function addExistingItem(itemTitle: string) {
+  async function addExistingItem(item: CatalogItem) {
     if (!resolvedListId) {
       setAddItemError('Seznam še ni naložen.');
       return;
     }
+    const { quantity, unit } = resolveItemDefaults(item.id, item);
     setAddItemLoading(true);
     setAddItemError('');
     try {
@@ -907,15 +995,18 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: formatItemTitle(itemTitle),
-          quantity: 1,
-          unit: 'kos',
+          title: formatItemTitle(item.title),
+          quantity,
+          unit,
+          category: item.category,
         }),
       });
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
       if (!response.ok || !payload.listItem) {
-        throw new Error(payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`);
+        throw new Error(
+          payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`,
+        );
       }
 
       setItems((currentItems) => {
@@ -969,7 +1060,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
 
       const payload = (await response.json()) as { listItem?: ShoppingListItem; error?: string };
       if (!response.ok || !payload.listItem) {
-        throw new Error(payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`);
+        throw new Error(
+          payload.error ?? `Dodajanje izdelka ni uspelo (status ${response.status}).`,
+        );
       }
 
       setItems((currentItems) => {
@@ -1463,7 +1556,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
         actions={
           <Button
             color="white"
-            appearance="outline"
+            appearance="transparent"
             type="button"
             icon={<ArrowLeft animateOnHover />}
             iconOnly
@@ -1498,17 +1591,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                           quantityControlsVisible={isQuantityControlsVisible(item.id)}
                           quantityControlsTransition={quantityControlsTransition}
                           formatTitle={formatItemTitle}
-                          onHoverStart={setHoveredQuantityItemId}
-                          onHoverEnd={(itemId) =>
-                            setHoveredQuantityItemId((current) =>
-                              current === itemId ? null : current,
-                            )
-                          }
-                          onQuantityLabelClick={handleQuantityLabelClick}
-                          onCompletionToggle={handleCompletionToggle}
-                          onOpenDetails={openItemDetails}
-                          onDecreaseQuantity={decreaseItemQuantity}
-                          onIncreaseQuantity={increaseItemQuantity}
+                          onHoverStart={stableHoverStart}
+                          onHoverEnd={stableHoverEnd}
+                          onQuantityLabelClick={stableQuantityLabelClick}
+                          onCompletionToggle={stableCompletionToggle}
+                          onOpenDetails={stableOpenDetails}
+                          onDecreaseQuantity={stableDecreaseQuantity}
+                          onIncreaseQuantity={stableIncreaseQuantity}
                         />
                       </li>
                     ))}
@@ -1525,15 +1614,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                     quantityControlsVisible={isQuantityControlsVisible(item.id)}
                     quantityControlsTransition={quantityControlsTransition}
                     formatTitle={formatItemTitle}
-                    onHoverStart={setHoveredQuantityItemId}
-                    onHoverEnd={(itemId) =>
-                      setHoveredQuantityItemId((current) => (current === itemId ? null : current))
-                    }
-                    onQuantityLabelClick={handleQuantityLabelClick}
-                    onCompletionToggle={handleCompletionToggle}
-                    onOpenDetails={openItemDetails}
-                    onDecreaseQuantity={decreaseItemQuantity}
-                    onIncreaseQuantity={increaseItemQuantity}
+                    onHoverStart={stableHoverStart}
+                    onHoverEnd={stableHoverEnd}
+                    onQuantityLabelClick={stableQuantityLabelClick}
+                    onCompletionToggle={stableCompletionToggle}
+                    onOpenDetails={stableOpenDetails}
+                    onDecreaseQuantity={stableDecreaseQuantity}
+                    onIncreaseQuantity={stableIncreaseQuantity}
                   />
                 </li>
               ))}
@@ -1644,7 +1731,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                       <button
                         type="button"
                         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left text-slate-100"
-                        onClick={() => void addExistingItem(item.title)}
+                        onClick={() => void addExistingItem(item)}
                         disabled={addItemLoading}
                       >
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center">

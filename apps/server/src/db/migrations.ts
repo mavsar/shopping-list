@@ -315,6 +315,59 @@ const migrations: Migration[] = [
 
       PRAGMA foreign_keys = ON;
     `
+  },
+  {
+    name: "011_items_default_quantity_unit",
+    sql: `
+      ALTER TABLE items ADD COLUMN default_quantity REAL;
+      ALTER TABLE items ADD COLUMN default_unit TEXT;
+    `
+  },
+  {
+    name: "012_backfill_item_defaults_from_list_items",
+    sql: `
+      UPDATE items
+      SET
+        default_quantity = (
+          SELECT li.quantity FROM list_items li
+          WHERE li.item_id = items.id
+          ORDER BY li.updated_at DESC
+          LIMIT 1
+        ),
+        default_unit = (
+          SELECT li.unit FROM list_items li
+          WHERE li.item_id = items.id
+          ORDER BY li.updated_at DESC
+          LIMIT 1
+        )
+      WHERE default_quantity IS NULL;
+    `
+  },
+  {
+    name: "013_saved_recipes",
+    sql: `
+      CREATE TABLE IF NOT EXISTS recipes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        url TEXT NOT NULL,
+        source TEXT,
+        title TEXT NOT NULL,
+        description TEXT,
+        image_url TEXT,
+        prep_time TEXT,
+        cook_time TEXT,
+        total_time TEXT,
+        servings TEXT,
+        ingredients TEXT NOT NULL DEFAULT '[]',
+        instructions TEXT NOT NULL DEFAULT '[]',
+        images TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_user_url ON recipes(user_id, url);
+      CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON recipes(user_id);
+    `
   }
 ];
 

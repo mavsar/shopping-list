@@ -813,7 +813,7 @@ itemsRouter.get("/suggest", requireAuth, (req, res) => {
   const items = sqlite
     .prepare(
       `
-      SELECT id, title, normalized_title AS normalizedTitle, image_url AS imageUrl, category
+      SELECT id, title, normalized_title AS normalizedTitle, image_url AS imageUrl, category, default_quantity AS defaultQuantity, default_unit AS defaultUnit
       FROM items
       WHERE normalized_title LIKE ?
       ORDER BY title ASC
