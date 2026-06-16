@@ -21,6 +21,7 @@ const recipeImagesPublicPath = "/api/recipe-images";
 if (!fs.existsSync(recipeImagesDirectoryPath)) {
   fs.mkdirSync(recipeImagesDirectoryPath, { recursive: true });
 }
+console.log(`[recipe-images] storage directory: ${recipeImagesDirectoryPath}`);
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const genai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
@@ -961,18 +962,31 @@ async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer |
   }
 }
 
-/** Download a remote image, normalize it to webp, and store it under /api/recipe-images. */
+/** Guess a safe file extension from the source URL (fallback: jpg). */
+function guessImageExtension(sourceUrl: string): string {
+  try {
+    const pathname = new URL(sourceUrl).pathname.toLowerCase();
+    const match = pathname.match(/\.(jpe?g|png|webp|gif|avif)(?:\?|$)/);
+    if (match) return match[1] === "jpeg" ? "jpg" : match[1];
+  } catch { /* ignore */ }
+  return "jpg";
+}
+
+/** Download a remote image, normalize it to webp, and store it under /api/recipe-images.
+ *  Falls back to saving the raw bytes (original format) when sharp is unavailable or fails. */
 async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | null> {
   if (!isPublicHttpUrl(sourceImageUrl)) return null;
   const rawBuffer = await fetchImageBuffer(sourceImageUrl);
   if (!rawBuffer || rawBuffer.length === 0) return null;
 
   const hash = crypto.createHash("sha1").update(sourceImageUrl).digest("hex").slice(0, 16);
-  const fileName = `${hash}.webp`;
-  const absolutePath = path.join(recipeImagesDirectoryPath, fileName);
-  const publicUrl = `${recipeImagesPublicPath}/${fileName}`;
 
-  if (fs.existsSync(absolutePath)) return publicUrl;
+  // --- primary path: process with sharp → webp ---
+  const webpFileName = `${hash}.webp`;
+  const webpAbsPath = path.join(recipeImagesDirectoryPath, webpFileName);
+  const webpPublicUrl = `${recipeImagesPublicPath}/${webpFileName}`;
+
+  if (fs.existsSync(webpAbsPath)) return webpPublicUrl;
 
   try {
     const processed = await sharp(rawBuffer)
@@ -980,9 +994,30 @@ async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | 
       .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
-    await fs.promises.writeFile(absolutePath, processed);
-    return publicUrl;
-  } catch {
+    await fs.promises.writeFile(webpAbsPath, processed);
+    return webpPublicUrl;
+  } catch (sharpErr) {
+    console.warn(
+      `[recipe-images] sharp failed (${sharpErr instanceof Error ? sharpErr.message : String(sharpErr)}), saving raw bytes for ${sourceImageUrl}`
+    );
+  }
+
+  // --- fallback path: save raw bytes with original format ---
+  const ext = guessImageExtension(sourceImageUrl);
+  const rawFileName = `${hash}.${ext}`;
+  const rawAbsPath = path.join(recipeImagesDirectoryPath, rawFileName);
+  const rawPublicUrl = `${recipeImagesPublicPath}/${rawFileName}`;
+
+  if (fs.existsSync(rawAbsPath)) return rawPublicUrl;
+
+  try {
+    await fs.promises.writeFile(rawAbsPath, rawBuffer);
+    return rawPublicUrl;
+  } catch (writeErr) {
+    console.error(
+      `[recipe-images] failed to write raw image to ${rawAbsPath}:`,
+      writeErr instanceof Error ? writeErr.message : writeErr
+    );
     return null;
   }
 }
