@@ -1155,7 +1155,9 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
     return res.status(200).json({ recipe: mapSavedRecipeRow(existing) });
   }
 
-  // Persist all remote images locally so the recipe no longer depends on the source site.
+  // Try to persist all remote images locally so the recipe no longer depends on the source site.
+  // Fall back to the original external URLs when local saving fails (e.g. sharp not available,
+  // network blocked, or storage not yet configured).
   const galleryCandidates = dedupeImageUrls(
     [payload.imageUrl, ...payload.images],
     20
@@ -1164,14 +1166,18 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
   const storedGallery: string[] = [];
   for (const candidate of galleryCandidates) {
     const localUrl = await saveRecipeImageLocally(candidate);
-    if (localUrl && !storedGallery.includes(localUrl)) {
-      storedGallery.push(localUrl);
+    const effectiveUrl = localUrl ?? (isPublicHttpUrl(candidate) ? candidate : null);
+    if (effectiveUrl && !storedGallery.includes(effectiveUrl)) {
+      storedGallery.push(effectiveUrl);
     }
   }
 
   let storedMainImage: string | null = null;
   if (payload.imageUrl) {
     storedMainImage = await saveRecipeImageLocally(payload.imageUrl);
+    if (!storedMainImage && isPublicHttpUrl(payload.imageUrl)) {
+      storedMainImage = payload.imageUrl;
+    }
   }
   if (!storedMainImage) {
     storedMainImage = storedGallery[0] ?? null;

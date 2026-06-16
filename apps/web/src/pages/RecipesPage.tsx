@@ -1084,7 +1084,12 @@ function RecipeDetailModal({
         <div className="space-y-5">
           {recipe.imageUrl && (
             <div className="overflow-hidden rounded-2xl border border-white/10">
-              <img src={recipe.imageUrl} alt={recipe.title} className="h-56 w-full object-cover" />
+              <img
+                src={recipe.imageUrl}
+                alt={recipe.title}
+                className="h-56 w-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
             </div>
           )}
 
@@ -1817,6 +1822,7 @@ function SavedRecipeCard({
   const recipeLabels = recipe.labelIds
     .map((id) => labels.find((l) => l.id === id))
     .filter((l): l is RecipeLabel => Boolean(l));
+  const [imgBroken, setImgBroken] = useState(false);
 
   return (
     <button
@@ -1825,12 +1831,13 @@ function SavedRecipeCard({
       className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/4 text-left transition-all duration-200 hover:border-white/20 hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
     >
       <div className="aspect-[4/3] w-full overflow-hidden bg-white/5">
-        {recipe.imageUrl ? (
+        {recipe.imageUrl && !imgBroken ? (
           <img
             src={recipe.imageUrl}
             alt=""
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            onError={() => setImgBroken(true)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-slate-600">
