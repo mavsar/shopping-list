@@ -943,11 +943,18 @@ recipesRouter.get("/fetch", requireAuth, async (req, res) => {
 async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Use the image's own origin as Referer so sites with hotlink protection
+  // (e.g. jernejkitchen.com) accept the server-side download request.
+  let referer: string | undefined;
+  try { referer = new URL(url).origin + "/"; } catch { /* ignore */ }
+
   try {
     const response = await fetch(url, {
       headers: {
         ...browserHtmlHeaders,
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        ...(referer ? { Referer: referer } : {})
       },
       redirect: "follow",
       signal: controller.signal
