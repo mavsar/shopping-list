@@ -97,7 +97,7 @@ function scaleIngredientText(ingredient: string, scale: number): string {
 
 function SourceBadge({ source }: { source: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400">
+    <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-200">
       {source}
     </span>
   );
