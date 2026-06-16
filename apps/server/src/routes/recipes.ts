@@ -991,6 +991,52 @@ function isLocalRecipeImageUrl(value: string): boolean {
   return value.startsWith(`${recipeImagesPublicPath}/`);
 }
 
+/**
+ * On startup: find any recipes whose image_url is an external URL (stored as a
+ * fallback when local saving previously failed) and try to download them locally.
+ * Runs silently in the background so it never blocks server startup or requests.
+ */
+export async function migrateExternalRecipeImages(): Promise<void> {
+  try {
+    const rows = sqlite
+      .prepare(
+        "SELECT id, image_url AS imageUrl, images FROM recipes WHERE image_url IS NOT NULL AND image_url NOT LIKE ? || '%'"
+      )
+      .all(`${recipeImagesPublicPath}/`) as Array<{ id: number; imageUrl: string; images: string }>;
+
+    for (const row of rows) {
+      const localMain = await saveRecipeImageLocally(row.imageUrl);
+      if (localMain) {
+        sqlite.prepare("UPDATE recipes SET image_url = ? WHERE id = ?").run(localMain, row.id);
+      }
+
+      try {
+        const gallery = JSON.parse(row.images) as unknown[];
+        if (!Array.isArray(gallery)) continue;
+        let changed = false;
+        const fixedGallery: string[] = [];
+        for (const entry of gallery) {
+          if (typeof entry !== "string") continue;
+          if (isLocalRecipeImageUrl(entry)) {
+            fixedGallery.push(entry);
+          } else {
+            const local = await saveRecipeImageLocally(entry);
+            fixedGallery.push(local ?? entry);
+            if (local) changed = true;
+          }
+        }
+        if (changed) {
+          sqlite.prepare("UPDATE recipes SET images = ? WHERE id = ?").run(JSON.stringify(fixedGallery), row.id);
+        }
+      } catch {
+        /* ignore malformed images JSON */
+      }
+    }
+  } catch {
+    /* ignore – table may not exist yet on very first boot */
+  }
+}
+
 async function pruneOrphanedRecipeImages(): Promise<void> {
   let referenced: Array<{ imageUrl: string | null; images: string | null }> = [];
   try {
