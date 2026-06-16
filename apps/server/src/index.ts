@@ -53,7 +53,18 @@ if (!fs.existsSync(recipeImagesDirectoryPath)) {
 
 app.use("/api/item-images", express.static(itemImagesDirectoryPath));
 app.use("/item-images", express.static(itemImagesDirectoryPath));
+
+// Recipe images: disable caching so CDN/proxy edges never serve stale entries,
+// and return a proper 404 for missing files instead of falling through to the SPA
+// handler (which would return index.html — and that HTML would be cached by Cloudflare).
+app.use("/api/recipe-images", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use("/api/recipe-images", express.static(recipeImagesDirectoryPath));
+app.use("/api/recipe-images", (_req, res) => {
+  res.status(404).end();
+});
 
 if (fs.existsSync(webDistPath)) {
   app.use(express.static(webDistPath));
