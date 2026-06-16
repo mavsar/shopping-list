@@ -368,6 +368,32 @@ const migrations: Migration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_user_url ON recipes(user_id, url);
       CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON recipes(user_id);
     `
+  },
+  {
+    name: "014_recipe_labels",
+    sql: `
+      CREATE TABLE IF NOT EXISTS recipe_labels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#6366f1',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_recipe_labels_user_name ON recipe_labels(user_id, name);
+      CREATE INDEX IF NOT EXISTS idx_recipe_labels_user_id ON recipe_labels(user_id);
+
+      CREATE TABLE IF NOT EXISTS recipe_label_assignments (
+        recipe_id INTEGER NOT NULL,
+        label_id INTEGER NOT NULL,
+        PRIMARY KEY (recipe_id, label_id),
+        FOREIGN KEY(recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+        FOREIGN KEY(label_id) REFERENCES recipe_labels(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_recipe_label_assignments_label_id ON recipe_label_assignments(label_id);
+    `
   }
 ];
 

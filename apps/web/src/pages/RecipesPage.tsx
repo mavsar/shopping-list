@@ -1,12 +1,13 @@
 import { cx } from 'class-variance-authority';
 import { AnimatePresence, motion } from 'motion/react';
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
+import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
 import { Minus, Plus, ReadyToEat, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
-import { Checkbox } from '../components/ui/fields/checkbox';
 import { Dialog } from '../components/ui/dialog';
+import { Checkbox } from '../components/ui/fields/checkbox';
 import { Input } from '../components/ui/fields/input';
 import { Select } from '../components/ui/fields/select';
 import type { AuthUser } from '../types/auth';
@@ -46,6 +47,7 @@ interface ParsedRecipe {
 interface SavedRecipe extends ParsedRecipe {
   id: number;
   createdAt: string;
+  labelIds: number[];
 }
 
 interface CheckIngredientResult {
@@ -166,7 +168,11 @@ function ImageLightbox({ src, onClose }: { src: string | null; onClose: () => vo
           <div
             aria-hidden
             className="absolute inset-0"
-            style={{ backgroundColor: 'rgba(2,6,23,0.82)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            style={{
+              backgroundColor: 'rgba(2,6,23,0.82)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
           />
           <Button
             color="white"
@@ -192,7 +198,7 @@ function ImageLightbox({ src, onClose }: { src: string | null; onClose: () => vo
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body
+    document.body,
   );
 }
 
@@ -218,7 +224,7 @@ function ChooseListDialog({
 
   useEffect(() => {
     if (open) {
-      setSelectedId(initialListId ?? (lists[0]?.id ?? null));
+      setSelectedId(initialListId ?? lists[0]?.id ?? null);
       setRemember(false);
     }
   }, [open, initialListId, lists]);
@@ -226,7 +232,9 @@ function ChooseListDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => { if (!v) onClose(); }}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
       title="Dodaj v seznam"
       size="sm"
       footer={
@@ -236,7 +244,9 @@ function ChooseListDialog({
             appearance="full"
             type="button"
             disabled={!selectedId}
-            onClick={() => { if (selectedId) onConfirm(selectedId, remember); }}
+            onClick={() => {
+              if (selectedId) onConfirm(selectedId, remember);
+            }}
           >
             Dodaj
           </Button>
@@ -266,10 +276,7 @@ function ChooseListDialog({
             </Select>
           </label>
         )}
-        <Checkbox
-          checked={remember}
-          onCheckedChange={setRemember}
-        >
+        <Checkbox checked={remember} onCheckedChange={setRemember}>
           Ne vprašaj me več (shrani privzeto)
         </Checkbox>
       </div>
@@ -297,7 +304,9 @@ function SimilarItemDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => { if (!v) onClose(); }}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
       title="Podobna sestavina že obstaja"
       size="sm"
       footer={
@@ -313,8 +322,8 @@ function SimilarItemDialog({
     >
       <div className="space-y-3 text-sm text-slate-300">
         <p>
-          Dodajaš <strong className="text-slate-100">{ingredientName}</strong>, na seznamu pa že obstaja podobna
-          sestavina <strong className="text-slate-100">{existingTitle}</strong>.
+          Dodajaš <strong className="text-slate-100">{ingredientName}</strong>, na seznamu pa že
+          obstaja podobna sestavina <strong className="text-slate-100">{existingTitle}</strong>.
         </p>
         {suggestion && <p className="text-xs text-slate-400">{suggestion}</p>}
         <p className="text-slate-400">Kaj želiš narediti?</p>
@@ -341,7 +350,9 @@ function UnitConflictDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => { if (!v) onClose(); }}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
       title="Drugačna enota"
       size="sm"
       footer={
@@ -356,8 +367,8 @@ function UnitConflictDialog({
       }
     >
       <p className="text-sm text-slate-300">
-        Sestavina <strong className="text-slate-100">{ingredientTitle}</strong> je na seznamu že v enoti{' '}
-        <strong className="text-slate-100">{existingUnit}</strong>, dodajaš pa v enoti{' '}
+        Sestavina <strong className="text-slate-100">{ingredientTitle}</strong> je na seznamu že v
+        enoti <strong className="text-slate-100">{existingUnit}</strong>, dodajaš pa v enoti{' '}
         <strong className="text-slate-100">{newUnit}</strong>. Želiš vseeno dodati?
       </p>
     </Dialog>
@@ -408,9 +419,7 @@ function AnimatedStepsLoader({
             </motion.p>
           </AnimatePresence>
         </div>
-        {secondaryMessage && (
-          <p className="text-xs text-slate-500">{secondaryMessage}</p>
-        )}
+        {secondaryMessage && <p className="text-xs text-slate-500">{secondaryMessage}</p>}
         {steps.length > 1 && (
           <div className="flex items-center gap-1.5 pt-0.5">
             {steps.map((_, i) => (
@@ -418,9 +427,7 @@ function AnimatedStepsLoader({
                 key={i}
                 className={cx(
                   'rounded-full transition-all duration-500',
-                  i === stepIndex
-                    ? 'h-1.5 w-3 bg-cyan-400'
-                    : 'h-1.5 w-1.5 bg-slate-600',
+                  i === stepIndex ? 'h-1.5 w-3 bg-cyan-400' : 'h-1.5 w-1.5 bg-slate-600',
                 )}
               />
             ))}
@@ -495,9 +502,12 @@ function InlineItemCombobox({
 
   const newLabel = `${parsedTitle} · ${parsedQuantity} ${parsedUnit}`;
   const existingItem = listItems.find((li) => String(li.id) === value);
-  const displayLabel = value === 'new'
-    ? `+ Novo: ${newLabel}`
-    : (existingItem ? existingItem.title : `+ Novo: ${newLabel}`);
+  const displayLabel =
+    value === 'new'
+      ? `+ Novo: ${newLabel}`
+      : existingItem
+        ? existingItem.title
+        : `+ Novo: ${newLabel}`;
 
   const filtered = query.trim()
     ? listItems.filter((li) => li.title.toLowerCase().includes(query.toLowerCase()))
@@ -533,8 +543,10 @@ function InlineItemCombobox({
     if (!open) return;
     function handleClick(e: MouseEvent) {
       if (
-        containerRef.current && !containerRef.current.contains(e.target as Node) &&
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
       ) {
         closeDropdown();
       }
@@ -552,53 +564,71 @@ function InlineItemCombobox({
           value={open ? query : displayLabel}
           placeholder={open ? 'Išči po seznamu…' : ''}
           onFocus={openDropdown}
-          onChange={(e) => { if (open) setQuery(e.target.value); }}
+          onChange={(e) => {
+            if (open) setQuery(e.target.value);
+          }}
           disabled={disabled}
           className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-1.5 pr-7 text-xs text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-1 focus:ring-cyan-300/25 disabled:opacity-50"
         />
-        <svg aria-hidden className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" viewBox="0 0 20 20" fill="none">
-          <path d="M6 8L10 12L14 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg
+          aria-hidden
+          className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+          viewBox="0 0 20 20"
+          fill="none"
+        >
+          <path
+            d="M6 8L10 12L14 8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </div>
-      {open && createPortal(
-        <div
-          ref={dropdownRef}
-          style={dropdownStyle}
-          className="overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-2xl"
-        >
-          <div className="max-h-56 overflow-y-auto">
-            <button
-              type="button"
-              onMouseDown={() => select('new')}
-              className={cx(
-                'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
-                value === 'new' ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300',
-              )}
-            >
-              <span className="font-medium">+ Dodaj novo:</span>{' '}
-              <span className="text-slate-400">{parsedTitle} · {parsedQuantity} {parsedUnit}</span>
-            </button>
-            {listItems.length > 0 && <div className="mx-2 border-t border-white/8" />}
-            {filtered.map((li) => (
+      {open &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={dropdownStyle}
+            className="overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-2xl"
+          >
+            <div className="max-h-56 overflow-y-auto">
               <button
-                key={li.id}
                 type="button"
-                onMouseDown={() => select(String(li.id))}
+                onMouseDown={() => select('new')}
                 className={cx(
                   'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
-                  String(li.id) === value ? 'bg-emerald-500/10 text-emerald-300' : 'text-slate-300',
+                  value === 'new' ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300',
                 )}
               >
-                {li.title}
+                <span className="font-medium">+ Dodaj novo:</span>{' '}
+                <span className="text-slate-400">
+                  {parsedTitle} · {parsedQuantity} {parsedUnit}
+                </span>
               </button>
-            ))}
-            {filtered.length === 0 && query && (
-              <p className="px-3 py-2.5 text-xs text-slate-500">Ni zadetkov za „{query}"</p>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+              {listItems.length > 0 && <div className="mx-2 border-t border-white/8" />}
+              {filtered.map((li) => (
+                <button
+                  key={li.id}
+                  type="button"
+                  onMouseDown={() => select(String(li.id))}
+                  className={cx(
+                    'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
+                    String(li.id) === value
+                      ? 'bg-emerald-500/10 text-emerald-300'
+                      : 'text-slate-300',
+                  )}
+                >
+                  {li.title}
+                </button>
+              ))}
+              {filtered.length === 0 && query && (
+                <p className="px-3 py-2.5 text-xs text-slate-500">Ni zadetkov za „{query}"</p>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
@@ -626,15 +656,29 @@ function BulkAddReviewDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => { if (!v) onClose(); }}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
       title="Dodaj v seznam"
       size="md"
       footer={
         <>
-          <Button color="gradient" appearance="full" type="button" disabled={busy} onClick={onConfirm}>
+          <Button
+            color="gradient"
+            appearance="full"
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+          >
             {busy ? 'Dodajam…' : confirmLabel}
           </Button>
-          <Button color="white" appearance="outline" type="button" disabled={busy} onClick={onClose}>
+          <Button
+            color="white"
+            appearance="outline"
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+          >
             Prekliči
           </Button>
         </>
@@ -642,7 +686,8 @@ function BulkAddReviewDialog({
     >
       <ul className="space-y-2.5">
         {items.map((item, i) => {
-          const hasUnitConflict = item.match?.type === 'unit_conflict' && item.selectedValue !== 'new';
+          const hasUnitConflict =
+            item.match?.type === 'unit_conflict' && item.selectedValue !== 'new';
           return (
             <li key={i} className="rounded-xl border border-white/10 bg-white/4 p-3">
               <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-4">
@@ -691,6 +736,10 @@ function RecipeDetailModal({
   onAdd,
   onRemove,
   token,
+  recipeId,
+  labels,
+  labelIds: externalLabelIds,
+  onLabelsChange,
 }: {
   recipe: ParsedRecipe | null;
   open: boolean;
@@ -700,8 +749,37 @@ function RecipeDetailModal({
   onAdd?: () => void;
   onRemove?: () => void;
   token: string;
+  recipeId?: number;
+  labels?: RecipeLabel[];
+  labelIds?: number[];
+  onLabelsChange?: (recipeId: number, newLabelIds: number[]) => void;
 }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [localLabelIds, setLocalLabelIds] = useState<number[]>([]);
+  const [labelSaving, setLabelSaving] = useState(false);
+
+  useEffect(() => {
+    setLocalLabelIds(externalLabelIds ?? []);
+  }, [externalLabelIds, open]);
+
+  async function handleToggleLabel(labelId: number) {
+    if (!recipeId) return;
+    const next = localLabelIds.includes(labelId)
+      ? localLabelIds.filter((id) => id !== labelId)
+      : [...localLabelIds, labelId];
+    setLocalLabelIds(next);
+    onLabelsChange?.(recipeId, next);
+    setLabelSaving(true);
+    try {
+      await fetch(`/api/recipes/saved/${recipeId}/labels`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ labelIds: next }),
+      });
+    } finally {
+      setLabelSaving(false);
+    }
+  }
 
   // Serving size
   const baseServings = useMemo(() => parseBaseServings(recipe?.servings), [recipe?.servings]);
@@ -729,7 +807,7 @@ function RecipeDetailModal({
   const [listsLoading, setListsLoading] = useState(false);
   const defaultListId = useMemo((): number | null => {
     const raw = localStorage.getItem(DEFAULT_LIST_ID_KEY);
-    return raw ? (Number(raw) || null) : null;
+    return raw ? Number(raw) || null : null;
   }, []);
 
   useEffect(() => {
@@ -794,7 +872,7 @@ function RecipeDetailModal({
         setAddPhase('error');
       }
     },
-    [token] // eslint-disable-line react-hooks/exhaustive-deps
+    [token], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const doAddItem = useCallback(
@@ -821,7 +899,7 @@ function RecipeDetailModal({
         setAddPhase('error');
       }
     },
-    [token]
+    [token],
   );
 
   const doBulkCheck = useCallback(
@@ -845,7 +923,7 @@ function RecipeDetailModal({
               if (!res.ok) throw new Error(`Napaka ${res.status}`);
               const data = (await res.json()) as CheckIngredientResult;
               return { raw, data };
-            })
+            }),
           ),
           fetch(`/api/lists/${listId}/items?status=active`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -862,9 +940,8 @@ function RecipeDetailModal({
           scaled: scaleIngredientText(raw, scale),
           parsed: data.parsed,
           match: data.match,
-          selectedValue: (data.match && data.match.type === 'similar')
-            ? String(data.match.listItemId)
-            : 'new',
+          selectedValue:
+            data.match && data.match.type === 'similar' ? String(data.match.listItemId) : 'new',
         }));
         setBulkItems(items);
         setAddPhase('bulk-review');
@@ -873,7 +950,7 @@ function RecipeDetailModal({
         setAddPhase('error');
       }
     },
-    [token, baseServings, servingSize, scale] // eslint-disable-line react-hooks/exhaustive-deps
+    [token, baseServings, servingSize, scale], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   async function handleBulkAdd(ingredients: string[]) {
@@ -888,7 +965,9 @@ function RecipeDetailModal({
   }
 
   function handleBulkChoiceChange(index: number, value: string) {
-    setBulkItems((prev) => prev.map((item, i) => i === index ? { ...item, selectedValue: value } : item));
+    setBulkItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, selectedValue: value } : item)),
+    );
   }
 
   async function handleBulkReviewConfirm() {
@@ -897,7 +976,9 @@ function RecipeDetailModal({
     try {
       for (const item of bulkItems) {
         const isNew = item.selectedValue === 'new';
-        const chosenListItem = isNew ? null : listItems.find((li) => String(li.id) === item.selectedValue);
+        const chosenListItem = isNew
+          ? null
+          : listItems.find((li) => String(li.id) === item.selectedValue);
         const title = chosenListItem ? chosenListItem.title : item.parsed.title;
         await fetch(`/api/lists/${selectedListId}/items`, {
           method: 'POST',
@@ -950,7 +1031,11 @@ function RecipeDetailModal({
     await doAddItem(selectedListId, checkResult.parsed, pendingIngredient?.raw ?? '');
   }
 
-  const isAddBusy = addPhase === 'checking' || addPhase === 'adding' || addPhase === 'bulk-checking' || addPhase === 'bulk-adding';
+  const isAddBusy =
+    addPhase === 'checking' ||
+    addPhase === 'adding' ||
+    addPhase === 'bulk-checking' ||
+    addPhase === 'bulk-adding';
 
   if (!recipe) return null;
 
@@ -987,15 +1072,19 @@ function RecipeDetailModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }} title={recipe.title} size="lg" footer={footer}>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          if (!v) onClose();
+        }}
+        title={recipe.title}
+        size="lg"
+        footer={footer}
+      >
         <div className="space-y-5">
           {recipe.imageUrl && (
             <div className="overflow-hidden rounded-2xl border border-white/10">
-              <img
-                src={recipe.imageUrl}
-                alt={recipe.title}
-                className="h-56 w-full object-cover"
-              />
+              <img src={recipe.imageUrl} alt={recipe.title} className="h-56 w-full object-cover" />
             </div>
           )}
 
@@ -1003,29 +1092,62 @@ function RecipeDetailModal({
             <p className="text-sm leading-relaxed text-slate-300">{recipe.description}</p>
           )}
 
+          {saved && labels && labels.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <h4 className="text-sm font-semibold uppercase tracking-widest text-slate-400">
+                  Oznake
+                </h4>
+                {labelSaving && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                )}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {labels.map((label) => (
+                  <RecipeLabelBadge
+                    key={label.id}
+                    name={label.name}
+                    color={label.color}
+                    dot
+                    active={localLabelIds.includes(label.id)}
+                    onClick={() => void handleToggleLabel(label.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {hasMeta && (
             <div className="flex flex-wrap gap-3">
               {recipe.prepTime && (
                 <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Priprava</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                    Priprava
+                  </span>
                   <span className="text-sm font-semibold text-slate-200">{recipe.prepTime}</span>
                 </div>
               )}
               {recipe.cookTime && (
                 <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Kuhanje</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                    Kuhanje
+                  </span>
                   <span className="text-sm font-semibold text-slate-200">{recipe.cookTime}</span>
                 </div>
               )}
               {recipe.totalTime && (
                 <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Skupaj</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                    Skupaj
+                  </span>
                   <span className="text-sm font-semibold text-slate-200">{recipe.totalTime}</span>
                 </div>
               )}
               {recipe.servings && (
                 <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-3 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Porcije</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                    Porcije
+                  </span>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -1080,7 +1202,9 @@ function RecipeDetailModal({
                 </button>
               </div>
               {scale !== 1 && (
-                <span className="text-xs text-cyan-400/70">×{scale % 1 === 0 ? scale : scale.toFixed(1)}</span>
+                <span className="text-xs text-cyan-400/70">
+                  ×{scale % 1 === 0 ? scale : scale.toFixed(1)}
+                </span>
               )}
             </div>
           )}
@@ -1102,7 +1226,9 @@ function RecipeDetailModal({
                       }}
                       className="text-[11px] text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
                     >
-                      {recipe.ingredients.filter((ing) => !addedItems.has(ing)).every((ing) => checkedIngredients.has(ing))
+                      {recipe.ingredients
+                        .filter((ing) => !addedItems.has(ing))
+                        .every((ing) => checkedIngredients.has(ing))
                         ? 'Odznači vse'
                         : 'Označi vse'}
                     </button>
@@ -1122,7 +1248,9 @@ function RecipeDetailModal({
                   {isAddBusy && (
                     <span className="flex items-center gap-1.5 text-xs text-cyan-400">
                       <span className="h-3 w-3 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-400" />
-                      {addPhase === 'checking' || addPhase === 'bulk-checking' ? 'Preverjam…' : 'Dodajam…'}
+                      {addPhase === 'checking' || addPhase === 'bulk-checking'
+                        ? 'Preverjam…'
+                        : 'Dodajam…'}
                     </span>
                   )}
                   {addPhase === 'error' && (
@@ -1134,7 +1262,8 @@ function RecipeDetailModal({
                 {recipe.ingredients.map((ing, i) => {
                   const displayText = scale !== 1 ? scaleIngredientText(ing, scale) : ing;
                   const isAdded = addedItems.has(ing);
-                  const isCurrent = (pendingIngredient?.raw === ing && isAddBusy) ||
+                  const isCurrent =
+                    (pendingIngredient?.raw === ing && isAddBusy) ||
                     (addPhase === 'bulk-checking' && checkedIngredients.has(ing));
                   const isChecked = checkedIngredients.has(ing);
                   return (
@@ -1154,7 +1283,8 @@ function RecipeDetailModal({
                           onCheckedChange={(checked) => {
                             setCheckedIngredients((prev) => {
                               const next = new Set(prev);
-                              if (checked) next.add(ing); else next.delete(ing);
+                              if (checked) next.add(ing);
+                              else next.delete(ing);
                               return next;
                             });
                           }}
@@ -1171,12 +1301,20 @@ function RecipeDetailModal({
                           isAdded
                             ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-400 cursor-default'
                             : isCurrent
-                            ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
-                            : 'border-white/10 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30',
+                              ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
+                              : 'border-white/10 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30',
                         )}
                       >
                         {isAdded ? (
-                          <svg viewBox="0 0 14 14" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg
+                            viewBox="0 0 14 14"
+                            className="h-3 w-3"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
                             <path d="M3 7.2L5.6 9.6L11 4.3" />
                           </svg>
                         ) : isCurrent ? (
@@ -1254,7 +1392,13 @@ function RecipeDetailModal({
               className="inline-flex items-center gap-1.5 text-xs text-cyan-400 underline-offset-2 hover:underline"
             >
               Odpri na {recipe.source}
-              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
@@ -1272,7 +1416,10 @@ function RecipeDetailModal({
         listsLoading={listsLoading}
         initialListId={defaultListId}
         onConfirm={(listId, remember) => void handleListConfirmed(listId, remember)}
-        onClose={() => { setAddPhase('idle'); setPendingIngredient(null); }}
+        onClose={() => {
+          setAddPhase('idle');
+          setPendingIngredient(null);
+        }}
       />
       <SimilarItemDialog
         open={addPhase === 'similar'}
@@ -1281,7 +1428,11 @@ function RecipeDetailModal({
         suggestion={checkResult?.match?.suggestion}
         onUseExisting={() => void handleSimilarUseExisting()}
         onAddNew={() => void handleSimilarAddNew()}
-        onClose={() => { setAddPhase('idle'); setPendingIngredient(null); setCheckResult(null); }}
+        onClose={() => {
+          setAddPhase('idle');
+          setPendingIngredient(null);
+          setCheckResult(null);
+        }}
       />
       <UnitConflictDialog
         open={addPhase === 'unit-conflict'}
@@ -1289,7 +1440,11 @@ function RecipeDetailModal({
         newUnit={checkResult?.parsed.unit ?? ''}
         existingUnit={checkResult?.match?.listItemUnit ?? ''}
         onConfirm={() => void handleUnitConflictConfirm()}
-        onClose={() => { setAddPhase('idle'); setPendingIngredient(null); setCheckResult(null); }}
+        onClose={() => {
+          setAddPhase('idle');
+          setPendingIngredient(null);
+          setCheckResult(null);
+        }}
       />
       <BulkAddReviewDialog
         open={addPhase === 'bulk-review'}
@@ -1298,7 +1453,12 @@ function RecipeDetailModal({
         busy={addPhase === 'bulk-adding'}
         onItemSelect={handleBulkChoiceChange}
         onConfirm={() => void handleBulkReviewConfirm()}
-        onClose={() => { setAddPhase('idle'); setBulkItems([]); setCheckedIngredients(new Set()); setListItems([]); }}
+        onClose={() => {
+          setAddPhase('idle');
+          setBulkItems([]);
+          setCheckedIngredients(new Set());
+          setListItems([]);
+        }}
       />
     </>
   );
@@ -1377,83 +1537,93 @@ function SearchOverlay({
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [open]);
 
-  const handleSearch = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    setSearching(true);
-    setTranslating(false);
-    setError('');
-    setResults([]);
-    setSearched(false);
-    try {
-      const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(q)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok || !response.body) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `Napaka ${response.status}`);
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const msg = JSON.parse(line) as
-              | { type: 'result'; result: RecipeSearchResult }
-              | { type: 'translated'; results: RecipeSearchResult[] }
-              | { type: 'done' };
-            if (msg.type === 'result') {
-              setResults((prev) => [...prev, msg.result]);
-              setSearched(true);
-              setSearching(false);
-              setTranslating(true);
-            } else if (msg.type === 'translated') {
-              setResults(msg.results);
-              setTranslating(false);
-            } else if (msg.type === 'done') {
-              setTranslating(false);
-            }
-          } catch { /* skip malformed lines */ }
-        }
-      }
-      setSearched(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Iskanje ni uspelo.');
-      setSearched(true);
-    } finally {
-      setSearching(false);
+  const handleSearch = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const q = query.trim();
+      if (!q) return;
+      setSearching(true);
       setTranslating(false);
-    }
-  }, [query, token]);
+      setError('');
+      setResults([]);
+      setSearched(false);
+      try {
+        const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(q)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok || !response.body) {
+          const data = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error ?? `Napaka ${response.status}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line) as
+                | { type: 'result'; result: RecipeSearchResult }
+                | { type: 'translated'; results: RecipeSearchResult[] }
+                | { type: 'done' };
+              if (msg.type === 'result') {
+                setResults((prev) => [...prev, msg.result]);
+                setSearched(true);
+                setSearching(false);
+                setTranslating(true);
+              } else if (msg.type === 'translated') {
+                setResults(msg.results);
+                setTranslating(false);
+              } else if (msg.type === 'done') {
+                setTranslating(false);
+              }
+            } catch {
+              /* skip malformed lines */
+            }
+          }
+        }
+        setSearched(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Iskanje ni uspelo.');
+        setSearched(true);
+      } finally {
+        setSearching(false);
+        setTranslating(false);
+      }
+    },
+    [query, token],
+  );
 
-  const handleOpenRecipe = useCallback(async (url: string) => {
-    setFetchingRecipe(true);
-    setRecipeModalOpen(true);
-    setSelectedRecipe(null);
-    try {
-      const response = await fetch(`/api/recipes/fetch?url=${encodeURIComponent(url)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error(`Napaka ${response.status}`);
-      const data = (await response.json()) as { recipe: ParsedRecipe };
-      setSelectedRecipe(data.recipe);
-    } catch {
-      setRecipeModalOpen(false);
-    } finally {
-      setFetchingRecipe(false);
-    }
-  }, [token]);
+  const handleOpenRecipe = useCallback(
+    async (url: string) => {
+      setFetchingRecipe(true);
+      setRecipeModalOpen(true);
+      setSelectedRecipe(null);
+      try {
+        const response = await fetch(`/api/recipes/fetch?url=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`Napaka ${response.status}`);
+        const data = (await response.json()) as { recipe: ParsedRecipe };
+        setSelectedRecipe(data.recipe);
+      } catch {
+        setRecipeModalOpen(false);
+      } finally {
+        setFetchingRecipe(false);
+      }
+    },
+    [token],
+  );
 
   const overlay = (
     <AnimatePresence>
@@ -1608,29 +1778,46 @@ function SearchOverlay({
         token={token}
       />
       {/* Loading overlay for recipe fetch */}
-      {fetchingRecipe && createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: 'rgba(2,6,23,0.5)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
-          />
-          <div className="relative z-10 rounded-2xl border border-white/10 bg-slate-900/80 px-8 py-6 shadow-2xl">
-            <AnimatedStepsLoader
-              steps={[
-                'Odpiram stran recepta…',
-                'Berem sestavine in postopek…',
-                'Pripravljam prikaz recepta…',
-              ]}
+      {fetchingRecipe &&
+        createPortal(
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundColor: 'rgba(2,6,23,0.5)',
+                backdropFilter: 'blur(4px)',
+                WebkitBackdropFilter: 'blur(4px)',
+              }}
             />
-          </div>
-        </div>,
-        document.body
-      )}
+            <div className="relative z-10 rounded-2xl border border-white/10 bg-slate-900/80 px-8 py-6 shadow-2xl">
+              <AnimatedStepsLoader
+                steps={[
+                  'Odpiram stran recepta…',
+                  'Berem sestavine in postopek…',
+                  'Pripravljam prikaz recepta…',
+                ]}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
 
-function SavedRecipeCard({ recipe, onClick }: { recipe: SavedRecipe; onClick: () => void }) {
+function SavedRecipeCard({
+  recipe,
+  labels,
+  onClick,
+}: {
+  recipe: SavedRecipe;
+  labels: RecipeLabel[];
+  onClick: () => void;
+}) {
+  const recipeLabels = recipe.labelIds
+    .map((id) => labels.find((l) => l.id === id))
+    .filter((l): l is RecipeLabel => Boolean(l));
+
   return (
     <button
       type="button"
@@ -1656,6 +1843,13 @@ function SavedRecipeCard({ recipe, onClick }: { recipe: SavedRecipe; onClick: ()
           {recipe.title}
         </p>
         <SourceBadge source={recipe.source} />
+        {recipeLabels.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {recipeLabels.map((label) => (
+              <RecipeLabelBadge key={label.id} name={label.name} color={label.color} size="sm" />
+            ))}
+          </div>
+        )}
       </div>
     </button>
   );
@@ -1668,6 +1862,8 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
   const [selectedSaved, setSelectedSaved] = useState<SavedRecipe | null>(null);
   const [savedModalOpen, setSavedModalOpen] = useState(false);
   const [savedBusy, setSavedBusy] = useState(false);
+  const [labels, setLabels] = useState<RecipeLabel[]>([]);
+  const [filterLabelId, setFilterLabelId] = useState<number | null>(null);
 
   const savedByUrl = useMemo(() => {
     const map = new Map<string, SavedRecipe>();
@@ -1689,6 +1885,25 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         if (!cancelled) setSavedRecipes([]);
       } finally {
         if (!cancelled) setLoadingSaved(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/recipes/labels', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return;
+        const data = (await response.json()) as { labels: RecipeLabel[] };
+        if (!cancelled) setLabels(data.labels);
+      } catch {
+        /* ignore */
       }
     })();
     return () => {
@@ -1718,9 +1933,12 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
       });
       if (!response.ok) return;
       const data = (await response.json()) as { recipe: SavedRecipe };
-      setSavedRecipes((prev) => [data.recipe, ...prev.filter((r) => r.id !== data.recipe.id && r.url !== data.recipe.url)]);
+      setSavedRecipes((prev) => [
+        data.recipe,
+        ...prev.filter((r) => r.id !== data.recipe.id && r.url !== data.recipe.url),
+      ]);
     },
-    [token]
+    [token],
   );
 
   const removeRecipe = useCallback(
@@ -1732,7 +1950,7 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
       if (!response.ok && response.status !== 204) return;
       setSavedRecipes((prev) => prev.filter((r) => r.id !== id));
     },
-    [token]
+    [token],
   );
 
   const handleRemoveSaved = useCallback(async () => {
@@ -1746,6 +1964,20 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
       setSavedBusy(false);
     }
   }, [selectedSaved, removeRecipe]);
+
+  const handleLabelsChange = useCallback((recipeId: number, newLabelIds: number[]) => {
+    setSavedRecipes((prev) =>
+      prev.map((r) => (r.id === recipeId ? { ...r, labelIds: newLabelIds } : r)),
+    );
+    setSelectedSaved((prev) =>
+      prev && prev.id === recipeId ? { ...prev, labelIds: newLabelIds } : prev,
+    );
+  }, []);
+
+  const filteredRecipes = useMemo(() => {
+    if (!filterLabelId) return savedRecipes;
+    return savedRecipes.filter((r) => r.labelIds.includes(filterLabelId));
+  }, [savedRecipes, filterLabelId]);
 
   const headerActions = (
     <Button
@@ -1782,11 +2014,29 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
               Dodaj
             </Button>
           </div>
+          {labels.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {labels.map((label) => (
+                <RecipeLabelBadge
+                  key={label.id}
+                  name={label.name}
+                  color={label.color}
+                  dot
+                  active={filterLabelId === label.id}
+                  onClick={() => setFilterLabelId(filterLabelId === label.id ? null : label.id)}
+                />
+              ))}
+            </div>
+          )}
+          {filterLabelId && filteredRecipes.length === 0 && (
+            <p className="text-sm text-slate-500">Ni receptov z izbrano oznako.</p>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {savedRecipes.map((recipe) => (
+            {filteredRecipes.map((recipe) => (
               <SavedRecipeCard
                 key={recipe.id}
                 recipe={recipe}
+                labels={labels}
                 onClick={() => {
                   setSelectedSaved(recipe);
                   setSavedModalOpen(true);
@@ -1815,7 +2065,8 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
           <div className="space-y-3">
             <h2 className="text-xl font-semibold tracking-tight text-slate-100">Iščite recepte</h2>
             <p className="max-w-xs text-sm text-slate-400">
-              Kliknite ikono za iskanje v zgornjem desnem kotu in poiščite priljubljene slovenske recepte.
+              Kliknite ikono za iskanje v zgornjem desnem kotu in poiščite priljubljene slovenske
+              recepte.
             </p>
           </div>
           <Button
@@ -1850,6 +2101,10 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         busy={savedBusy}
         onRemove={handleRemoveSaved}
         token={token}
+        recipeId={selectedSaved?.id}
+        labels={labels}
+        labelIds={selectedSaved?.labelIds}
+        onLabelsChange={handleLabelsChange}
       />
     </>
   );

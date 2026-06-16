@@ -110,7 +110,7 @@ export function Dialog({
             className={cx(
               dialogPanelClassName({ size }),
               fullHeight ? "h-[calc(100dvh-2rem)] h-[calc(100svh-2rem)]" : "max-h-[calc(100dvh-2rem)] max-h-[calc(100svh-2rem)]",
-              "flex flex-col overflow-hidden"
+              "flex flex-col"
             )}
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -132,7 +132,7 @@ export function Dialog({
             <h3 className="pr-10 text-xl font-semibold text-slate-50">{title}</h3>
             {description ? <p className="mt-2 text-sm text-slate-200/90">{description}</p> : null}
             {children ? (
-              <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y [-webkit-overflow-scrolling:touch]">
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 touch-pan-y [-webkit-overflow-scrolling:touch]">
                 {children}
               </div>
             ) : null}

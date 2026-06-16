@@ -3,9 +3,25 @@ import { motion } from "motion/react";
 
 import { Edit, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
+import { RecipeLabelBadge, type RecipeLabel } from "../components/RecipeLabelBadge";
 import { Button, Card, Checkbox, Dialog, Input, Label, Loader, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
+
+const LABEL_COLORS = [
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#84cc16',
+  '#10b981',
+  '#06b6d4',
+  '#3b82f6',
+  '#64748b',
+  '#a16207',
+];
 
 const DEFAULT_LIST_ID_KEY = 'shopping-list-default-list-id';
 
@@ -49,6 +65,93 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
     () => ({ Authorization: `Bearer ${token}` }),
     [token]
   );
+
+  // ---- Recipe labels ----
+  const [recipeLabels, setRecipeLabels] = useState<RecipeLabel[]>([]);
+  const [labelsLoading, setLabelsLoading] = useState(true);
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<RecipeLabel | null>(null);
+  const [labelName, setLabelName] = useState("");
+  const [labelColor, setLabelColor] = useState(LABEL_COLORS[0]);
+  const [labelSaving, setLabelSaving] = useState(false);
+  const [labelError, setLabelError] = useState("");
+  const [deleteLabelId, setDeleteLabelId] = useState<number | null>(null);
+  const [deleteLabelLoading, setDeleteLabelLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/recipes/labels', { headers: authHeaders });
+        if (!res.ok) return;
+        const data = (await res.json()) as { labels: RecipeLabel[] };
+        if (!cancelled) setRecipeLabels(data.labels);
+      } finally {
+        if (!cancelled) setLabelsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authHeaders]);
+
+  function openCreateLabelDialog() {
+    setEditingLabel(null);
+    setLabelName("");
+    setLabelColor(LABEL_COLORS[0]);
+    setLabelError("");
+    setLabelDialogOpen(true);
+  }
+
+  function openEditLabelDialog(label: RecipeLabel) {
+    setEditingLabel(label);
+    setLabelName(label.name);
+    setLabelColor(label.color);
+    setLabelError("");
+    setLabelDialogOpen(true);
+  }
+
+  async function handleSaveLabel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLabelSaving(true);
+    setLabelError("");
+    try {
+      const url = editingLabel ? `/api/recipes/labels/${editingLabel.id}` : '/api/recipes/labels';
+      const method = editingLabel ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: labelName.trim(), color: labelColor }),
+      });
+      const payload = (await res.json()) as { label?: RecipeLabel; error?: string };
+      if (!res.ok || !payload.label) {
+        throw new Error(payload.error ?? `Napaka ${res.status}`);
+      }
+      if (editingLabel) {
+        setRecipeLabels((prev) => prev.map((l) => l.id === payload.label!.id ? payload.label! : l));
+      } else {
+        setRecipeLabels((prev) => [...prev, payload.label!].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      setLabelDialogOpen(false);
+    } catch (err) {
+      setLabelError(err instanceof Error ? err.message : "Napaka");
+    } finally {
+      setLabelSaving(false);
+    }
+  }
+
+  async function handleDeleteLabel(labelId: number) {
+    setDeleteLabelLoading(true);
+    try {
+      const res = await fetch(`/api/recipes/labels/${labelId}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`Napaka ${res.status}`);
+      setRecipeLabels((prev) => prev.filter((l) => l.id !== labelId));
+      setDeleteLabelId(null);
+    } finally {
+      setDeleteLabelLoading(false);
+    }
+  }
 
   // ---- Default shopping list preference ----
   const [lists, setLists] = useState<ShoppingList[]>([]);
@@ -278,7 +381,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
           <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">
             Privzeti nakupovalni seznam
           </h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-400">
             Sestavine iz receptov se dodajajo na ta seznam brez vprašanja. Nastavitev se shrani lokalno na tej napravi.
           </p>
           <div className="mt-4 space-y-3">
@@ -319,6 +422,87 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
               </p>
             )}
           </div>
+        </motion.section>
+
+        {/* ---- Recipe labels ---- */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.38 }}
+          className="relative min-h-[4rem]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Oznake receptov</h2>
+              <p className="mt-1 text-xs text-slate-400">Ustvari oznake za organizacijo in filtriranje receptov.</p>
+            </div>
+            <Button
+              type="button"
+              icon={<Plus animateOnHover />}
+              iconOnly
+              size="sm"
+              color="white"
+              appearance="outline"
+              aria-label="Dodaj oznako"
+              title="Dodaj oznako"
+              onClick={openCreateLabelDialog}
+            />
+          </div>
+          {labelsLoading ? (
+            <Loader label="Nalagam oznake..." />
+          ) : recipeLabels.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">Še nimaš oznak. Klikni + za dodajanje.</p>
+          ) : (
+            <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
+              {recipeLabels.map((label) => (
+                <motion.li
+                  layout
+                  initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.25 }}
+                  key={label.id}
+                  className="list-none"
+                >
+                  <Card interactive>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="h-4 w-4 shrink-0 rounded-full"
+                          style={{ backgroundColor: label.color }}
+                        />
+                        <p className="m-0 text-base font-semibold text-slate-50">{label.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          color="white"
+                          appearance="outline"
+                          type="button"
+                          icon={<Edit animateOnHover />}
+                          iconOnly
+                          size="sm"
+                          aria-label={`Uredi ${label.name}`}
+                          title={`Uredi ${label.name}`}
+                          onClick={() => openEditLabelDialog(label)}
+                        />
+                        <Button
+                          color="danger"
+                          appearance="outline"
+                          type="button"
+                          icon={<Trash2 animateOnHover />}
+                          iconOnly
+                          size="sm"
+                          aria-label={`Izbriši ${label.name}`}
+                          title={`Izbriši ${label.name}`}
+                          onClick={() => setDeleteLabelId(label.id)}
+                          disabled={deleteLabelLoading && deleteLabelId === label.id}
+                        />
+                      </div>
+                    </div>
+                  </Card>
+                </motion.li>
+              ))}
+            </motion.ul>
+          )}
         </motion.section>
 
         {/* ---- Admin: user management ---- */}
@@ -406,6 +590,104 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
           />
         </div>
       )}
+
+      {/* Create / Edit label dialog */}
+      <Dialog
+        open={labelDialogOpen}
+        onOpenChange={(isOpen) => { if (!isOpen) setLabelDialogOpen(false); }}
+        size="sm"
+        title={editingLabel ? "Uredi oznako" : "Nova oznaka"}
+        footer={
+          <DialogFormFooterActions
+            formId="label-form"
+            submitLabel={editingLabel ? "Shrani" : "Ustvari oznako"}
+            loadingSubmitLabel={editingLabel ? "Shranjujem..." : "Ustvarjam..."}
+            loading={labelSaving}
+            onCancel={() => setLabelDialogOpen(false)}
+          />
+        }
+      >
+        <form id="label-form" className="grid gap-4" onSubmit={handleSaveLabel}>
+          <label className="grid gap-1 text-sm text-slate-200">
+            Ime oznake
+            <Input
+              value={labelName}
+              onChange={(e) => setLabelName(e.target.value)}
+              placeholder="npr. Hitri recepti"
+              maxLength={50}
+              required
+            />
+          </label>
+          <div className="grid gap-2">
+            <p className="text-sm text-slate-200">Barva</p>
+            <div className="flex flex-wrap gap-2">
+              {LABEL_COLORS.map((color) => {
+                const selected = labelColor === color;
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setLabelColor(color)}
+                    className="relative h-7 w-7 rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    style={{ backgroundColor: color, opacity: selected ? 1 : 0.45 }}
+                    aria-label={color}
+                    title={color}
+                  >
+                    {selected && (
+                      <svg
+                        viewBox="0 0 14 14"
+                        className="absolute inset-0 m-auto h-3.5 w-3.5"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M2.5 7L5.5 10L11.5 4" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Predogled:</span>
+              <RecipeLabelBadge name={labelName || "Oznaka"} color={labelColor} dot />
+            </div>
+          </div>
+          {labelError ? <p className="m-0 text-sm text-rose-300">{labelError}</p> : null}
+        </form>
+      </Dialog>
+
+      {/* Delete label confirmation */}
+      <Dialog
+        open={deleteLabelId !== null}
+        onOpenChange={(isOpen) => { if (!isOpen) setDeleteLabelId(null); }}
+        size="sm"
+        title="Izbriši oznako"
+        description={
+          deleteLabelId !== null
+            ? <>Trajno boš izbrisal/a oznako <strong>{recipeLabels.find((l) => l.id === deleteLabelId)?.name}</strong>. Oznaka bo odstranjena z vseh receptov.</>
+            : undefined
+        }
+        footer={
+          <>
+            <Button
+              color="danger"
+              appearance="outline"
+              type="button"
+              onClick={() => deleteLabelId !== null && void handleDeleteLabel(deleteLabelId)}
+              disabled={deleteLabelLoading}
+            >
+              {deleteLabelLoading ? "Brišem..." : "Potrdi brisanje"}
+            </Button>
+            <Button color="white" appearance="outline" type="button" onClick={() => setDeleteLabelId(null)}>
+              Prekliči
+            </Button>
+          </>
+        }
+      />
 
       {/* Edit user dialog */}
       <Dialog

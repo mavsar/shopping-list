@@ -1052,6 +1052,7 @@ interface SavedRecipeRow {
   instructions: string;
   images: string;
   createdAt: string;
+  labelIds: string | null;
 }
 
 function parseStringArray(value: string | null): string[] {
@@ -1060,6 +1061,17 @@ function parseStringArray(value: string | null): string[] {
     const parsed = JSON.parse(value) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
+function parseNumberArray(value: string | null): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is number => typeof entry === "number");
   } catch {
     return [];
   }
@@ -1080,14 +1092,19 @@ function mapSavedRecipeRow(row: SavedRecipeRow) {
     ingredients: parseStringArray(row.ingredients),
     instructions: parseStringArray(row.instructions),
     images: parseStringArray(row.images),
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    labelIds: parseNumberArray(row.labelIds)
   };
 }
 
 const savedRecipeColumns = `
   id, url, source, title, description, image_url AS imageUrl,
   prep_time AS prepTime, cook_time AS cookTime, total_time AS totalTime, servings,
-  ingredients, instructions, images, created_at AS createdAt
+  ingredients, instructions, images, created_at AS createdAt,
+  COALESCE(
+    (SELECT json_group_array(label_id) FROM recipe_label_assignments WHERE recipe_id = recipes.id),
+    '[]'
+  ) AS labelIds
 `;
 
 const saveRecipeSchema = z.object({
@@ -1360,6 +1377,160 @@ recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {
 
   sqlite.prepare("DELETE FROM recipes WHERE id = ? AND user_id = ?").run(recipeId, authUser.id);
   void pruneOrphanedRecipeImages();
+
+  return res.status(204).send();
+});
+
+// ---------- Recipe label assignments ----------
+
+const setRecipeLabelsSchema = z.object({
+  labelIds: z.array(z.number().int().positive()).max(20).default([])
+});
+
+recipesRouter.put("/saved/:recipeId/labels", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const recipeId = Number(req.params.recipeId);
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return res.status(400).json({ error: "Invalid recipeId" });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipes WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(recipeId, authUser.id);
+  if (!existing) return res.status(404).json({ error: "Recipe not found" });
+
+  const parsed = setRecipeLabelsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const { labelIds } = parsed.data;
+
+  // Verify all label IDs belong to the user
+  for (const labelId of labelIds) {
+    const labelRow = sqlite
+      .prepare("SELECT id FROM recipe_labels WHERE id = ? AND user_id = ? LIMIT 1")
+      .get(labelId, authUser.id);
+    if (!labelRow) {
+      return res.status(400).json({ error: `Label ${labelId} not found` });
+    }
+  }
+
+  const replaceLabels = sqlite.transaction(() => {
+    sqlite.prepare("DELETE FROM recipe_label_assignments WHERE recipe_id = ?").run(recipeId);
+    const insert = sqlite.prepare("INSERT OR IGNORE INTO recipe_label_assignments (recipe_id, label_id) VALUES (?, ?)");
+    for (const labelId of labelIds) {
+      insert.run(recipeId, labelId);
+    }
+  });
+  replaceLabels();
+
+  return res.json({ labelIds });
+});
+
+// ---------- Recipe labels CRUD ----------
+
+const labelSchema = z.object({
+  name: z.string().trim().min(1).max(50),
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/).default("#6366f1")
+});
+
+recipesRouter.get("/labels", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const labels = sqlite
+    .prepare("SELECT id, name, color FROM recipe_labels WHERE user_id = ? ORDER BY name ASC")
+    .all(authUser.id);
+
+  return res.json({ labels });
+});
+
+recipesRouter.post("/labels", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const parsed = labelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const { name, color } = parsed.data;
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipe_labels WHERE user_id = ? AND name = ? LIMIT 1")
+    .get(authUser.id, name);
+  if (existing) {
+    return res.status(409).json({ error: "Oznaka s tem imenom že obstaja." });
+  }
+
+  const result = sqlite
+    .prepare("INSERT INTO recipe_labels (user_id, name, color) VALUES (?, ?, ?)")
+    .run(authUser.id, name, color);
+
+  const label = sqlite
+    .prepare("SELECT id, name, color FROM recipe_labels WHERE id = ?")
+    .get(Number(result.lastInsertRowid));
+
+  return res.status(201).json({ label });
+});
+
+recipesRouter.put("/labels/:labelId", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const labelId = Number(req.params.labelId);
+  if (!Number.isInteger(labelId) || labelId <= 0) {
+    return res.status(400).json({ error: "Invalid labelId" });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipe_labels WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(labelId, authUser.id);
+  if (!existing) return res.status(404).json({ error: "Label not found" });
+
+  const parsed = labelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const { name, color } = parsed.data;
+
+  const duplicate = sqlite
+    .prepare("SELECT id FROM recipe_labels WHERE user_id = ? AND name = ? AND id != ? LIMIT 1")
+    .get(authUser.id, name, labelId);
+  if (duplicate) {
+    return res.status(409).json({ error: "Oznaka s tem imenom že obstaja." });
+  }
+
+  sqlite
+    .prepare("UPDATE recipe_labels SET name = ?, color = ? WHERE id = ? AND user_id = ?")
+    .run(name, color, labelId, authUser.id);
+
+  const label = sqlite
+    .prepare("SELECT id, name, color FROM recipe_labels WHERE id = ?")
+    .get(labelId);
+
+  return res.json({ label });
+});
+
+recipesRouter.delete("/labels/:labelId", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const labelId = Number(req.params.labelId);
+  if (!Number.isInteger(labelId) || labelId <= 0) {
+    return res.status(400).json({ error: "Invalid labelId" });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipe_labels WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(labelId, authUser.id);
+  if (!existing) return res.status(404).json({ error: "Label not found" });
+
+  sqlite.prepare("DELETE FROM recipe_labels WHERE id = ? AND user_id = ?").run(labelId, authUser.id);
 
   return res.status(204).send();
 });
