@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
 import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
-import { Minus, Plus, ReadyToEat, Search, Trash2, X } from '../components/lordicon/icons';
+import { Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
 import { Dialog } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/fields/checkbox';
@@ -2001,7 +2001,7 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
           <AnimatedStepsLoader steps={['Nalagam vaše shranjene recepte…']} />
         </div>
       ) : savedRecipes.length > 0 ? (
-        <section className="space-y-4 py-6">
+        <section className="flex min-h-[calc(100svh-74px-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2.5rem)] flex-col gap-4 py-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold tracking-tight text-slate-100">Moji recepti</h2>
             <Button
@@ -2029,7 +2029,10 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
             </div>
           )}
           {filterLabelId && filteredRecipes.length === 0 && (
-            <p className="text-sm text-slate-500">Ni receptov z izbrano oznako.</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+              <Sad size={72} animate />
+              <p className="text-sm text-white">Ni receptov z izbrano oznako.</p>
+            </div>
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {filteredRecipes.map((recipe) => (

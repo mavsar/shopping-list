@@ -1,6 +1,6 @@
 {
   "name": "shopping-list",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Shared shopping list app (React + Node + SQLite)",
   "workspaces": [

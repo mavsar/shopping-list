@@ -71,3 +71,11 @@ export function ReadyToEat(props: IconProps) {
   return <LordIcon src="/lordicon/ready-to-eat.json" {...props} />;
 }
 
+export function ThumbDown(props: IconProps) {
+  return <LordIcon src="/lordicon/thumb-down.json" {...props} />;
+}
+
+export function Sad(props: IconProps) {
+  return <LordIcon src="/lordicon/sad.json" {...props} />;
+}
+
