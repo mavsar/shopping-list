@@ -9,6 +9,7 @@ services:
       PORT: "5173"
       DATABASE_PATH: /app/data/shopping-list.db
       ITEM_IMAGES_PATH: /app/data/item-images
+      RECIPE_IMAGES_PATH: /app/data/recipe-images
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-admin12345}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Admin}
@@ -39,7 +40,7 @@ services:
       volumes:
         - container: /app/data
           description:
-            en_US: Persistent SQLite database storage.
+            en_US: Persistent storage for SQLite database, item images, and recipe images.
 
 x-casaos:
   architectures:
