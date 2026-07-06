@@ -743,6 +743,40 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     (item: ShoppingListItem) => openItemDetailsRef.current(item),
     [],
   );
+
+  function renderItemRow(item: ShoppingListItem, sparkleOnMount = false) {
+    return (
+      <div
+        key={item.id}
+        role="button"
+        tabIndex={0}
+        className="group cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+        onClick={() => stableOpenDetails(item)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            stableOpenDetails(item);
+          }
+        }}
+      >
+        <ListItemCard
+          item={item}
+          updating={Boolean(updatingItemId)}
+          sparkleOnMount={sparkleOnMount}
+          supportsHoverPointer={supportsHoverPointer}
+          quantityControlsVisible={isQuantityControlsVisible(item.id)}
+          quantityControlsTransition={quantityControlsTransition}
+          formatTitle={formatItemTitle}
+          onHoverStart={stableHoverStart}
+          onHoverEnd={stableHoverEnd}
+          onQuantityLabelClick={stableQuantityLabelClick}
+          onCompletionToggle={stableCompletionToggle}
+          onDecreaseQuantity={stableDecreaseQuantity}
+          onIncreaseQuantity={stableIncreaseQuantity}
+        />
+      </div>
+    );
+  }
   const stableHoverStart = useCallback((itemId: number) => setHoveredQuantityItemId(itemId), []);
   const stableHoverEnd = useCallback(
     (itemId: number) =>
@@ -1603,58 +1637,19 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           ) : null}
           {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
           {!listLoading && !itemsLoading && !listError ? (
-            <ul className="m-0 mt-3 flex list-none flex-col gap-2 p-0">
+            <div className="mt-3 grid gap-2">
               {groupedActiveItems.map((group) => (
-                <li key={group.category} className="list-none">
-                  <ul className="m-0 flex list-none flex-col gap-2 p-0">
-                    {group.items.map((item) => (
-                      <li key={item.id} className="list-none">
-                        <ListItemCard
-                          item={item}
-                          updating={Boolean(updatingItemId)}
-                          supportsHoverPointer={supportsHoverPointer}
-                          quantityControlsVisible={isQuantityControlsVisible(item.id)}
-                          quantityControlsTransition={quantityControlsTransition}
-                          formatTitle={formatItemTitle}
-                          onHoverStart={stableHoverStart}
-                          onHoverEnd={stableHoverEnd}
-                          onQuantityLabelClick={stableQuantityLabelClick}
-                          onCompletionToggle={stableCompletionToggle}
-                          onOpenDetails={stableOpenDetails}
-                          onDecreaseQuantity={stableDecreaseQuantity}
-                          onIncreaseQuantity={stableIncreaseQuantity}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </li>
+                <div key={group.category} className="grid gap-2">
+                  {group.items.map((item) => renderItemRow(item))}
+                </div>
               ))}
-              {completedVisibleItems.map((item) => (
-                <li key={`completed-${item.id}`} className="list-none">
-                  <ListItemCard
-                    item={item}
-                    updating={Boolean(updatingItemId)}
-                    sparkleOnMount={recentlyCompletedItemId === item.id}
-                    supportsHoverPointer={supportsHoverPointer}
-                    quantityControlsVisible={isQuantityControlsVisible(item.id)}
-                    quantityControlsTransition={quantityControlsTransition}
-                    formatTitle={formatItemTitle}
-                    onHoverStart={stableHoverStart}
-                    onHoverEnd={stableHoverEnd}
-                    onQuantityLabelClick={stableQuantityLabelClick}
-                    onCompletionToggle={stableCompletionToggle}
-                    onOpenDetails={stableOpenDetails}
-                    onDecreaseQuantity={stableDecreaseQuantity}
-                    onIncreaseQuantity={stableIncreaseQuantity}
-                  />
-                </li>
-              ))}
+              {completedVisibleItems.map((item) => renderItemRow(item, recentlyCompletedItemId === item.id))}
               {!groupedActiveItems.length && !completedVisibleItems.length ? (
-                <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
+                <div className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
                   Še ni izdelkov. Za dodajanje prvega uporabi gumb + spodaj desno.
-                </li>
+                </div>
               ) : null}
-            </ul>
+            </div>
           ) : null}
           {updatingItemError ? (
             <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p>

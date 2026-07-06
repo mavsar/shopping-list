@@ -87,9 +87,16 @@ type ItemCategoryIconProps = {
   className?: string;
   /** Pixel size for the Lordicon wrapper (default 24). */
   size?: number;
+  /** Skip hover-driven animation; use for list rows where hover breaks iOS taps. */
+  staticDisplay?: boolean;
 };
 
-function ItemCategoryIconComponent({ category, className, size = 24 }: ItemCategoryIconProps) {
+function ItemCategoryIconComponent({
+  category,
+  className,
+  size = 24,
+  staticDisplay = false,
+}: ItemCategoryIconProps) {
   const [showRevealOverlay, setShowRevealOverlay] = useState(true);
   const [revealReady, setRevealReady] = useState(false);
   const iconSet = ICONS[category] ?? {
@@ -98,21 +105,32 @@ function ItemCategoryIconComponent({ category, className, size = 24 }: ItemCateg
   };
 
   useEffect(() => {
+    if (staticDisplay) {
+      return;
+    }
+
     setShowRevealOverlay(true);
     setRevealReady(false);
     const timeoutId = window.setTimeout(() => setShowRevealOverlay(false), 2500);
     return () => window.clearTimeout(timeoutId);
-  }, [category]);
+  }, [category, staticDisplay]);
 
   return (
-    <span className={cx('relative inline-flex shrink-0', className)}>
+    <span
+      className={cx(
+        'relative inline-flex shrink-0',
+        staticDisplay && 'pointer-events-none',
+        className,
+      )}
+    >
       <LordIcon
         src={iconSet.base}
-        trigger="hover"
+        trigger={staticDisplay ? 'click' : 'hover'}
+        animateOnHover={false}
         className={showRevealOverlay && revealReady ? 'opacity-0' : 'opacity-100'}
         size={size}
       />
-      {showRevealOverlay ? (
+      {!staticDisplay && showRevealOverlay ? (
         <LordIcon
           src={iconSet.reveal}
           trigger="in"

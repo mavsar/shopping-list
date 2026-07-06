@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { cx } from "class-variance-authority";
 import { LordIcon } from "./lordicon/lord-icon";
@@ -14,6 +14,8 @@ type CompletionCircleToggleProps = {
   onToggle: () => void;
   size?: "sm" | "md";
   sparkleOnMount?: boolean;
+  /** Render as visual-only; parent handles clicks (e.g. full-height row hit target). */
+  presentational?: boolean;
 };
 
 export function CompletionCircleToggle({
@@ -21,7 +23,8 @@ export function CompletionCircleToggle({
   disabled,
   onToggle,
   size = "md",
-  sparkleOnMount = false
+  sparkleOnMount = false,
+  presentational = false,
 }: CompletionCircleToggleProps) {
   const prevCompleted = useRef(completed);
   const [sparkleBurst, setSparkleBurst] = useState(false);
@@ -52,24 +55,31 @@ export function CompletionCircleToggle({
   const controlSizeClass = size === "sm" ? "h-6 w-6" : "h-10 w-10";
   const checkSize = size === "sm" ? 14 : 18;
   const sparkleDistanceBase = size === "sm" ? 14 : 22;
+  const ControlTag = presentational ? motion.div : motion.button;
 
   return (
     <span className={cx("relative inline-flex shrink-0 items-center justify-center overflow-visible", controlSizeClass)}>
-      <motion.button
-        type="button"
+      <ControlTag
+        {...(presentational
+          ? { "aria-hidden": true }
+          : {
+              type: "button" as const,
+              "aria-label": completed ? "Označi kot aktivno" : "Označi kot kupljeno",
+              "aria-pressed": completed,
+              disabled,
+              onClick: (event: MouseEvent) => {
+                event.stopPropagation();
+                setIsHovered(false);
+                onToggle();
+              },
+              onHoverStart: () => setIsHovered(true),
+              onHoverEnd: () => setIsHovered(false),
+            })}
         className={cx(
-          "relative z-[1] flex shrink-0 cursor-pointer items-center justify-center rounded-full border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
+          "relative z-[1] flex shrink-0 items-center justify-center rounded-full border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70",
+          !presentational && "cursor-pointer disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
           controlSizeClass
         )}
-        aria-label={completed ? "Označi kot aktivno" : "Označi kot kupljeno"}
-        aria-pressed={completed}
-        disabled={disabled}
-        onClick={() => {
-          setIsHovered(false);
-          onToggle();
-        }}
-        onHoverStart={() => setIsHovered(true)}
-        onHoverEnd={() => setIsHovered(false)}
         initial={false}
         animate={{
           backgroundColor: completed ? EMERALD_FILL : "rgba(0, 0, 0, 0)",
@@ -94,7 +104,7 @@ export function CompletionCircleToggle({
         }}
       >
         <AnimatePresence>
-          {!completed && isHovered ? (
+          {!presentational && !completed && isHovered ? (
             <motion.span
               key="hover-check"
               className="absolute inset-0 flex items-center justify-center"
@@ -144,7 +154,7 @@ export function CompletionCircleToggle({
             </motion.span>
           ) : null}
         </AnimatePresence>
-      </motion.button>
+      </ControlTag>
       {sparkleBurst
         ? Array.from({ length: SPARKLE_COUNT }, (_, i) => {
             const angle = (i / SPARKLE_COUNT) * Math.PI * 2 - Math.PI / 2;
