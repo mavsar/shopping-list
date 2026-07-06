@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
-import { normalizeTitle } from "../domain/items.js";
+import { buildItemSearchTokens, normalizeTitle } from "../domain/items.js";
 import { requireAuth } from "../middleware/auth.js";
 import { classifyCategory } from "../services/category-classifier.js";
 
@@ -807,20 +807,39 @@ itemsRouter.get("/suggest", requireAuth, (req, res) => {
     });
   }
 
-  const query = normalizeTitle(parsed.data.q);
+  const query = parsed.data.q.trim();
   const limit = parsed.data.limit ?? 120;
+  const tokens = buildItemSearchTokens(query);
+
+  if (tokens.length === 0) {
+    const items = sqlite
+      .prepare(
+        `
+        SELECT id, title, normalized_title AS normalizedTitle, image_url AS imageUrl, category, default_quantity AS defaultQuantity, default_unit AS defaultUnit
+        FROM items
+        ORDER BY title ASC
+        LIMIT ?
+        `
+      )
+      .all(limit);
+
+    return res.json({ items });
+  }
+
+  const whereClause = tokens.map(() => "search_key LIKE ?").join(" AND ");
+  const args = [...tokens.map((token) => `%${token}%`), limit];
 
   const items = sqlite
     .prepare(
       `
       SELECT id, title, normalized_title AS normalizedTitle, image_url AS imageUrl, category, default_quantity AS defaultQuantity, default_unit AS defaultUnit
       FROM items
-      WHERE normalized_title LIKE ?
+      WHERE ${whereClause}
       ORDER BY title ASC
       LIMIT ?
       `
     )
-    .all(`%${query}%`, limit);
+    .all(...args);
 
   return res.json({ items });
 });

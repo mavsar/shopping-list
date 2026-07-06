@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
 import { itemCategoryValues } from "../domain/item-category.js";
-import { formatItemTitle, normalizeTitle, unitValues } from "../domain/items.js";
+import { buildItemSearchKey, formatItemTitle, normalizeTitle, unitValues } from "../domain/items.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
 import { classifyCategory } from "../services/category-classifier.js";
 import { parseId } from "../utils/ids.js";
@@ -474,9 +474,16 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
     } else {
       const itemInsert = sqlite
         .prepare(
-          "INSERT INTO items (normalized_title, title, image_url, source_url, category) VALUES (?, ?, ?, ?, ?)"
+          "INSERT INTO items (normalized_title, title, image_url, source_url, category, search_key) VALUES (?, ?, ?, ?, ?, ?)"
         )
-        .run(normalizedTitle, formattedTitle, payload.imageUrl ?? null, payload.sourceUrl ?? null, resolvedCategory);
+        .run(
+          normalizedTitle,
+          formattedTitle,
+          payload.imageUrl ?? null,
+          payload.sourceUrl ?? null,
+          resolvedCategory,
+          buildItemSearchKey(formattedTitle)
+        );
 
       itemId = Number(itemInsert.lastInsertRowid);
       createdItem = true;
@@ -670,8 +677,8 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
 
     if (payload.title !== undefined) {
       const formattedTitle = formatItemTitle(payload.title);
-      itemUpdateSegments.push("title = ?", "normalized_title = ?");
-      itemUpdateArgs.push(formattedTitle, normalizeTitle(formattedTitle));
+      itemUpdateSegments.push("title = ?", "normalized_title = ?", "search_key = ?");
+      itemUpdateArgs.push(formattedTitle, normalizeTitle(formattedTitle), buildItemSearchKey(formattedTitle));
     }
     if (payload.category !== undefined) {
       itemUpdateSegments.push("category = ?");

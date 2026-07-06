@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 
+import { buildItemSearchKey } from "../domain/items.js";
+
 type Migration = {
   name: string;
   sql: string;
@@ -394,6 +396,13 @@ const migrations: Migration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_recipe_label_assignments_label_id ON recipe_label_assignments(label_id);
     `
+  },
+  {
+    name: "015_items_search_key",
+    sql: `
+      ALTER TABLE items ADD COLUMN search_key TEXT;
+      CREATE INDEX IF NOT EXISTS idx_items_search_key ON items(search_key);
+    `
   }
 ];
 
@@ -438,4 +447,33 @@ export function runMigrations(sqlite: Database.Database): void {
 
     applyMigration();
   }
+
+  backfillItemsSearchKey(sqlite);
+}
+
+function backfillItemsSearchKey(sqlite: Database.Database): void {
+  const hasSearchKeyColumn = sqlite
+    .prepare("SELECT 1 FROM pragma_table_info('items') WHERE name = 'search_key' LIMIT 1")
+    .get();
+
+  if (!hasSearchKeyColumn) {
+    return;
+  }
+
+  const items = sqlite
+    .prepare("SELECT id, title FROM items WHERE search_key IS NULL OR search_key = ''")
+    .all() as Array<{ id: number; title: string }>;
+
+  if (items.length === 0) {
+    return;
+  }
+
+  const updateSearchKey = sqlite.prepare("UPDATE items SET search_key = ? WHERE id = ?");
+  const backfill = sqlite.transaction((rows: Array<{ id: number; title: string }>) => {
+    for (const item of rows) {
+      updateSearchKey.run(buildItemSearchKey(item.title), item.id);
+    }
+  });
+
+  backfill(items);
 }
