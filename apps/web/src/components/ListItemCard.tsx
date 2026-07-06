@@ -86,12 +86,12 @@ function ListItemCardComponent({
         </button>
         <button
           type="button"
-          className="m-0 flex min-w-0 flex-1 items-center gap-4 border-0 bg-transparent py-2.5 pr-2 text-left cursor-pointer"
+          className="m-0 flex min-w-0 flex-1 items-center gap-4 border-0 bg-transparent py-2.5 pr-2 text-left cursor-pointer select-none touch-manipulation [-webkit-touch-callout:none]"
           aria-label={`Uredi ${formatTitle(item.title)}`}
           onClick={() => onOpenDetails(item)}
         >
-          <ItemCategoryIcon category={item.category} size={30} />
-          <div className="block min-w-0 flex-1">
+          <ItemCategoryIcon category={item.category} size={30} className="pointer-events-none" />
+          <div className="pointer-events-none block min-w-0 flex-1">
             <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
               {formatTitle(item.title)}
             </span>
