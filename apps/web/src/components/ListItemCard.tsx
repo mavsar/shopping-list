@@ -84,27 +84,45 @@ function ListItemCardComponent({
             />
           </div>
         </button>
-        <button
-          type="button"
-          className="m-0 flex min-w-0 flex-1 items-center gap-4 border-0 bg-transparent py-2.5 pr-2 text-left cursor-pointer select-none touch-manipulation [-webkit-touch-callout:none]"
-          aria-label={`Uredi ${formatTitle(item.title)}`}
-          onClick={() => onOpenDetails(item)}
-        >
-          <ItemCategoryIcon category={item.category} size={30} className="pointer-events-none" />
-          <div className="pointer-events-none block min-w-0 flex-1">
-            <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
-              {formatTitle(item.title)}
-            </span>
-            {item.status === 'completed' ? (
-              <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
-                Kupljeno ({formatCompletedAt(item.updatedAt)})
+        <div className="relative min-w-0 flex-1">
+          <div
+            aria-hidden
+            className="pointer-events-none flex items-center gap-4 py-2.5 pr-2 select-none"
+          >
+            <ItemCategoryIcon category={item.category} size={30} />
+            <div className="block min-w-0 flex-1">
+              <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
+                {formatTitle(item.title)}
               </span>
-            ) : null}
-            {item.note ? (
-              <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">{item.note}</span>
-            ) : null}
+              {item.status === 'completed' ? (
+                <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
+                  Kupljeno ({formatCompletedAt(item.updatedAt)})
+                </span>
+              ) : null}
+              {item.note ? (
+                <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">{item.note}</span>
+              ) : null}
+            </div>
           </div>
-        </button>
+          <button
+            type="button"
+            className="absolute inset-0 z-10 m-0 cursor-pointer border-0 bg-transparent p-0 touch-manipulation select-none [-webkit-touch-callout:none]"
+            aria-label={`Uredi ${formatTitle(item.title)}`}
+            onPointerUp={(event) => {
+              if (event.pointerType === 'mouse' && event.button !== 0) {
+                return;
+              }
+              event.preventDefault();
+              onOpenDetails(item);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onOpenDetails(item);
+              }
+            }}
+          />
+        </div>
         <div className="flex shrink-0 items-center">
           <div className="flex items-center justify-between gap-2">
             <div
