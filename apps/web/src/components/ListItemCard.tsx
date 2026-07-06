@@ -1,9 +1,27 @@
 import { cx } from 'class-variance-authority';
-import { memo } from 'react';
+import { memo, type KeyboardEvent, type MouseEvent } from 'react';
+import { motion } from 'motion/react';
+import type { Transition } from 'motion/react';
+
+import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
+import { CompletionCircleToggle } from './CompletionCircleToggle';
+import { ItemCategoryIcon } from './ItemCategoryIcon';
+import { Minus, Plus } from './lordicon/icons';
+import { Button, Card } from './ui';
 
 const SLOVENIAN_MONTHS = [
-  'januar', 'februar', 'marec', 'april', 'maj', 'junij',
-  'julij', 'avgust', 'september', 'oktober', 'november', 'december',
+  'januar',
+  'februar',
+  'marec',
+  'april',
+  'maj',
+  'junij',
+  'julij',
+  'avgust',
+  'september',
+  'oktober',
+  'november',
+  'december',
 ];
 
 function formatCompletedAt(isoString: string): string {
@@ -15,14 +33,6 @@ function formatCompletedAt(isoString: string): string {
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${year} ob ${hours}:${minutes}`;
 }
-import { motion } from 'motion/react';
-import type { Transition } from 'motion/react';
-
-import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
-import { CompletionCircleToggle } from './CompletionCircleToggle';
-import { ItemCategoryIcon } from './ItemCategoryIcon';
-import { Minus, Plus } from './lordicon/icons';
-import { Button, Card } from './ui';
 
 type ListItemCardProps = {
   item: ShoppingListItem;
@@ -41,6 +51,10 @@ type ListItemCardProps = {
   onIncreaseQuantity: (item: ShoppingListItem) => void;
 };
 
+function stopRowActivation(event: MouseEvent | KeyboardEvent) {
+  event.stopPropagation();
+}
+
 function ListItemCardComponent({
   item,
   updating,
@@ -58,75 +72,73 @@ function ListItemCardComponent({
   onIncreaseQuantity,
 }: ListItemCardProps) {
   const quantityControlsWidth = item.status === 'completed' ? 36 : 28;
+  const displayTitle = formatTitle(item.title);
 
   return (
-    <Card
-      tone={item.status === 'completed' ? 'completed' : 'default'}
-      interactive={item.status !== 'completed'}
-      padding="none"
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Uredi ${displayTitle}`}
+      className="block w-full cursor-pointer rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+      onClick={() => onOpenDetails(item)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenDetails(item);
+        }
+      }}
     >
-      <div className="flex items-stretch pr-2">
-        <button
-          type="button"
-          className="flex shrink-0 items-center px-4 py-2.5 cursor-pointer disabled:cursor-default"
-          aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
-          aria-pressed={item.status === 'completed'}
-          disabled={updating}
-          onClick={() => onCompletionToggle(item)}
-        >
-          <div className="flex pointer-events-none">
-            <CompletionCircleToggle
-              size="sm"
-              completed={item.status === 'completed'}
-              disabled={updating}
-              sparkleOnMount={sparkleOnMount}
-              onToggle={() => undefined}
-            />
-          </div>
-        </button>
-        <div className="relative min-w-0 flex-1">
+      <Card
+        tone={item.status === 'completed' ? 'completed' : 'default'}
+        interactive={item.status !== 'completed'}
+        padding="none"
+      >
+        <div className="flex items-stretch pr-2">
           <div
-            aria-hidden
-            className="pointer-events-none flex items-center gap-4 py-2.5 pr-2 select-none"
+            className="flex shrink-0 items-center px-4 py-2.5"
+            onClick={stopRowActivation}
+            onKeyDown={stopRowActivation}
           >
+            <button
+              type="button"
+              className="flex cursor-pointer border-0 bg-transparent p-0 disabled:cursor-default"
+              aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
+              aria-pressed={item.status === 'completed'}
+              disabled={updating}
+              onClick={() => onCompletionToggle(item)}
+            >
+              <CompletionCircleToggle
+                size="sm"
+                completed={item.status === 'completed'}
+                disabled={updating}
+                sparkleOnMount={sparkleOnMount}
+                onToggle={() => undefined}
+              />
+            </button>
+          </div>
+
+          <div className="flex min-w-0 flex-1 items-center gap-4 py-2.5 pr-2">
             <ItemCategoryIcon category={item.category} size={30} />
-            <div className="block min-w-0 flex-1">
-              <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
-                {formatTitle(item.title)}
-              </span>
+            <div className="min-w-0 flex-1">
+              <p className="m-0 line-clamp-2 text-sm leading-4 font-semibold text-slate-50">{displayTitle}</p>
               {item.status === 'completed' ? (
-                <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
+                <p className="m-0 mt-0.5 text-[10px] leading-3 text-white/50">
                   Kupljeno ({formatCompletedAt(item.updatedAt)})
-                </span>
+                </p>
               ) : null}
               {item.note ? (
-                <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">{item.note}</span>
+                <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p>
               ) : null}
             </div>
           </div>
-          <button
-            type="button"
-            className="absolute inset-0 z-10 m-0 cursor-pointer border-0 bg-transparent p-0 touch-manipulation select-none [-webkit-touch-callout:none]"
-            aria-label={`Uredi ${formatTitle(item.title)}`}
-            onPointerUp={(event) => {
-              if (event.pointerType === 'mouse' && event.button !== 0) {
-                return;
-              }
-              event.preventDefault();
-              onOpenDetails(item);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onOpenDetails(item);
-              }
-            }}
-          />
-        </div>
-        <div className="flex shrink-0 items-center">
-          <div className="flex items-center justify-between gap-2">
+
+          <div
+            className="flex shrink-0 items-center"
+            onClick={stopRowActivation}
+            onKeyDown={stopRowActivation}
+          >
             <div
-              className="inline-flex items-center justify-center"
+              className="flex items-center justify-between gap-2"
               onMouseEnter={() => {
                 if (supportsHoverPointer) {
                   onHoverStart(item.id);
@@ -159,7 +171,7 @@ function ListItemCardComponent({
                     size="xs"
                     iconOnly
                     icon={<Minus animateOnHover />}
-                    aria-label={`Zmanjšaj količino za ${formatTitle(item.title)}`}
+                    aria-label={`Zmanjšaj količino za ${displayTitle}`}
                     disabled={updating}
                     onClick={() => onDecreaseQuantity(item)}
                   />
@@ -168,10 +180,10 @@ function ListItemCardComponent({
               <button
                 type="button"
                 className={cx(
-                  'inline-flex min-w-14 items-center justify-center whitespace-nowrap rounded-lg px-1.5 py-1 text-center text-xs text-slate-100 transition',
+                  'inline-flex min-w-14 items-center justify-center whitespace-nowrap rounded-lg border-0 bg-transparent px-1.5 py-1 text-center text-xs text-slate-100 transition',
                   supportsHoverPointer ? 'cursor-default' : 'cursor-pointer hover:bg-white/10',
                 )}
-                aria-label={`Količina za ${formatTitle(item.title)}`}
+                aria-label={`Količina za ${displayTitle}`}
                 aria-expanded={quantityControlsVisible}
                 onClick={() => onQuantityLabelClick(item.id)}
               >
@@ -198,7 +210,7 @@ function ListItemCardComponent({
                     size="xs"
                     iconOnly
                     icon={<Plus animateOnHover />}
-                    aria-label={`Povečaj količino za ${formatTitle(item.title)}`}
+                    aria-label={`Povečaj količino za ${displayTitle}`}
                     disabled={updating}
                     onClick={() => onIncreaseQuantity(item)}
                   />
@@ -207,8 +219,8 @@ function ListItemCardComponent({
             </div>
           </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
 
