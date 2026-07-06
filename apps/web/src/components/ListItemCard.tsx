@@ -65,46 +65,47 @@ function ListItemCardComponent({
       interactive={item.status !== 'completed'}
       padding="none"
     >
-      <div className="flex items-center gap-4 pr-2">
-        <div className="relative flex items-center justify-center">
-          <button
-            type="button"
-            className="flex px-4 py-2.5 cursor-pointer disabled:cursor-default"
-            aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
-            aria-pressed={item.status === 'completed'}
-            disabled={updating}
-            onClick={() => onCompletionToggle(item)}
-          >
-            <div className="flex pointer-events-none">
-              <CompletionCircleToggle
-                size="sm"
-                completed={item.status === 'completed'}
-                disabled={updating}
-                sparkleOnMount={sparkleOnMount}
-                onToggle={() => undefined}
-              />
-            </div>
-          </button>
+      <div className="flex items-stretch pr-2">
+        <button
+          type="button"
+          className="flex shrink-0 items-center px-4 py-2.5 cursor-pointer disabled:cursor-default"
+          aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
+          aria-pressed={item.status === 'completed'}
+          disabled={updating}
+          onClick={() => onCompletionToggle(item)}
+        >
+          <div className="flex pointer-events-none">
+            <CompletionCircleToggle
+              size="sm"
+              completed={item.status === 'completed'}
+              disabled={updating}
+              sparkleOnMount={sparkleOnMount}
+              onToggle={() => undefined}
+            />
+          </div>
+        </button>
+        <button
+          type="button"
+          className="m-0 flex min-w-0 flex-1 items-center gap-4 border-0 bg-transparent py-2.5 pr-2 text-left cursor-pointer"
+          aria-label={`Uredi ${formatTitle(item.title)}`}
+          onClick={() => onOpenDetails(item)}
+        >
           <ItemCategoryIcon category={item.category} size={30} />
-        </div>
-        <div className="block min-w-0 flex-1">
-          <button
-            type="button"
-            className="m-0 max-w-full line-clamp-2 border-0 bg-transparent p-0 text-left text-sm leading-4 font-semibold text-slate-50 cursor-pointer"
-            onClick={() => onOpenDetails(item)}
-          >
-            {formatTitle(item.title)}
+          <div className="block min-w-0 flex-1">
+            <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
+              {formatTitle(item.title)}
+            </span>
             {item.status === 'completed' ? (
-              <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">
-                · Kupljeno ({formatCompletedAt(item.updatedAt)})
+              <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
+                Kupljeno ({formatCompletedAt(item.updatedAt)})
               </span>
             ) : null}
-          </button>
-          {item.note ? (
-            <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p>
-          ) : null}
-        </div>
-        <div className="flex min-w-0 flex-col justify-center">
+            {item.note ? (
+              <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">{item.note}</span>
+            ) : null}
+          </div>
+        </button>
+        <div className="flex shrink-0 items-center">
           <div className="flex items-center justify-between gap-2">
             <div
               className="inline-flex items-center justify-center"
