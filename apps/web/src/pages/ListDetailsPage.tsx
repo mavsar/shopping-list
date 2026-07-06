@@ -5,7 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppHeader } from '../components/AppHeader';
 import { ItemCategoryIcon, itemCategoryLabels } from '../components/ItemCategoryIcon';
-import { ListItemCard } from '../components/ListItemCard';
+import { ShoppingListItemRow } from '../components/ShoppingListItemRow';
 import {
   ArrowLeft,
   CheckCheck,
@@ -42,8 +42,6 @@ type ImageCandidate = {
 };
 
 const quantityStep = 1;
-
-const quantityControlsTransition = { duration: 0.16, ease: 'easeOut' } as const;
 
 function formatItemTitle(title: string): string {
   const normalized = title.trim().replace(/\s+/g, ' ');
@@ -568,7 +566,6 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
   const [updatingItemError, setUpdatingItemError] = useState('');
   const [recentlyCompletedItemId, setRecentlyCompletedItemId] = useState<number | null>(null);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
-  const [hoveredQuantityItemId, setHoveredQuantityItemId] = useState<number | null>(null);
   const [expandedQuantityItemId, setExpandedQuantityItemId] = useState<number | null>(null);
   const [detailsListItemId, setDetailsListItemId] = useState<number | null>(null);
   const [detailsEditQuantity, setDetailsEditQuantity] = useState(1);
@@ -662,13 +659,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     [items],
   );
 
-  function isQuantityControlsVisible(itemId: number) {
-    return supportsHoverPointer
-      ? hoveredQuantityItemId === itemId
-      : expandedQuantityItemId === itemId;
-  }
-
-  function handleQuantityLabelClick(itemId: number) {
+  function handleQuantityToggle(itemId: number) {
     if (supportsHoverPointer) {
       return;
     }
@@ -710,16 +701,15 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     [token],
   );
 
-  // Stable callback identities so memoized ListItemCard children only re-render
-  // when their own item/visibility props change (not on every parent render).
+  // Stable callback identities so memoized item rows only re-render when their props change.
   const handleCompletionToggleRef = useRef(handleCompletionToggle);
   handleCompletionToggleRef.current = handleCompletionToggle;
   const decreaseItemQuantityRef = useRef(decreaseItemQuantity);
   decreaseItemQuantityRef.current = decreaseItemQuantity;
   const increaseItemQuantityRef = useRef(increaseItemQuantity);
   increaseItemQuantityRef.current = increaseItemQuantity;
-  const handleQuantityLabelClickRef = useRef(handleQuantityLabelClick);
-  handleQuantityLabelClickRef.current = handleQuantityLabelClick;
+  const handleQuantityToggleRef = useRef(handleQuantityToggle);
+  handleQuantityToggleRef.current = handleQuantityToggle;
   const openItemDetailsRef = useRef(openItemDetails);
   openItemDetailsRef.current = openItemDetails;
 
@@ -735,8 +725,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     (item: ShoppingListItem) => increaseItemQuantityRef.current(item),
     [],
   );
-  const stableQuantityLabelClick = useCallback(
-    (itemId: number) => handleQuantityLabelClickRef.current(itemId),
+  const stableQuantityToggle = useCallback(
+    (itemId: number) => handleQuantityToggleRef.current(itemId),
     [],
   );
   const stableOpenDetails = useCallback(
@@ -744,45 +734,24 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     [],
   );
 
-  function renderItemRow(item: ShoppingListItem, sparkleOnMount = false) {
+  function renderShoppingItemRow(item: ShoppingListItem, sparkleOnMount = false) {
     return (
-      <div
+      <ShoppingListItemRow
         key={item.id}
-        role="button"
-        tabIndex={0}
-        className="group cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
-        onClick={() => stableOpenDetails(item)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            stableOpenDetails(item);
-          }
-        }}
-      >
-        <ListItemCard
-          item={item}
-          updating={Boolean(updatingItemId)}
-          sparkleOnMount={sparkleOnMount}
-          supportsHoverPointer={supportsHoverPointer}
-          quantityControlsVisible={isQuantityControlsVisible(item.id)}
-          quantityControlsTransition={quantityControlsTransition}
-          formatTitle={formatItemTitle}
-          onHoverStart={stableHoverStart}
-          onHoverEnd={stableHoverEnd}
-          onQuantityLabelClick={stableQuantityLabelClick}
-          onCompletionToggle={stableCompletionToggle}
-          onDecreaseQuantity={stableDecreaseQuantity}
-          onIncreaseQuantity={stableIncreaseQuantity}
-        />
-      </div>
+        item={item}
+        updating={Boolean(updatingItemId)}
+        sparkleOnMount={sparkleOnMount}
+        supportsHoverPointer={supportsHoverPointer}
+        quantityExpanded={expandedQuantityItemId === item.id}
+        formatTitle={formatItemTitle}
+        onOpenDetails={stableOpenDetails}
+        onCompletionToggle={stableCompletionToggle}
+        onQuantityToggle={stableQuantityToggle}
+        onDecreaseQuantity={stableDecreaseQuantity}
+        onIncreaseQuantity={stableIncreaseQuantity}
+      />
     );
   }
-  const stableHoverStart = useCallback((itemId: number) => setHoveredQuantityItemId(itemId), []);
-  const stableHoverEnd = useCallback(
-    (itemId: number) =>
-      setHoveredQuantityItemId((current) => (current === itemId ? null : current)),
-    [],
-  );
 
   useEffect(() => {
     if (!listSlug?.trim()) {
@@ -1640,10 +1609,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             <div className="mt-3 grid gap-2">
               {groupedActiveItems.map((group) => (
                 <div key={group.category} className="grid gap-2">
-                  {group.items.map((item) => renderItemRow(item))}
+                  {group.items.map((item) => renderShoppingItemRow(item))}
                 </div>
               ))}
-              {completedVisibleItems.map((item) => renderItemRow(item, recentlyCompletedItemId === item.id))}
+              {completedVisibleItems.map((item) =>
+                renderShoppingItemRow(item, recentlyCompletedItemId === item.id),
+              )}
               {!groupedActiveItems.length && !completedVisibleItems.length ? (
                 <div className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
                   Še ni izdelkov. Za dodajanje prvega uporabi gumb + spodaj desno.

@@ -4,8 +4,7 @@
   box-sizing: border-box;
 }
 
-button,
-[role="button"] {
+button {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
