@@ -245,6 +245,12 @@ function SharedItemFormFields({
     let isMounted = true;
 
     async function refreshClipboardAvailability() {
+      if (!imageToolsVisible || disabled) {
+        if (isMounted) {
+          setClipboardHasImage(false);
+        }
+        return;
+      }
       if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
         if (isMounted) {
           setClipboardHasImage(false);
@@ -276,7 +282,7 @@ function SharedItemFormFields({
       isMounted = false;
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, []);
+  }, [disabled, imageToolsVisible]);
 
   return (
     <>
@@ -1605,7 +1611,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
           ) : null}
           {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
           {!listLoading && !itemsLoading && !listError ? (
-            <div className="mt-3 grid gap-2">
+            <div className="ios-no-callout mt-3 grid gap-2">
               {groupedActiveItems.map((group) => (
                 <div key={group.category} className="grid gap-2">
                   {group.items.map((item) => renderShoppingItemRow(item))}

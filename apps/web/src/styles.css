@@ -8,7 +8,18 @@ button {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
+}
+
+/* Prevent iOS long-press Paste/Copy callouts on non-editable list UI. */
+.ios-no-callout,
+.ios-no-callout * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: manipulation;
 }
 
 :root {

@@ -1,5 +1,5 @@
 import { cx } from 'class-variance-authority';
-import { memo } from 'react';
+import { memo, type HTMLAttributes, type SyntheticEvent } from 'react';
 
 import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
 import { CompletionCircleToggle } from './CompletionCircleToggle';
@@ -31,6 +31,15 @@ function formatCompletedAt(isoString: string): string {
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${year} ob ${hours}:${minutes}`;
 }
+
+function blockIosCallout(event: SyntheticEvent) {
+  event.preventDefault();
+}
+
+const iosInteractionBlockProps = {
+  onContextMenu: blockIosCallout,
+  onSelectStart: blockIosCallout,
+} as HTMLAttributes<HTMLElement>;
 
 type ShoppingListItemRowProps = {
   item: ShoppingListItem;
@@ -67,8 +76,10 @@ function ShoppingListItemRowComponent({
       tone={item.status === 'completed' ? 'completed' : 'default'}
       interactive={item.status !== 'completed'}
       padding="none"
+      className="ios-no-callout"
+      {...iosInteractionBlockProps}
     >
-      <div className="grid min-h-14 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-stretch">
+      <div className="grid min-h-14 touch-manipulation grid-cols-[3.5rem_minmax(0,1fr)_auto] items-stretch">
         <button
           type="button"
           className="flex h-full w-full items-center justify-center border-0 bg-transparent px-3 touch-manipulation disabled:cursor-default disabled:opacity-50"
@@ -76,6 +87,7 @@ function ShoppingListItemRowComponent({
           aria-pressed={item.status === 'completed'}
           disabled={updating}
           onClick={() => onCompletionToggle(item)}
+          {...iosInteractionBlockProps}
         >
           <CompletionCircleToggle
             size="sm"
@@ -87,30 +99,30 @@ function ShoppingListItemRowComponent({
           />
         </button>
 
-        <div className="relative min-w-0">
-          <div className="pointer-events-none flex h-full items-center gap-4 py-2.5 pr-2 select-none">
-            <ItemCategoryIcon category={item.category} size={30} staticDisplay />
-            <div className="min-w-0 flex-1">
-              <p className="m-0 line-clamp-2 text-sm leading-4 font-semibold text-slate-50">{displayTitle}</p>
-              {item.status === 'completed' ? (
-                <p className="m-0 mt-0.5 text-[10px] leading-3 text-white/50">
-                  Kupljeno ({formatCompletedAt(item.updatedAt)})
-                </p>
-              ) : null}
-              {item.note ? (
-                <p className="m-0 mt-0.5 line-clamp-1 text-xs text-slate-200/90">{item.note}</p>
-              ) : null}
-            </div>
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-4 border-0 bg-transparent py-2.5 pr-2 text-left touch-manipulation"
+          aria-label={`Uredi ${displayTitle}`}
+          onClick={() => onOpenDetails(item)}
+          {...iosInteractionBlockProps}
+        >
+          <ItemCategoryIcon category={item.category} size={30} staticDisplay />
+          <div className="min-w-0 flex-1">
+            <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
+              {displayTitle}
+            </span>
+            {item.status === 'completed' ? (
+              <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
+                Kupljeno ({formatCompletedAt(item.updatedAt)})
+              </span>
+            ) : null}
+            {item.note ? (
+              <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">{item.note}</span>
+            ) : null}
           </div>
-          <button
-            type="button"
-            className="absolute inset-0 m-0 border-0 bg-transparent p-0 touch-manipulation [-webkit-touch-callout:none]"
-            aria-label={`Uredi ${displayTitle}`}
-            onClick={() => onOpenDetails(item)}
-          />
-        </div>
+        </button>
 
-        <div className="group/qty flex items-center pr-2">
+        <div className="group/qty flex items-center pr-2" {...iosInteractionBlockProps}>
           <div
             className={cx(
               'inline-flex shrink-0 items-center overflow-hidden transition-[width,opacity] duration-150 ease-out',
@@ -143,6 +155,7 @@ function ShoppingListItemRowComponent({
             aria-label={`Količina za ${displayTitle}`}
             aria-expanded={showMobileQuantityControls}
             onClick={() => onQuantityToggle(item.id)}
+            {...iosInteractionBlockProps}
           >
             {item.quantity} {getItemUnitLabel(item.unit)}
           </button>
