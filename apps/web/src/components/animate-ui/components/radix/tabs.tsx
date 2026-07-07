@@ -37,10 +37,10 @@ type TabsTriggerProps = TabsTriggerPrimitiveProps;
 
 function TabsTrigger({ className, ...props }: TabsTriggerProps) {
   return (
-    <TabsHighlightItemPrimitive value={props.value} className="flex-1">
+    <TabsHighlightItemPrimitive value={props.value} className="shrink-0">
       <TabsTriggerPrimitive
         className={cn(
-          "inline-flex cursor-pointer h-[calc(100%-1px)] w-full flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium whitespace-nowrap text-slate-300 transition-colors duration-300 ease-in-out data-[state=active]:text-white focus-visible:outline-1 focus-visible:outline-cyan-300/45 focus-visible:ring-[3px] focus-visible:ring-cyan-300/35 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+          "inline-flex cursor-pointer h-[calc(100%-1px)] w-auto shrink-0 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium whitespace-nowrap text-slate-300 transition-colors duration-300 ease-in-out data-[state=active]:text-white focus-visible:outline-1 focus-visible:outline-cyan-300/45 focus-visible:ring-[3px] focus-visible:ring-cyan-300/35 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
           className,
         )}
         {...props}

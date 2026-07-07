@@ -11,11 +11,10 @@ type SharedTabsItem = {
   disabled?: boolean;
 };
 
-const sharedTabsClassName = cva("w-full");
-const sharedTabsListClassName = cva("grid h-auto w-full grid-cols-3");
-const sharedTabsTriggerClassName = cva(
-  "h-8 rounded-md px-2 py-1 text-[11px] font-semibold"
-);
+const sharedTabsClassName = cva("w-full min-w-0");
+const sharedTabsScrollClassName = cva("min-w-0 overflow-x-auto overscroll-x-contain");
+const sharedTabsListClassName = cva("inline-flex w-max flex-nowrap items-center");
+const sharedTabsTriggerClassName = cva("h-8 rounded-md px-2.5 py-1 text-[11px] font-semibold");
 
 type SharedTabsProps = {
   value: string;
@@ -36,18 +35,20 @@ export function SharedTabs({
 }: SharedTabsProps) {
   return (
     <AnimateTabs value={value} onValueChange={onValueChange} className={cx(sharedTabsClassName(), className)}>
-      <AnimateTabsList className={cx(sharedTabsListClassName(), listClassName)}>
-        {items.map((item) => (
-          <AnimateTabsTrigger
-            key={item.value}
-            value={item.value}
-            disabled={item.disabled}
-            className={cx(sharedTabsTriggerClassName(), triggerClassName)}
-          >
-            {item.label}
-          </AnimateTabsTrigger>
-        ))}
-      </AnimateTabsList>
+      <div className={sharedTabsScrollClassName()}>
+        <AnimateTabsList className={cx(sharedTabsListClassName(), listClassName)}>
+          {items.map((item) => (
+            <AnimateTabsTrigger
+              key={item.value}
+              value={item.value}
+              disabled={item.disabled}
+              className={cx(sharedTabsTriggerClassName(), triggerClassName)}
+            >
+              {item.label}
+            </AnimateTabsTrigger>
+          ))}
+        </AnimateTabsList>
+      </div>
     </AnimateTabs>
   );
 }

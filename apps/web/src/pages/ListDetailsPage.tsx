@@ -409,7 +409,6 @@ function SharedItemFormFields({
                   disabled: disabled || !clipboardHasImage,
                 },
               ]}
-              listClassName="grid-cols-3"
             />
             {imageMode === 'find-online' ? (
               <>
