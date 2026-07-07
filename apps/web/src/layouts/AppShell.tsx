@@ -4,7 +4,7 @@ import { BubbleBackground } from "../components/animate-ui/components/background
 
 export function AppShell({ children }: PropsWithChildren) {
   return (
-    <div className="fixed inset-x-0 top-0 h-[100lvh] overflow-hidden">
+    <div className="fixed inset-x-0 top-0 h-[100lvh] overflow-hidden ios-no-callout">
       <div className="pointer-events-none absolute inset-y-0 -left-[12vw] -right-[12vw] z-0">
         <BubbleBackground
           interactive={false}

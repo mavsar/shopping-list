@@ -19,6 +19,7 @@ import { Button, Checkbox, Dialog, Input, Loader, Select, SharedTabs, Textarea }
 import type { ItemCategory } from '../domain/item-category';
 import { itemCategoryValues } from '../domain/item-category';
 import { toListSlug } from '../domain/list-slug';
+import { isClipboardReadSupported } from '../lib/ios-pointer';
 import type { AuthUser } from '../types/auth';
 import {
   CatalogItem,
@@ -224,8 +225,8 @@ function SharedItemFormFields({
   const [imageToolsVisible, setImageToolsVisible] = useState(
     !(Boolean(imageUrl) && Boolean(onRemoveImage)),
   );
-  const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const clipboardPasteSupported = isClipboardReadSupported();
   const visibleImageCandidates = useMemo(
     () => imageCandidates.filter((candidate) => !brokenCandidateUrls.has(candidate.imageUrl)),
     [brokenCandidateUrls, imageCandidates],
@@ -240,49 +241,6 @@ function SharedItemFormFields({
       setImageToolsVisible(true);
     }
   }, [imageUrl, onRemoveImage]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function refreshClipboardAvailability() {
-      if (!imageToolsVisible || disabled) {
-        if (isMounted) {
-          setClipboardHasImage(false);
-        }
-        return;
-      }
-      if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
-        if (isMounted) {
-          setClipboardHasImage(false);
-        }
-        return;
-      }
-      try {
-        const clipboardItems = await navigator.clipboard.read();
-        const hasImage = clipboardItems.some((item) =>
-          item.types.some((type) => type.startsWith('image/')),
-        );
-        if (isMounted) {
-          setClipboardHasImage(hasImage);
-        }
-      } catch {
-        if (isMounted) {
-          setClipboardHasImage(false);
-        }
-      }
-    }
-
-    void refreshClipboardAvailability();
-    const handleWindowFocus = () => {
-      void refreshClipboardAvailability();
-    };
-    window.addEventListener('focus', handleWindowFocus);
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener('focus', handleWindowFocus);
-    };
-  }, [disabled, imageToolsVisible]);
 
   return (
     <>
@@ -412,7 +370,7 @@ function SharedItemFormFields({
                 {
                   value: 'clipboard',
                   label: 'Prilepi iz odložišča',
-                  disabled: disabled || !clipboardHasImage,
+                  disabled: disabled || !clipboardPasteSupported,
                 },
               ]}
             />
@@ -514,7 +472,7 @@ function SharedItemFormFields({
                   type="button"
                   color="white"
                   appearance="outline"
-                  disabled={findImageLoading || disabled || !clipboardHasImage}
+                  disabled={findImageLoading || disabled || !clipboardPasteSupported}
                   onClick={() => void onPasteImageFromClipboard()}
                 >
                   Prilepi sliko zdaj
