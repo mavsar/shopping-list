@@ -1712,7 +1712,7 @@ function SearchOverlay({
             size="sm"
             type="button"
             aria-label="Zapri iskanje"
-            className="absolute right-3 top-3 z-20"
+            className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20"
             onClick={onClose}
           />
 

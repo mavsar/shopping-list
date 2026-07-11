@@ -104,7 +104,7 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
             size="sm"
             type="button"
             aria-label="Zapri meni"
-            className="absolute right-2 top-2"
+            className="absolute right-2 top-[calc(env(safe-area-inset-top)+0.5rem)]"
             onClick={() => setOpen(false)}
           />
 
