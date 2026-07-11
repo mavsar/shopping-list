@@ -19,7 +19,7 @@ import { Button, Checkbox, Dialog, Input, Loader, Select, SharedTabs, Textarea }
 import type { ItemCategory } from '../domain/item-category';
 import { itemCategoryValues } from '../domain/item-category';
 import { toListSlug } from '../domain/list-slug';
-import { isClipboardReadSupported } from '../lib/ios-pointer';
+import { isClipboardReadSupported } from '../lib/clipboard';
 import type { AuthUser } from '../types/auth';
 import {
   CatalogItem,
