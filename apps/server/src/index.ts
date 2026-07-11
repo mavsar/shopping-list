@@ -11,7 +11,7 @@ import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { itemsRouter } from "./routes/items.js";
 import { listsRouter } from "./routes/lists.js";
-import { migrateExternalRecipeImages, recipesRouter } from "./routes/recipes.js";
+import { healRecipeImages, recipesRouter } from "./routes/recipes.js";
 import { usersRouter } from "./routes/users.js";
 
 ensureBootstrapAdmin();
@@ -81,5 +81,5 @@ if (fs.existsSync(webDistPath)) {
 
 app.listen(port, () => {
   console.log(`Shopping list app listening on port ${port}`);
-  void migrateExternalRecipeImages();
+  void healRecipeImages();
 });

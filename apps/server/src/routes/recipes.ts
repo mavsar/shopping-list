@@ -52,25 +52,6 @@ const BLOCKED_HOSTNAMES = [
   "twitter.com",
 ];
 
-// Hosts considered Slovenian (results from these are NOT translated)
-const SLOVENIAN_HOSTNAMES = [
-  "kulinarika.net",
-  "recepti.si",
-  "okusno.je",
-  "gurman.eu",
-  "kuham.com",
-  "recepti.net",
-  "slo-recepti.si",
-  "kuhaj.com",
-  "mojirecepti.com",
-  "jernejkitchen.com",
-  "zacimbe.si",
-  "odprtakuhinja.delo.si",
-  "delo.si",
-  "svet24.si",
-  "dobrejedi.si",
-];
-
 // ---------- HTTP helpers ----------
 
 const browserHtmlHeaders: HeadersInit = {
@@ -174,18 +155,6 @@ function isBlockedHost(url: string): boolean {
   return BLOCKED_HOSTNAMES.some((d) => h === d || h.endsWith(`.${d}`));
 }
 
-function looksSlovenian(url: string): boolean {
-  const h = hostname(url);
-  if (h.endsWith(".si")) return true;
-  if (SLOVENIAN_HOSTNAMES.some((d) => h === d || h.endsWith(`.${d}`))) return true;
-  try {
-    if (new URL(url).pathname.includes("/sl/")) return true;
-  } catch {
-    /* ignore */
-  }
-  return false;
-}
-
 /** Block SSRF: only allow public http(s) hosts. */
 function isPublicHttpUrl(url: string): boolean {
   let parsed: URL;
@@ -278,12 +247,12 @@ function dedupeBySourceAndUrl(results: RecipeSearchResult[]): RecipeSearchResult
 // ---------- Translation ----------
 
 async function batchTranslateToSlovenian(results: RecipeSearchResult[]): Promise<RecipeSearchResult[]> {
-  if (!genai) return results;
+  if (!genai || results.length === 0) return results;
 
-  const foreign = results.map((r, i) => ({ i, r })).filter(({ r }) => !looksSlovenian(r.url));
-  if (!foreign.length) return results;
-
-  const payload = foreign.map(({ r }) => ({ title: r.title, description: r.description }));
+  // Detect the actual language of each result's own text rather than guessing from the
+  // hostname — sites like jernejkitchen.com publish recipes in both Slovenian and English,
+  // so which language a given result is in can't be assumed from its domain alone.
+  const payload = results.map((r) => ({ title: r.title, description: r.description }));
   const prompt = `For each recipe below, first determine what language the title and description are actually written in.
 - If they are already written in Slovenian, return them unchanged.
 - If they are written in any other language, translate them into natural Slovenian culinary language.
@@ -296,14 +265,10 @@ Input: ${JSON.stringify(payload)}`;
     const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
     const translated = JSON.parse(raw) as Array<{ title: string; description: string }>;
 
-    const output = [...results];
-    foreign.forEach(({ i }, idx) => {
-      const t = translated[idx];
-      if (t?.title) {
-        output[i] = { ...output[i], title: t.title, description: t.description ?? output[i].description };
-      }
+    return results.map((r, i) => {
+      const t = translated[i];
+      return t?.title ? { ...r, title: t.title, description: t.description ?? r.description } : r;
     });
-    return output;
   } catch {
     return results;
   }
@@ -832,7 +797,7 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
 }
 
 async function translateRecipeToSlovenian(recipe: ParsedRecipe): Promise<ParsedRecipe> {
-  if (!genai || looksSlovenian(recipe.url)) return recipe;
+  if (!genai) return recipe;
 
   const payload = {
     title: recipe.title,
@@ -1048,47 +1013,61 @@ function isLocalRecipeImageUrl(value: string): boolean {
   return value.startsWith(`${recipeImagesPublicPath}/`);
 }
 
+/** A local recipe image reference is only usable if its file is actually still on disk —
+ *  it can go missing if image storage wasn't mounted to a persistent volume and got wiped
+ *  on a container rebuild. */
+function localRecipeImageFileExists(value: string): boolean {
+  if (!isLocalRecipeImageUrl(value)) return false;
+  const fileName = value.slice(recipeImagesPublicPath.length + 1);
+  if (!fileName || fileName.includes("/") || fileName.includes("..")) return false;
+  return fs.existsSync(path.join(recipeImagesDirectoryPath, fileName));
+}
+
 /**
- * On startup: find any recipes whose image_url is an external URL (stored as a
- * fallback when local saving previously failed) and try to download them locally.
- * Runs silently in the background so it never blocks server startup or requests.
+ * On startup: repair recipes whose stored images are unusable — either still an external
+ * URL (saved before local-only storage was enforced, or a previous download failed) or a
+ * local path whose file no longer exists on disk. Re-fetches the source page and rebuilds
+ * the image set from scratch, the same way a fresh save would. Runs silently in the
+ * background so it never blocks server startup or requests.
  */
-export async function migrateExternalRecipeImages(): Promise<void> {
+export async function healRecipeImages(): Promise<void> {
+  let rows: Array<{ id: number; url: string; imageUrl: string | null; images: string }> = [];
   try {
-    const rows = sqlite
-      .prepare(
-        "SELECT id, image_url AS imageUrl, images FROM recipes WHERE image_url IS NOT NULL AND image_url NOT LIKE ? || '%'"
-      )
-      .all(`${recipeImagesPublicPath}/`) as Array<{ id: number; imageUrl: string; images: string }>;
-
-    for (const row of rows) {
-      // Any lingering external image_url is one that previously failed to download (or
-      // was saved before local-only storage was enforced) — retry it, and drop it to null
-      // rather than keep serving a remote URL that's likely still blocked.
-      const localMain = await saveRecipeImageLocally(row.imageUrl);
-      sqlite.prepare("UPDATE recipes SET image_url = ? WHERE id = ?").run(localMain, row.id);
-
-      try {
-        const gallery = JSON.parse(row.images) as unknown[];
-        if (!Array.isArray(gallery)) continue;
-        const fixedGallery: string[] = [];
-        for (const entry of gallery) {
-          if (typeof entry !== "string") continue;
-          if (isLocalRecipeImageUrl(entry)) {
-            fixedGallery.push(entry);
-            continue;
-          }
-          const local = await saveRecipeImageLocally(entry);
-          if (local) fixedGallery.push(local);
-        }
-        sqlite.prepare("UPDATE recipes SET images = ? WHERE id = ?").run(JSON.stringify(fixedGallery), row.id);
-      } catch {
-        /* ignore malformed images JSON */
-      }
-    }
+    rows = sqlite
+      .prepare("SELECT id, url, image_url AS imageUrl, images FROM recipes")
+      .all() as typeof rows;
   } catch {
-    /* ignore – table may not exist yet on very first boot */
+    return; // table may not exist yet on very first boot
   }
+
+  const broken = rows.filter((row) => {
+    const gallery = parseStringArray(row.images);
+    const mainBroken = row.imageUrl !== null && !localRecipeImageFileExists(row.imageUrl);
+    return mainBroken || gallery.some((entry) => !localRecipeImageFileExists(entry));
+  });
+  if (broken.length === 0) return;
+
+  console.log(`[recipe-images] healing ${broken.length} recipe(s) with missing local images...`);
+  let healed = 0;
+  for (const row of broken) {
+    const fresh = await parseRecipePage(row.url);
+    if (!fresh) continue; // source unreachable right now — retry on next boot
+
+    const candidates = dedupeImageUrls([fresh.imageUrl, ...fresh.images], 20);
+    const rebuiltGallery: string[] = [];
+    for (const candidate of candidates) {
+      const local = await saveRecipeImageLocally(candidate);
+      if (local && !rebuiltGallery.includes(local)) rebuiltGallery.push(local);
+    }
+    const rebuiltMain =
+      (fresh.imageUrl ? await saveRecipeImageLocally(fresh.imageUrl) : null) ?? rebuiltGallery[0] ?? null;
+
+    sqlite
+      .prepare("UPDATE recipes SET image_url = ?, images = ? WHERE id = ?")
+      .run(rebuiltMain, JSON.stringify(rebuiltGallery), row.id);
+    if (rebuiltMain) healed += 1;
+  }
+  console.log(`[recipe-images] healed ${healed}/${broken.length} recipe(s).`);
 }
 
 async function pruneOrphanedRecipeImages(): Promise<void> {
