@@ -1023,6 +1023,34 @@ function localRecipeImageFileExists(value: string): boolean {
   return fs.existsSync(path.join(recipeImagesDirectoryPath, fileName));
 }
 
+interface StoredRecipeImages {
+  imageUrl: string | null;
+  images: string[];
+}
+
+/** Download a main image + gallery candidates locally, dropping any that fail. */
+async function downloadRecipeImagesLocally(
+  imageUrl: string | undefined,
+  gallery: string[]
+): Promise<StoredRecipeImages> {
+  const candidates = dedupeImageUrls([imageUrl, ...gallery], 20);
+  const images: string[] = [];
+  for (const candidate of candidates) {
+    const local = await saveRecipeImageLocally(candidate);
+    if (local && !images.includes(local)) images.push(local);
+  }
+  const mainImage = (imageUrl ? await saveRecipeImageLocally(imageUrl) : null) ?? images[0] ?? null;
+  return { imageUrl: mainImage, images };
+}
+
+/** Re-fetch a recipe's source page and rebuild its image set from scratch, for when the
+ *  previously stored candidate URLs are gone or no longer known. */
+async function rebuildRecipeImagesFromSource(sourceUrl: string): Promise<StoredRecipeImages | null> {
+  const fresh = await parseRecipePage(sourceUrl);
+  if (!fresh) return null;
+  return downloadRecipeImagesLocally(fresh.imageUrl, fresh.images);
+}
+
 /**
  * On startup: repair recipes whose stored images are unusable — either still an external
  * URL (saved before local-only storage was enforced, or a previous download failed) or a
@@ -1050,22 +1078,13 @@ export async function healRecipeImages(): Promise<void> {
   console.log(`[recipe-images] healing ${broken.length} recipe(s) with missing local images...`);
   let healed = 0;
   for (const row of broken) {
-    const fresh = await parseRecipePage(row.url);
-    if (!fresh) continue; // source unreachable right now — retry on next boot
-
-    const candidates = dedupeImageUrls([fresh.imageUrl, ...fresh.images], 20);
-    const rebuiltGallery: string[] = [];
-    for (const candidate of candidates) {
-      const local = await saveRecipeImageLocally(candidate);
-      if (local && !rebuiltGallery.includes(local)) rebuiltGallery.push(local);
-    }
-    const rebuiltMain =
-      (fresh.imageUrl ? await saveRecipeImageLocally(fresh.imageUrl) : null) ?? rebuiltGallery[0] ?? null;
+    const rebuilt = await rebuildRecipeImagesFromSource(row.url);
+    if (!rebuilt) continue; // source unreachable right now — retry on next boot
 
     sqlite
       .prepare("UPDATE recipes SET image_url = ?, images = ? WHERE id = ?")
-      .run(rebuiltMain, JSON.stringify(rebuiltGallery), row.id);
-    if (rebuiltMain) healed += 1;
+      .run(rebuilt.imageUrl, JSON.stringify(rebuilt.images), row.id);
+    if (rebuilt.imageUrl) healed += 1;
   }
   console.log(`[recipe-images] healed ${healed}/${broken.length} recipe(s).`);
 }
@@ -1238,26 +1257,10 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
   // site or requires any future fetching. Images that fail to download are dropped rather
   // than stored as external URLs, since those URLs typically hit the same hotlink
   // protection or transient failure a browser would hit later.
-  const galleryCandidates = dedupeImageUrls(
-    [payload.imageUrl, ...payload.images],
-    20
+  const { imageUrl: storedMainImage, images: storedGallery } = await downloadRecipeImagesLocally(
+    payload.imageUrl,
+    payload.images
   );
-
-  const storedGallery: string[] = [];
-  for (const candidate of galleryCandidates) {
-    const localUrl = await saveRecipeImageLocally(candidate);
-    if (localUrl && !storedGallery.includes(localUrl)) {
-      storedGallery.push(localUrl);
-    }
-  }
-
-  let storedMainImage: string | null = null;
-  if (payload.imageUrl) {
-    storedMainImage = await saveRecipeImageLocally(payload.imageUrl);
-  }
-  if (!storedMainImage) {
-    storedMainImage = storedGallery[0] ?? null;
-  }
 
   const insert = sqlite
     .prepare(
@@ -1461,6 +1464,41 @@ recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {
   void pruneOrphanedRecipeImages();
 
   return res.status(204).send();
+});
+
+recipesRouter.post("/saved/:recipeId/refetch-images", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const recipeId = Number(req.params.recipeId);
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return res.status(400).json({ error: "Invalid recipeId" });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id, url FROM recipes WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(recipeId, authUser.id) as { id: number; url: string } | undefined;
+  if (!existing) {
+    return res.status(404).json({ error: "Recipe not found" });
+  }
+
+  const rebuilt = await rebuildRecipeImagesFromSource(existing.url);
+  if (!rebuilt) {
+    return res.status(502).json({ error: "Failed to fetch the recipe's source page." });
+  }
+
+  sqlite
+    .prepare("UPDATE recipes SET image_url = ?, images = ? WHERE id = ?")
+    .run(rebuilt.imageUrl, JSON.stringify(rebuilt.images), recipeId);
+  void pruneOrphanedRecipeImages();
+
+  const row = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ?`)
+    .get(recipeId) as SavedRecipeRow;
+
+  return res.json({ recipe: mapSavedRecipeRow(row) });
 });
 
 // ---------- Recipe label assignments ----------

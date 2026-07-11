@@ -740,6 +740,7 @@ function RecipeDetailModal({
   labels,
   labelIds: externalLabelIds,
   onLabelsChange,
+  onImagesRefetched,
 }: {
   recipe: ParsedRecipe | null;
   open: boolean;
@@ -753,10 +754,38 @@ function RecipeDetailModal({
   labels?: RecipeLabel[];
   labelIds?: number[];
   onLabelsChange?: (recipeId: number, newLabelIds: number[]) => void;
+  onImagesRefetched?: (recipeId: number, imageUrl: string | undefined, images: string[]) => void;
 }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [localLabelIds, setLocalLabelIds] = useState<number[]>([]);
   const [labelSaving, setLabelSaving] = useState(false);
+  const [imageBroken, setImageBroken] = useState(false);
+  const [refetchingImages, setRefetchingImages] = useState(false);
+  const [refetchError, setRefetchError] = useState('');
+
+  useEffect(() => setImageBroken(false), [recipe?.imageUrl]);
+
+  async function handleRefetchImages() {
+    if (!recipeId || refetchingImages) return;
+    setRefetchingImages(true);
+    setRefetchError('');
+    try {
+      const res = await fetch(`/api/recipes/saved/${recipeId}/refetch-images`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setRefetchError('Osveževanje slik ni uspelo.');
+        return;
+      }
+      const data = (await res.json()) as { recipe: SavedRecipe };
+      onImagesRefetched?.(data.recipe.id, data.recipe.imageUrl, data.recipe.images ?? []);
+    } catch {
+      setRefetchError('Osveževanje slik ni uspelo.');
+    } finally {
+      setRefetchingImages(false);
+    }
+  }
 
   useEffect(() => {
     setLocalLabelIds(externalLabelIds ?? []);
@@ -823,6 +852,7 @@ function RecipeDetailModal({
       setPendingBulkIngredients([]);
       setBulkItems([]);
       setListItems([]);
+      setRefetchError('');
     }
   }, [open]);
 
@@ -1082,14 +1112,18 @@ function RecipeDetailModal({
         footer={footer}
       >
         <div className="space-y-5">
-          {recipe.imageUrl && (
+          {recipe.imageUrl && !imageBroken ? (
             <div className="overflow-hidden rounded-2xl border border-white/10">
               <img
                 src={recipe.imageUrl}
                 alt={recipe.title}
                 className="h-56 w-full object-cover"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                onError={() => setImageBroken(true)}
               />
+            </div>
+          ) : (
+            <div className="flex h-56 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/4 text-sm text-slate-500">
+              Ni slike
             </div>
           )}
 
@@ -1389,7 +1423,7 @@ function RecipeDetailModal({
             </section>
           )}
 
-          <div className="pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <a
               href={recipe.url}
               target="_blank"
@@ -1409,7 +1443,24 @@ function RecipeDetailModal({
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
             </a>
+            {saved && recipeId && (
+              <button
+                type="button"
+                onClick={() => void handleRefetchImages()}
+                disabled={refetchingImages}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline disabled:cursor-default disabled:opacity-60"
+              >
+                {refetchingImages && (
+                  <span
+                    className="h-3 w-3 animate-spin rounded-full border border-slate-400/60 border-t-transparent"
+                    aria-hidden
+                  />
+                )}
+                {refetchingImages ? 'Osvežujem slike…' : 'Osveži slike'}
+              </button>
+            )}
           </div>
+          {refetchError && <p className="text-xs text-red-400">{refetchError}</p>}
         </div>
         <ImageLightbox src={expandedImage} onClose={() => setExpandedImage(null)} />
       </Dialog>
@@ -1823,6 +1874,7 @@ function SavedRecipeCard({
     .map((id) => labels.find((l) => l.id === id))
     .filter((l): l is RecipeLabel => Boolean(l));
   const [imgBroken, setImgBroken] = useState(false);
+  useEffect(() => setImgBroken(false), [recipe.imageUrl]);
 
   return (
     <button
@@ -1840,8 +1892,8 @@ function SavedRecipeCard({
             onError={() => setImgBroken(true)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-slate-600">
-            <Search size={28} />
+          <div className="flex h-full w-full items-center justify-center text-xs text-slate-600">
+            Ni slike
           </div>
         )}
       </div>
@@ -1981,6 +2033,18 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
     );
   }, []);
 
+  const handleImagesRefetched = useCallback(
+    (recipeId: number, imageUrl: string | undefined, images: string[]) => {
+      setSavedRecipes((prev) =>
+        prev.map((r) => (r.id === recipeId ? { ...r, imageUrl, images } : r)),
+      );
+      setSelectedSaved((prev) =>
+        prev && prev.id === recipeId ? { ...prev, imageUrl, images } : prev,
+      );
+    },
+    [],
+  );
+
   const filteredRecipes = useMemo(() => {
     if (!filterLabelId) return savedRecipes;
     return savedRecipes.filter((r) => r.labelIds.includes(filterLabelId));
@@ -2115,6 +2179,7 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         labels={labels}
         labelIds={selectedSaved?.labelIds}
         onLabelsChange={handleLabelsChange}
+        onImagesRefetched={handleImagesRefetched}
       />
     </>
   );
