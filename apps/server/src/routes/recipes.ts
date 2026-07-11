@@ -284,7 +284,10 @@ async function batchTranslateToSlovenian(results: RecipeSearchResult[]): Promise
   if (!foreign.length) return results;
 
   const payload = foreign.map(({ r }) => ({ title: r.title, description: r.description }));
-  const prompt = `Translate each recipe title and description into natural Slovenian culinary language. Return ONLY a JSON array of objects with "title" and "description" keys, in the same order as the input. No markdown, no extra text.
+  const prompt = `For each recipe below, first determine what language the title and description are actually written in.
+- If they are already written in Slovenian, return them unchanged.
+- If they are written in any other language, translate them into natural Slovenian culinary language.
+Return ONLY a JSON array of objects with "title" and "description" keys, in the same order as the input. No markdown, no extra text.
 
 Input: ${JSON.stringify(payload)}`;
 
@@ -838,7 +841,10 @@ async function translateRecipeToSlovenian(recipe: ParsedRecipe): Promise<ParsedR
     instructions: recipe.instructions,
   };
 
-  const prompt = `Translate this recipe into natural Slovenian culinary language. Preserve quantities and units exactly. Return ONLY valid JSON (no markdown) with the same keys: {"title":"","description":"","ingredients":["..."],"instructions":["..."]}
+  const prompt = `First determine what language this recipe (title, description, ingredients, instructions) is actually written in.
+- If it is already written in Slovenian, return the same fields unchanged.
+- If it is written in any other language, translate it into natural Slovenian culinary language. Preserve quantities and units exactly.
+Return ONLY valid JSON (no markdown) with the same keys: {"title":"","description":"","ingredients":["..."],"instructions":["..."]}
 
 Input: ${JSON.stringify(payload)}`;
 
@@ -940,15 +946,9 @@ recipesRouter.get("/fetch", requireAuth, async (req, res) => {
 
 // ---------- Saved recipes (persistence + local image storage) ----------
 
-async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
+async function fetchImageBufferOnce(url: string, referer: string | undefined, timeoutMs: number): Promise<Buffer | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  // Use the image's own origin as Referer so sites with hotlink protection
-  // (e.g. jernejkitchen.com) accept the server-side download request.
-  let referer: string | undefined;
-  try { referer = new URL(url).origin + "/"; } catch { /* ignore */ }
-
   try {
     const response = await fetch(url, {
       headers: {
@@ -967,6 +967,21 @@ async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer |
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Download an image, trying a couple of header strategies since recipe sites
+ * vary in how they block hotlinking: some require a matching Referer, others
+ * block any cross-origin Referer at all.
+ */
+async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
+  let referer: string | undefined;
+  try { referer = new URL(url).origin + "/"; } catch { /* ignore */ }
+
+  const withReferer = referer ? await fetchImageBufferOnce(url, referer, timeoutMs) : null;
+  if (withReferer && withReferer.length > 0) return withReferer;
+
+  return fetchImageBufferOnce(url, undefined, timeoutMs);
 }
 
 /** Guess a safe file extension from the source URL (fallback: jpg). */
@@ -1047,29 +1062,26 @@ export async function migrateExternalRecipeImages(): Promise<void> {
       .all(`${recipeImagesPublicPath}/`) as Array<{ id: number; imageUrl: string; images: string }>;
 
     for (const row of rows) {
+      // Any lingering external image_url is one that previously failed to download (or
+      // was saved before local-only storage was enforced) — retry it, and drop it to null
+      // rather than keep serving a remote URL that's likely still blocked.
       const localMain = await saveRecipeImageLocally(row.imageUrl);
-      if (localMain) {
-        sqlite.prepare("UPDATE recipes SET image_url = ? WHERE id = ?").run(localMain, row.id);
-      }
+      sqlite.prepare("UPDATE recipes SET image_url = ? WHERE id = ?").run(localMain, row.id);
 
       try {
         const gallery = JSON.parse(row.images) as unknown[];
         if (!Array.isArray(gallery)) continue;
-        let changed = false;
         const fixedGallery: string[] = [];
         for (const entry of gallery) {
           if (typeof entry !== "string") continue;
           if (isLocalRecipeImageUrl(entry)) {
             fixedGallery.push(entry);
-          } else {
-            const local = await saveRecipeImageLocally(entry);
-            fixedGallery.push(local ?? entry);
-            if (local) changed = true;
+            continue;
           }
+          const local = await saveRecipeImageLocally(entry);
+          if (local) fixedGallery.push(local);
         }
-        if (changed) {
-          sqlite.prepare("UPDATE recipes SET images = ? WHERE id = ?").run(JSON.stringify(fixedGallery), row.id);
-        }
+        sqlite.prepare("UPDATE recipes SET images = ? WHERE id = ?").run(JSON.stringify(fixedGallery), row.id);
       } catch {
         /* ignore malformed images JSON */
       }
@@ -1243,9 +1255,10 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
     return res.status(200).json({ recipe: mapSavedRecipeRow(existing) });
   }
 
-  // Try to persist all remote images locally so the recipe no longer depends on the source site.
-  // Fall back to the original external URLs when local saving fails (e.g. sharp not available,
-  // network blocked, or storage not yet configured).
+  // Persist all remote images locally so the saved recipe no longer depends on the source
+  // site or requires any future fetching. Images that fail to download are dropped rather
+  // than stored as external URLs, since those URLs typically hit the same hotlink
+  // protection or transient failure a browser would hit later.
   const galleryCandidates = dedupeImageUrls(
     [payload.imageUrl, ...payload.images],
     20
@@ -1254,18 +1267,14 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
   const storedGallery: string[] = [];
   for (const candidate of galleryCandidates) {
     const localUrl = await saveRecipeImageLocally(candidate);
-    const effectiveUrl = localUrl ?? (isPublicHttpUrl(candidate) ? candidate : null);
-    if (effectiveUrl && !storedGallery.includes(effectiveUrl)) {
-      storedGallery.push(effectiveUrl);
+    if (localUrl && !storedGallery.includes(localUrl)) {
+      storedGallery.push(localUrl);
     }
   }
 
   let storedMainImage: string | null = null;
   if (payload.imageUrl) {
     storedMainImage = await saveRecipeImageLocally(payload.imageUrl);
-    if (!storedMainImage && isPublicHttpUrl(payload.imageUrl)) {
-      storedMainImage = payload.imageUrl;
-    }
   }
   if (!storedMainImage) {
     storedMainImage = storedGallery[0] ?? null;
