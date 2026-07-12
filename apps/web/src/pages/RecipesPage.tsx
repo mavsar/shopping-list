@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
 import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
-import { Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
+import { Edit, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
 import { Dialog } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/fields/checkbox';
 import { Input } from '../components/ui/fields/input';
 import { Select } from '../components/ui/fields/select';
+import { Textarea } from '../components/ui/fields/textarea';
 import type { AuthUser } from '../types/auth';
 import type { ShoppingList } from '../types/lists';
 
@@ -741,6 +742,7 @@ function RecipeDetailModal({
   labelIds: externalLabelIds,
   onLabelsChange,
   onImagesRefetched,
+  onContentUpdated,
 }: {
   recipe: ParsedRecipe | null;
   open: boolean;
@@ -755,6 +757,7 @@ function RecipeDetailModal({
   labelIds?: number[];
   onLabelsChange?: (recipeId: number, newLabelIds: number[]) => void;
   onImagesRefetched?: (recipeId: number, imageUrl: string | undefined, images: string[]) => void;
+  onContentUpdated?: (recipeId: number, ingredients: string[], instructions: string[]) => void;
 }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [localLabelIds, setLocalLabelIds] = useState<number[]>([]);
@@ -762,6 +765,11 @@ function RecipeDetailModal({
   const [imageBroken, setImageBroken] = useState(false);
   const [refetchingImages, setRefetchingImages] = useState(false);
   const [refetchError, setRefetchError] = useState('');
+  const [editingContent, setEditingContent] = useState(false);
+  const [draftIngredients, setDraftIngredients] = useState<string[]>([]);
+  const [draftInstructions, setDraftInstructions] = useState<string[]>([]);
+  const [savingContent, setSavingContent] = useState(false);
+  const [contentError, setContentError] = useState('');
 
   useEffect(() => setImageBroken(false), [recipe?.imageUrl]);
 
@@ -784,6 +792,45 @@ function RecipeDetailModal({
       setRefetchError('Osveževanje slik ni uspelo.');
     } finally {
       setRefetchingImages(false);
+    }
+  }
+
+  function handleStartEditContent() {
+    if (!recipe) return;
+    setDraftIngredients([...recipe.ingredients]);
+    setDraftInstructions([...recipe.instructions]);
+    setContentError('');
+    setEditingContent(true);
+  }
+
+  function handleCancelEditContent() {
+    setEditingContent(false);
+    setContentError('');
+  }
+
+  async function handleSaveContent() {
+    if (!recipeId || savingContent) return;
+    const cleanIngredients = draftIngredients.map((s) => s.trim()).filter(Boolean);
+    const cleanInstructions = draftInstructions.map((s) => s.trim()).filter(Boolean);
+    setSavingContent(true);
+    setContentError('');
+    try {
+      const res = await fetch(`/api/recipes/saved/${recipeId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredients: cleanIngredients, instructions: cleanInstructions }),
+      });
+      if (!res.ok) {
+        setContentError('Shranjevanje ni uspelo.');
+        return;
+      }
+      const data = (await res.json()) as { recipe: SavedRecipe };
+      onContentUpdated?.(data.recipe.id, data.recipe.ingredients, data.recipe.instructions);
+      setEditingContent(false);
+    } catch {
+      setContentError('Shranjevanje ni uspelo.');
+    } finally {
+      setSavingContent(false);
     }
   }
 
@@ -853,6 +900,8 @@ function RecipeDetailModal({
       setBulkItems([]);
       setListItems([]);
       setRefetchError('');
+      setEditingContent(false);
+      setContentError('');
     }
   }, [open]);
 
@@ -1248,149 +1297,274 @@ function RecipeDetailModal({
             </div>
           )}
 
-          {recipe.ingredients.length > 0 && (
-            <section>
-              <div className="mb-2.5 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-semibold uppercase tracking-widest text-slate-400">
-                    Sestavine
-                  </h4>
-                  {!isAddBusy && recipe.ingredients.some((ing) => !addedItems.has(ing)) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const available = recipe.ingredients.filter((ing) => !addedItems.has(ing));
-                        const allChecked = available.every((ing) => checkedIngredients.has(ing));
-                        setCheckedIngredients(allChecked ? new Set() : new Set(available));
-                      }}
-                      className="text-[11px] text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
-                    >
-                      {recipe.ingredients
-                        .filter((ing) => !addedItems.has(ing))
-                        .every((ing) => checkedIngredients.has(ing))
-                        ? 'Odznači vse'
-                        : 'Označi vse'}
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {checkedIngredients.size > 0 && !isAddBusy && (
-                    <button
-                      type="button"
-                      onClick={() => void handleBulkAdd(Array.from(checkedIngredients))}
-                      className="flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/25"
-                    >
-                      <Plus size={10} />
-                      Dodaj ({checkedIngredients.size})
-                    </button>
-                  )}
-                  {isAddBusy && (
-                    <span className="flex items-center gap-1.5 text-xs text-cyan-400">
-                      <span className="h-3 w-3 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-400" />
-                      {addPhase === 'checking' || addPhase === 'bulk-checking'
-                        ? 'Preverjam…'
-                        : 'Dodajam…'}
-                    </span>
-                  )}
-                  {addPhase === 'error' && (
-                    <span className="text-xs text-rose-400">{addError}</span>
-                  )}
-                </div>
-              </div>
-              <ul className="space-y-1">
-                {recipe.ingredients.map((ing, i) => {
-                  const displayText = scale !== 1 ? scaleIngredientText(ing, scale) : ing;
-                  const isAdded = addedItems.has(ing);
-                  const isCurrent =
-                    (pendingIngredient?.raw === ing && isAddBusy) ||
-                    (addPhase === 'bulk-checking' && checkedIngredients.has(ing));
-                  const isChecked = checkedIngredients.has(ing);
-                  return (
-                    <li
-                      key={i}
-                      className={cx(
-                        'flex items-center gap-2.5 rounded-xl px-2 py-1 transition',
-                        isAdded ? 'opacity-50' : 'hover:bg-white/4',
-                      )}
-                    >
-                      {isAdded ? (
-                        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/60" />
-                      ) : (
-                        <Checkbox
-                          checked={isChecked}
-                          disabled={isAddBusy}
-                          onCheckedChange={(checked) => {
-                            setCheckedIngredients((prev) => {
-                              const next = new Set(prev);
-                              if (checked) next.add(ing);
-                              else next.delete(ing);
-                              return next;
-                            });
-                          }}
-                        />
-                      )}
-                      <span className="flex-1 text-sm text-slate-300">{displayText}</span>
+          {saved && recipeId && !editingContent && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleStartEditContent}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 hover:underline"
+              >
+                <Edit size={12} />
+                Uredi sestavine in postopek
+              </button>
+            </div>
+          )}
+
+          {editingContent ? (
+            <section className="space-y-5">
+              <div>
+                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                  Sestavine
+                </h4>
+                <div className="space-y-2">
+                  {draftIngredients.map((ing, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        value={ing}
+                        onChange={(e) =>
+                          setDraftIngredients((prev) =>
+                            prev.map((v, idx) => (idx === i ? e.target.value : v)),
+                          )
+                        }
+                        placeholder="npr. 500 g mletega mesa"
+                        className="flex-1"
+                      />
                       <button
                         type="button"
-                        aria-label={isAdded ? 'Dodano' : `Dodaj "${ing}" v seznam`}
-                        disabled={isAddBusy || isAdded}
-                        onClick={() => void handleIngredientAdd(ing)}
-                        className={cx(
-                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition',
-                          isAdded
-                            ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-400 cursor-default'
-                            : isCurrent
-                              ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
-                              : 'border-white/10 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30',
-                        )}
+                        aria-label="Odstrani sestavino"
+                        onClick={() => setDraftIngredients((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
                       >
-                        {isAdded ? (
-                          <svg
-                            viewBox="0 0 14 14"
-                            className="h-3 w-3"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M3 7.2L5.6 9.6L11 4.3" />
-                          </svg>
-                        ) : isCurrent ? (
-                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-300" />
-                        ) : (
-                          <Plus size={10} />
-                        )}
+                        <X size={12} />
                       </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftIngredients((prev) => [...prev, ''])}
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
+                >
+                  <Plus size={10} />
+                  Dodaj sestavino
+                </button>
+              </div>
 
-          {recipe.instructions.length > 0 && (
-            <section>
-              <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
-                Postopek
-              </h4>
-              <ol className="space-y-3">
-                {recipe.instructions.map((step, i) => (
-                  <li key={i} className="flex gap-3 text-sm text-slate-300">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
-                      {i + 1}
-                    </span>
-                    <span className="leading-relaxed">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
+              <div>
+                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                  Postopek
+                </h4>
+                <div className="space-y-2">
+                  {draftInstructions.map((step, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="mt-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                        {i + 1}
+                      </span>
+                      <Textarea
+                        value={step}
+                        onChange={(e) =>
+                          setDraftInstructions((prev) =>
+                            prev.map((v, idx) => (idx === i ? e.target.value : v)),
+                          )
+                        }
+                        rows={2}
+                        placeholder="Opiši korak…"
+                        className="flex-1"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Odstrani korak"
+                        onClick={() => setDraftInstructions((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraftInstructions((prev) => [...prev, ''])}
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
+                >
+                  <Plus size={10} />
+                  Dodaj korak
+                </button>
+              </div>
 
-          {recipe.ingredients.length === 0 && recipe.instructions.length === 0 && (
-            <div className="rounded-xl border border-white/10 bg-white/4 p-4 text-center text-sm text-slate-400">
-              Podrobnosti recepta niso na voljo. Odpri originalno stran za celoten recept.
-            </div>
+              {contentError && <p className="text-xs text-rose-400">{contentError}</p>}
+
+              <div className="flex gap-2">
+                <Button
+                  color="gradient"
+                  appearance="full"
+                  size="md"
+                  type="button"
+                  stretch
+                  disabled={savingContent}
+                  onClick={() => void handleSaveContent()}
+                >
+                  {savingContent ? 'Shranjujem…' : 'Shrani spremembe'}
+                </Button>
+                <Button
+                  color="white"
+                  appearance="outline"
+                  size="md"
+                  type="button"
+                  disabled={savingContent}
+                  onClick={handleCancelEditContent}
+                >
+                  Prekliči
+                </Button>
+              </div>
+            </section>
+          ) : (
+            <>
+              {recipe.ingredients.length > 0 && (
+                <section>
+                  <div className="mb-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold uppercase tracking-widest text-slate-400">
+                        Sestavine
+                      </h4>
+                      {!isAddBusy && recipe.ingredients.some((ing) => !addedItems.has(ing)) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const available = recipe.ingredients.filter((ing) => !addedItems.has(ing));
+                            const allChecked = available.every((ing) => checkedIngredients.has(ing));
+                            setCheckedIngredients(allChecked ? new Set() : new Set(available));
+                          }}
+                          className="text-[11px] text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
+                        >
+                          {recipe.ingredients
+                            .filter((ing) => !addedItems.has(ing))
+                            .every((ing) => checkedIngredients.has(ing))
+                            ? 'Odznači vse'
+                            : 'Označi vse'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {checkedIngredients.size > 0 && !isAddBusy && (
+                        <button
+                          type="button"
+                          onClick={() => void handleBulkAdd(Array.from(checkedIngredients))}
+                          className="flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/25"
+                        >
+                          <Plus size={10} />
+                          Dodaj ({checkedIngredients.size})
+                        </button>
+                      )}
+                      {isAddBusy && (
+                        <span className="flex items-center gap-1.5 text-xs text-cyan-400">
+                          <span className="h-3 w-3 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-400" />
+                          {addPhase === 'checking' || addPhase === 'bulk-checking'
+                            ? 'Preverjam…'
+                            : 'Dodajam…'}
+                        </span>
+                      )}
+                      {addPhase === 'error' && (
+                        <span className="text-xs text-rose-400">{addError}</span>
+                      )}
+                    </div>
+                  </div>
+                  <ul className="space-y-1">
+                    {recipe.ingredients.map((ing, i) => {
+                      const displayText = scale !== 1 ? scaleIngredientText(ing, scale) : ing;
+                      const isAdded = addedItems.has(ing);
+                      const isCurrent =
+                        (pendingIngredient?.raw === ing && isAddBusy) ||
+                        (addPhase === 'bulk-checking' && checkedIngredients.has(ing));
+                      const isChecked = checkedIngredients.has(ing);
+                      return (
+                        <li
+                          key={i}
+                          className={cx(
+                            'flex items-center gap-2.5 rounded-xl px-2 py-1 transition',
+                            isAdded ? 'opacity-50' : 'hover:bg-white/4',
+                          )}
+                        >
+                          {isAdded ? (
+                            <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/60" />
+                          ) : (
+                            <Checkbox
+                              checked={isChecked}
+                              disabled={isAddBusy}
+                              onCheckedChange={(checked) => {
+                                setCheckedIngredients((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) next.add(ing);
+                                  else next.delete(ing);
+                                  return next;
+                                });
+                              }}
+                            />
+                          )}
+                          <span className="flex-1 text-sm text-slate-300">{displayText}</span>
+                          <button
+                            type="button"
+                            aria-label={isAdded ? 'Dodano' : `Dodaj "${ing}" v seznam`}
+                            disabled={isAddBusy || isAdded}
+                            onClick={() => void handleIngredientAdd(ing)}
+                            className={cx(
+                              'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition',
+                              isAdded
+                                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-400 cursor-default'
+                                : isCurrent
+                                  ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
+                                  : 'border-white/10 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30',
+                            )}
+                          >
+                            {isAdded ? (
+                              <svg
+                                viewBox="0 0 14 14"
+                                className="h-3 w-3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M3 7.2L5.6 9.6L11 4.3" />
+                              </svg>
+                            ) : isCurrent ? (
+                              <span className="h-2.5 w-2.5 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-300" />
+                            ) : (
+                              <Plus size={10} />
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
+              {recipe.instructions.length > 0 && (
+                <section>
+                  <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                    Postopek
+                  </h4>
+                  <ol className="space-y-3">
+                    {recipe.instructions.map((step, i) => (
+                      <li key={i} className="flex gap-3 text-sm text-slate-300">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                          {i + 1}
+                        </span>
+                        <span className="leading-relaxed">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+
+              {recipe.ingredients.length === 0 && recipe.instructions.length === 0 && (
+                <div className="rounded-xl border border-white/10 bg-white/4 p-4 text-center text-sm text-slate-400">
+                  Podrobnosti recepta niso na voljo. Odpri originalno stran za celoten recept.
+                </div>
+              )}
+            </>
           )}
 
           {galleryImages.length > 0 && (
@@ -2045,6 +2219,18 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
     [],
   );
 
+  const handleContentUpdated = useCallback(
+    (recipeId: number, ingredients: string[], instructions: string[]) => {
+      setSavedRecipes((prev) =>
+        prev.map((r) => (r.id === recipeId ? { ...r, ingredients, instructions } : r)),
+      );
+      setSelectedSaved((prev) =>
+        prev && prev.id === recipeId ? { ...prev, ingredients, instructions } : prev,
+      );
+    },
+    [],
+  );
+
   const filteredRecipes = useMemo(() => {
     if (!filterLabelId) return savedRecipes;
     return savedRecipes.filter((r) => r.labelIds.includes(filterLabelId));
@@ -2180,6 +2366,7 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         labelIds={selectedSaved?.labelIds}
         onLabelsChange={handleLabelsChange}
         onImagesRefetched={handleImagesRefetched}
+        onContentUpdated={handleContentUpdated}
       />
     </>
   );

@@ -1466,6 +1466,45 @@ recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {
   return res.status(204).send();
 });
 
+const updateRecipeContentSchema = z.object({
+  ingredients: z.array(z.string().trim().min(1).max(1000)).max(200).default([]),
+  instructions: z.array(z.string().trim().min(1).max(5000)).max(200).default([])
+});
+
+recipesRouter.put("/saved/:recipeId", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const recipeId = Number(req.params.recipeId);
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return res.status(400).json({ error: "Invalid recipeId" });
+  }
+
+  const parsed = updateRecipeContentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const existing = sqlite
+    .prepare("SELECT id FROM recipes WHERE id = ? AND user_id = ? LIMIT 1")
+    .get(recipeId, authUser.id);
+  if (!existing) {
+    return res.status(404).json({ error: "Recipe not found" });
+  }
+
+  sqlite
+    .prepare("UPDATE recipes SET ingredients = ?, instructions = ? WHERE id = ?")
+    .run(JSON.stringify(parsed.data.ingredients), JSON.stringify(parsed.data.instructions), recipeId);
+
+  const row = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ?`)
+    .get(recipeId) as SavedRecipeRow;
+
+  return res.json({ recipe: mapSavedRecipeRow(row) });
+});
+
 recipesRouter.post("/saved/:recipeId/refetch-images", requireAuth, async (req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) {
