@@ -9,7 +9,13 @@ import { sqlite } from "../db/client.js";
 import { inferCategoryFromTitle, isItemCategory, itemCategoryValues, type ItemCategory } from "../domain/item-category.js";
 import { findRecipeSourceByHostname, RECIPE_SOURCES, resolveRecipeSources } from "../domain/recipe-sources.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
-import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, stripJsonFences } from "../services/genai.js";
+import {
+  GEMINI_LITE_MODEL,
+  GEMINI_MODEL,
+  genai,
+  jsonGenerationConfig,
+  SLOVENIAN_TRANSLATION_RULES
+} from "../services/genai.js";
 import {
   getProxiedImage,
   getSourceImageBuffer,
@@ -123,18 +129,22 @@ function normalizeInstructions(raw: unknown): string[] {
       if (typeof item === "string") return [item];
       if (item && typeof item === "object") {
         const o = item as Record<string, unknown>;
-        if (typeof o.text === "string") return [o.text];
-        if (typeof o.name === "string") return [o.name];
+        // HowToSection: emit the section name as a heading, then its steps.
         if (Array.isArray(o.itemListElement)) {
-          return (o.itemListElement as unknown[]).flatMap((s) => {
+          const steps = (o.itemListElement as unknown[]).flatMap((s) => {
             if (typeof s === "string") return [s];
             if (s && typeof s === "object") {
               const so = s as Record<string, unknown>;
               if (typeof so.text === "string") return [so.text];
+              if (typeof so.name === "string") return [so.name];
             }
             return [];
           });
+          const heading = typeof o.name === "string" && o.name.trim() ? [`${o.name.trim().replace(/:$/, "")}:`] : [];
+          return [...heading, ...steps];
         }
+        if (typeof o.text === "string") return [o.text];
+        if (typeof o.name === "string") return [o.name];
       }
       return [];
     })
@@ -398,8 +408,12 @@ ${candidates.map((u, i) => `${i + 1}. ${u}`).join("\n")}
 Return ONLY a JSON array of the URLs to keep (maximum 8, most relevant first). No markdown, no explanation.`;
 
   try {
-    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
-    const kept = JSON.parse(stripJsonFences(r.text ?? "")) as unknown;
+    const r = await genai.models.generateContent({
+      model: fastGeminiConfig.model,
+      contents: prompt,
+      config: jsonGenerationConfig({ type: "array", items: { type: "string" } })
+    });
+    const kept = JSON.parse(r.text ?? "[]") as unknown;
     if (Array.isArray(kept)) {
       const candidateSet = new Set(candidates);
       return (kept as unknown[])
@@ -436,8 +450,24 @@ Keep content in its original language. Webpage text:
 ${text}`;
 
   try {
-    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
-    return JSON.parse(stripJsonFences(r.text ?? "")) as Partial<ParsedRecipe>;
+    const r = await genai.models.generateContent({
+      model: fastGeminiConfig.model,
+      contents: prompt,
+      config: jsonGenerationConfig({
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          ingredients: { type: "array", items: { type: "string" } },
+          instructions: { type: "array", items: { type: "string" } },
+          prepTime: { type: "string" },
+          cookTime: { type: "string" },
+          totalTime: { type: "string" },
+          servings: { type: "string" }
+        }
+      })
+    });
+    return JSON.parse(r.text ?? "{}") as Partial<ParsedRecipe>;
   } catch {
     return null;
   }
@@ -598,36 +628,73 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
 
 type RecipeText = Omit<ParsedRecipe, "imageUrl" | "images">;
 
+const TRANSLATION_CACHE_TTL_MS = 30 * 60_000;
+const INSTRUCTION_CHUNK_SIZE = 8;
+const translatedRecipeCache = new Map<string, { at: number; value: Pick<RecipeText, "title" | "description" | "ingredients" | "instructions"> }>();
+
+async function translateStringsToSlovenian(context: string, items: string[]): Promise<string[]> {
+  if (!genai || items.length === 0) return items;
+  const prompt = `Translate every entry of the JSON array below into Slovenian, keeping the same order and count. ${context}
+${SLOVENIAN_TRANSLATION_RULES}
+If an entry is already Slovenian, return it unchanged.
+
+Input: ${JSON.stringify(items)}`;
+  const response = await genai.models.generateContent({
+    model: fastGeminiConfig.model,
+    contents: prompt,
+    config: jsonGenerationConfig({ type: "array", items: { type: "string" } })
+  });
+  const out = JSON.parse(response.text ?? "[]") as unknown;
+  if (!Array.isArray(out) || out.length !== items.length) throw new Error(`expected ${items.length} strings, got ${Array.isArray(out) ? out.length : typeof out}`);
+  return out.map((v, i) => (typeof v === "string" && v.trim() ? v : items[i]!));
+}
+
+/**
+ * Translate a recipe into Slovenian. Title/description/ingredients go in one call and the
+ * instructions in parallel chunks, so long recipes take as long as their biggest chunk
+ * instead of the whole text.
+ */
 async function translateRecipeToSlovenian<T extends RecipeText>(recipe: T): Promise<T> {
   if (!genai) return recipe;
   // Pages from Slovenian catalog sites are already in Slovenian — no round trip needed.
   if (findRecipeSourceByHostname(hostname(recipe.url))?.language === "sl") return recipe;
 
-  const payload = {
-    title: recipe.title,
-    description: recipe.description ?? "",
-    ingredients: recipe.ingredients,
-    instructions: recipe.instructions,
-  };
-
-  const prompt = `First determine what language this recipe (title, description, ingredients, instructions) is actually written in.
-- If it is already written in Slovenian, return the same fields unchanged.
-- If it is written in any other language, translate it into natural Slovenian culinary language. Preserve quantities and units exactly.
-Return ONLY valid JSON (no markdown) with the same keys: {"title":"","description":"","ingredients":["..."],"instructions":["..."]}
-
-Input: ${JSON.stringify(payload)}`;
+  // Re-opening a recipe should not pay for the same translation twice.
+  const cacheKey = `${recipe.url}|${recipe.ingredients.length}|${recipe.instructions.length}`;
+  const cached = translatedRecipeCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < TRANSLATION_CACHE_TTL_MS) return { ...recipe, ...cached.value };
 
   try {
-    const response = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
-    const t = JSON.parse(stripJsonFences(response.text ?? "")) as { title?: string; description?: string; ingredients?: string[]; instructions?: string[] };
-    return {
-      ...recipe,
-      title: typeof t.title === "string" && t.title ? t.title : recipe.title,
-      description: typeof t.description === "string" && t.description ? t.description : recipe.description,
-      ingredients: Array.isArray(t.ingredients) && t.ingredients.length > 0 ? t.ingredients : recipe.ingredients,
-      instructions: Array.isArray(t.instructions) && t.instructions.length > 0 ? t.instructions : recipe.instructions,
+    const headCount = 2; // title + description come first in the "head" array
+    const head = [recipe.title, recipe.description ?? "", ...recipe.ingredients];
+    const chunks: string[][] = [];
+    for (let i = 0; i < recipe.instructions.length; i += INSTRUCTION_CHUNK_SIZE) {
+      chunks.push(recipe.instructions.slice(i, i + INSTRUCTION_CHUNK_SIZE));
+    }
+
+    const [translatedHead, ...translatedChunks] = await Promise.all([
+      translateStringsToSlovenian(
+        "The first entry is the recipe title, the second its description, the rest are ingredient lines.",
+        head
+      ),
+      ...chunks.map((chunk, index) =>
+        translateStringsToSlovenian(
+          `These are cooking steps ${index * INSTRUCTION_CHUNK_SIZE + 1}-${index * INSTRUCTION_CHUNK_SIZE + chunk.length} of the recipe "${recipe.title}".`,
+          chunk
+        )
+      )
+    ]);
+
+    const translated = {
+      title: translatedHead[0] || recipe.title,
+      description: recipe.description ? translatedHead[1] || recipe.description : recipe.description,
+      ingredients: translatedHead.slice(headCount),
+      instructions: translatedChunks.flat()
     };
-  } catch {
+    translatedRecipeCache.set(cacheKey, { at: Date.now(), value: translated });
+    return { ...recipe, ...translated };
+  } catch (error) {
+    console.warn(`[recipes] translation failed for ${recipe.url}:`, error instanceof Error ? error.message : error);
     return recipe;
   }
 }
@@ -1335,8 +1402,39 @@ Return ONLY a valid JSON array, no markdown, one object per ingredient in the sa
  {"parsed":{...},"match":{"type":"exact"|"similar","id":<existing item id>,"suggestion":"<optional short explanation>"}}]`;
 
   try {
-    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
-    const parsed = JSON.parse(stripJsonFences(r.text ?? "")) as unknown;
+    const r = await genai.models.generateContent({
+      model: fastGeminiConfig.model,
+      contents: prompt,
+      config: jsonGenerationConfig({
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            parsed: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                quantity: { type: "number" },
+                unit: { type: "string" },
+                category: { type: "string" }
+              },
+              required: ["title", "quantity", "unit", "category"]
+            },
+            match: {
+              type: "object",
+              nullable: true,
+              properties: {
+                type: { type: "string" },
+                id: { type: "integer" },
+                suggestion: { type: "string" }
+              }
+            }
+          },
+          required: ["parsed"]
+        }
+      })
+    });
+    const parsed = JSON.parse(r.text ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return results;
 
     parsed.forEach((entry, index) => {

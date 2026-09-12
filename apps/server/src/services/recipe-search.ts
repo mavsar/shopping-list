@@ -30,7 +30,7 @@ import {
   stripQueryAndFragment,
   stripSiteSuffix
 } from "../utils/html.js";
-import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, stripJsonFences } from "./genai.js";
+import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, jsonGenerationConfig, SLOVENIAN_TRANSLATION_RULES } from "./genai.js";
 
 export interface RecipeSearchResult {
   title: string;
@@ -41,6 +41,8 @@ export interface RecipeSearchResult {
   source: string;
   /** Catalog id of the matched recipe source. */
   sourceId: string;
+  /** True while title/description are still in the source language; an `update` clears it. */
+  translationPending?: boolean;
 }
 
 export interface RecipeSearchEmitter {
@@ -72,9 +74,9 @@ const PHRASES_PER_LANGUAGE = 6;
 const RESOLVE_CONCURRENCY = 8;
 const GROUNDING_TIMEOUT_MS = 60_000;
 const EXPANSION_TIMEOUT_MS = 10_000;
-const TRANSLATION_BATCH_SIZE = 10;
-const TRANSLATION_DEBOUNCE_MS = 1000;
-const TRANSLATION_CONCURRENCY = 2;
+const TRANSLATION_BATCH_SIZE = 6;
+const TRANSLATION_DEBOUNCE_MS = 250;
+const TRANSLATION_CONCURRENCY = 4;
 
 const debugEnabled = process.env.RECIPE_SEARCH_DEBUG === "1";
 const debug = (message: string) => {
@@ -132,9 +134,16 @@ Return ONLY JSON, no markdown: {${languages.map((l) => `"${l}": ["..."]`).join("
     const response = await genai.models.generateContent({
       model: GEMINI_LITE_MODEL,
       contents: prompt,
-      config: { ...noThinking, abortSignal: AbortSignal.any([signal, AbortSignal.timeout(EXPANSION_TIMEOUT_MS)]) }
+      config: {
+        ...jsonGenerationConfig({
+          type: "object",
+          properties: Object.fromEntries(languages.map((l) => [l, { type: "array", items: { type: "string" } }])),
+          required: languages
+        }),
+        abortSignal: AbortSignal.any([signal, AbortSignal.timeout(EXPANSION_TIMEOUT_MS)])
+      }
     });
-    const parsed = JSON.parse(stripJsonFences(response.text ?? "")) as Partial<Record<QueryLanguage, unknown>>;
+    const parsed = JSON.parse(response.text ?? "{}") as Partial<Record<QueryLanguage, unknown>>;
     const out = { ...fallback };
     for (const language of languages) {
       const raw = parsed[language];
@@ -354,10 +363,9 @@ async function translateResultsToSlovenian(
   // hostname — sites like jernejkitchen.com publish recipes in both Slovenian and English,
   // so which language a given result is in can't be assumed from its domain alone.
   const payload = results.map((r) => ({ title: r.title, description: r.description }));
-  const prompt = `For each recipe below, first determine what language the title and description are actually written in.
-- If they are already written in Slovenian, return them unchanged.
-- If they are written in any other language, translate them into natural Slovenian culinary language.
-Return ONLY a JSON array of objects with "title" and "description" keys, in the same order as the input. No markdown, no extra text.
+  const prompt = `For each recipe below, translate the title and description into Slovenian; return them unchanged only if they are already Slovenian.
+${SLOVENIAN_TRANSLATION_RULES}
+Return a JSON array of objects with "title" and "description" keys, in the same order as the input.
 
 Input: ${JSON.stringify(payload)}`;
 
@@ -365,18 +373,34 @@ Input: ${JSON.stringify(payload)}`;
     const response = await genai.models.generateContent({
       model: GEMINI_LITE_MODEL,
       contents: prompt,
-      config: { ...noThinking, abortSignal: signal }
+      config: {
+        ...jsonGenerationConfig({
+          type: "array",
+          items: {
+            type: "object",
+            properties: { title: { type: "string" }, description: { type: "string" } },
+            required: ["title", "description"]
+          }
+        }),
+        abortSignal: signal
+      }
     });
-    const translated = JSON.parse(stripJsonFences(response.text ?? "")) as Array<{ title: string; description: string }>;
+    const translated = JSON.parse(response.text ?? "[]") as Array<{ title: string; description: string }>;
     debug(`translated ${results.length} results in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
 
     return results.map((r, i) => {
       const t = translated[i];
-      return t?.title ? { ...r, title: t.title, description: t.description ?? r.description } : r;
+      return {
+        ...r,
+        title: t?.title || r.title,
+        description: t?.description ?? r.description,
+        translationPending: false
+      };
     });
   } catch (error) {
     if (!signal.aborted) console.warn("[recipe-search] translation failed:", error);
-    return results;
+    // Show the originals rather than leaving cards greyed out forever.
+    return results.map((r) => ({ ...r, translationPending: false }));
   }
 }
 
@@ -492,8 +516,9 @@ export async function runRecipeSearch(
 
             seenUrls.add(result.url);
             emitted++;
-            emit.onResult(result);
-            if (translate && findRecipeSourceByHostname(result.source, sources)?.language !== "sl") translations.push(result);
+            const needsTranslation = translate && findRecipeSourceByHostname(result.source, sources)?.language !== "sl";
+            emit.onResult({ ...result, translationPending: needsTranslation });
+            if (needsTranslation) translations.push(result);
             if (emitted >= maxResults) capReached.abort();
           })
         )

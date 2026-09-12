@@ -31,6 +31,8 @@ interface RecipeSearchResult {
   imageUrl?: string;
   source: string;
   sourceId: string;
+  /** Title/description still in the source language; the server sends an update when translated. */
+  translationPending?: boolean;
 }
 
 interface ParsedRecipe {
@@ -118,7 +120,7 @@ function RecipeResultCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full cursor-pointer gap-3 rounded-2xl border border-line bg-surface p-3 text-left transition-all duration-200 hover:border-basil/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+      className="group relative flex w-full cursor-pointer gap-3 rounded-2xl border border-line bg-surface p-3 text-left transition-all duration-200 hover:border-basil/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
     >
       {result.imageUrl && (
         <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-line">
@@ -133,7 +135,7 @@ function RecipeResultCard({
           />
         </div>
       )}
-      <div className="min-w-0 flex-1 space-y-1.5">
+      <div className={cx('min-w-0 flex-1 space-y-1.5', result.translationPending && 'opacity-45')}>
         <p className="truncate text-sm font-semibold text-ink group-hover:text-ink">
           {result.title}
         </p>
@@ -144,6 +146,14 @@ function RecipeResultCard({
         )}
         <SourceBadge source={result.source} />
       </div>
+      {result.translationPending && (
+        <span className="absolute inset-x-0 bottom-2 flex justify-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/95 px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-card">
+            <span className="h-2.5 w-2.5 animate-spin rounded-full border border-ink-faint border-t-basil" />
+            Prevajam v slovenščino…
+          </span>
+        </span>
+      )}
     </button>
   );
 }
