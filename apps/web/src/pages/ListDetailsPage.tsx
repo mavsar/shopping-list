@@ -4,7 +4,7 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useS
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppHeader } from '../components/AppHeader';
-import { ItemCategoryIcon, itemCategoryLabels } from '../components/ItemCategoryIcon';
+import { getItemCategoryColors, ItemCategoryIcon, itemCategoryLabels } from '../components/ItemCategoryIcon';
 import { ShoppingListItemRow } from '../components/ShoppingListItemRow';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Minus,
   Plus,
   Search,
+  ShoppingBasket,
   Trash2,
 } from '../components/lordicon/icons';
 import { Button, Checkbox, Dialog, Input, Loader, Select, SharedTabs, Textarea } from '../components/ui';
@@ -278,7 +279,7 @@ function SharedItemFormFields({
           ))}
         </Select>
         {categoryLoading ? (
-          <p className="m-0 mt-1 flex items-center gap-1.5 text-xs text-slate-400 italic">
+          <p className="m-0 mt-1 flex items-center gap-1.5 text-xs italic text-ink-muted">
             <svg
               className="h-3 w-3 shrink-0 animate-spin"
               viewBox="0 0 24 24"
@@ -315,7 +316,7 @@ function SharedItemFormFields({
         {imageUrl ? (
           <div
             className={cx(
-              'aspect-square w-full overflow-hidden rounded-xl bg-white',
+              'aspect-square w-full overflow-hidden rounded-xl border border-line bg-surface',
               findImageLoading && 'opacity-60',
             )}
           >
@@ -358,7 +359,7 @@ function SharedItemFormFields({
         ) : null}
         {imageToolsVisible ? (
           <>
-            <div className="h-px w-full bg-white/12" />
+            <div className="h-px w-full bg-line" />
             <SharedTabs
               value={imageMode}
               onValueChange={(value) =>
@@ -411,10 +412,10 @@ function SharedItemFormFields({
                         key={candidate.imageUrl}
                         type="button"
                         className={cx(
-                          'aspect-square cursor-pointer overflow-hidden rounded-lg border border-white/12 bg-slate-900/50 p-0 transition',
+                          'aspect-square cursor-pointer overflow-hidden rounded-lg border border-line bg-surface p-0 transition',
                           selectingImageCandidateUrl === candidate.imageUrl &&
-                            'border-cyan-300/60 opacity-70',
-                          !findImageLoading && 'hover:border-cyan-300/45',
+                            'border-basil opacity-70',
+                          !findImageLoading && 'hover:border-basil/60',
                         )}
                         onClick={() => onSelectImageCandidate(candidate)}
                         disabled={findImageLoading || disabled}
@@ -481,13 +482,13 @@ function SharedItemFormFields({
             ) : null}
           </>
         ) : null}
-        {findImageError ? <p className="m-0 text-xs text-rose-200">{findImageError}</p> : null}
+        {findImageError ? <p className="m-0 text-xs text-tomato-deep">{findImageError}</p> : null}
       </div>
     </>
   );
 }
 
-export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDetailsPageProps) {
+export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { listSlug } = useParams();
@@ -1537,8 +1538,13 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
     <>
       <AppHeader
         title={list ? list.name : initialListName || 'Seznam'}
+        subtitle={
+          !listLoading && !itemsLoading && items.length > 0
+            ? `${completedVisibleItems.length} od ${items.length} kupljeno`
+            : undefined
+        }
         authUser={authUser}
-        onLogout={_onLogout}
+        onLogout={onLogout}
         syncInfo={{
           lastSyncedAt,
           refreshing: listLoading || itemsLoading,
@@ -1561,49 +1567,54 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.42 }}
+        transition={{ duration: 0.38 }}
       >
-        <section className="relative mt-6 min-h-[calc(100lvh-(74px+env(safe-area-inset-top)+1.5rem))]">
+        <section className="relative mt-4 min-h-[calc(100lvh-(66px+env(safe-area-inset-top)+1rem))] pb-16">
           {listLoading || itemsLoading ? (
-            <Loader placement="overlay" label="Nalagam seznam..." />
+            <Loader placement="overlay" label="Nalagam seznam…" />
           ) : null}
-          {listError ? <p className="m-0 text-sm text-rose-300">{listError}</p> : null}
+          {listError ? <p className="m-0 text-sm text-tomato-deep">{listError}</p> : null}
           {!listLoading && !itemsLoading && !listError ? (
-            <div className="ios-no-callout mt-3 grid gap-2">
-              {groupedActiveItems.map((group) => (
-                <div key={group.category} className="grid gap-2">
-                  {group.items.map((item) => renderShoppingItemRow(item))}
-                </div>
-              ))}
+            <div className="ios-no-callout -mx-2 grid divide-y divide-line">
+              {groupedActiveItems.flatMap((group) => group.items.map((item) => renderShoppingItemRow(item)))}
               {completedVisibleItems.map((item) =>
                 renderShoppingItemRow(item, recentlyCompletedItemId === item.id),
               )}
               {!groupedActiveItems.length && !completedVisibleItems.length ? (
-                <div className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                  Še ni izdelkov. Za dodajanje prvega uporabi gumb + spodaj desno.
+                <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-line-strong bg-surface/60 px-6 py-12 text-center">
+                  <ShoppingBasket size={64} animate colors="primary:#8b7c6d,secondary:#8b7c6d" />
+                  <p className="m-0 text-base font-semibold text-ink">Seznam je prazen</p>
+                  <p className="m-0 max-w-xs text-sm text-ink-muted">
+                    Dodaj prvi izdelek z gumbom spodaj — kategorijo mu določimo samodejno.
+                  </p>
                 </div>
               ) : null}
             </div>
           ) : null}
           {updatingItemError ? (
-            <p className="m-0 mt-3 text-xs text-rose-200">{updatingItemError}</p>
+            <p className="m-0 mt-3 text-xs text-tomato-deep">{updatingItemError}</p>
           ) : null}
         </section>
       </motion.div>
-      <div className="fixed right-8 bottom-8 z-40">
-        <Button
-          type="button"
-          icon={<Plus animateOnHover />}
-          iconOnly
-          size="lg"
-          aria-label="Dodaj izdelek"
-          title="Dodaj izdelek"
-          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
-          onClick={() => {
-            setAddDialogOpen(true);
-            setAddItemError('');
-          }}
-        />
+
+      {/* bottom "add item" bar */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-30 md:bottom-6">
+        <div className="mx-auto w-full max-w-3xl px-4 md:px-8">
+          <button
+            type="button"
+            className="pointer-events-auto flex h-13 w-full items-center gap-3 rounded-full border border-line bg-surface pl-2 pr-5 text-left shadow-float transition-colors hover:border-basil/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+            aria-label="Dodaj izdelek"
+            onClick={() => {
+              setAddDialogOpen(true);
+              setAddItemError('');
+            }}
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-basil shadow-basil">
+              <Plus size={22} colors="primary:#ffffff,secondary:#ffffff" animateOnHover={false} />
+            </span>
+            <span className="text-[15px] font-medium text-ink-muted">Dodaj izdelek…</span>
+          </button>
+        </div>
       </div>
 
       <Dialog
@@ -1648,11 +1659,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               type="button"
               stretch
               appearance="outline"
-              color="white"
+              color="gradient"
+              icon={<Plus animateOnHover />}
               onClick={() => openCreateItemStep(searchValue.trim())}
               disabled={addItemLoading}
             >
-              DODAJ NOV IZDELEK
+              Dodaj nov izdelek
             </Button>
           )
         }
@@ -1675,23 +1687,26 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   placeholder="Išči izdelek..."
                   autoFocus
                 />
-                {searchError ? <p className="m-0 text-xs text-rose-200">{searchError}</p> : null}
+                {searchError ? <p className="m-0 text-xs text-tomato-deep">{searchError}</p> : null}
                 <div className="grid content-start flex-1 gap-2 overflow-y-auto pr-1">
                   {searchResults.map((item) => (
                     <div
                       key={item.id}
-                      className="flex w-full items-center gap-2 rounded-2xl border border-white/16 bg-slate-900/30 p-2 text-slate-100 transition hover:border-cyan-300/45"
+                      className="flex w-full items-center gap-2 rounded-2xl border border-line bg-surface p-2 text-ink transition hover:border-basil/50"
                     >
                       <button
                         type="button"
-                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left text-slate-100"
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left text-ink"
                         onClick={() => void addExistingItem(item)}
                         disabled={addItemLoading}
                       >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center">
-                          <ItemCategoryIcon category={item.category} size={22} />
+                        <div
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                          style={{ backgroundColor: getItemCategoryColors(item.category).soft }}
+                        >
+                          <ItemCategoryIcon category={item.category} size={24} staticDisplay />
                         </div>
-                        <span className="text-sm line-clamp-2">{formatItemTitle(item.title)}</span>
+                        <span className="line-clamp-2 text-[15px] font-medium">{formatItemTitle(item.title)}</span>
                       </button>
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center">
                         <Button
@@ -1709,7 +1724,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                     </div>
                   ))}
                 </div>
-                {addItemError ? <p className="m-0 text-xs text-rose-200">{addItemError}</p> : null}
+                {addItemError ? <p className="m-0 text-xs text-tomato-deep">{addItemError}</p> : null}
               </motion.div>
             ) : (
               <motion.form
@@ -1754,7 +1769,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                   onPasteImageFromClipboard={pasteNewItemImageFromClipboard}
                 />
 
-                {addItemError ? <p className="m-0 text-xs text-rose-200">{addItemError}</p> : null}
+                {addItemError ? <p className="m-0 text-xs text-tomato-deep">{addItemError}</p> : null}
               </motion.form>
             )}
           </AnimatePresence>
@@ -1805,8 +1820,8 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 appearance="outline"
                 icon={<Trash2 animateOnHover />}
                 iconOnly
-                aria-label="Izbriši artikel"
-                title="Izbriši artikel"
+                aria-label="Izbriši izdelek"
+                title="Izbriši izdelek"
                 className="ml-auto"
                 disabled={updatingItemId === detailsItem.id}
                 onClick={() => {
@@ -1821,9 +1836,9 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
       >
         {detailsItem ? (
           <form id="details-edit-form" className="grid gap-3" onSubmit={saveDetailsEdit}>
-            <p className="m-0 text-xs text-slate-400">
+            <p className="m-0 text-xs text-ink-muted">
               Stanje:{' '}
-              <span className="text-slate-200">
+              <span className="font-medium text-ink">
                 {detailsItem.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
               </span>
             </p>
@@ -1860,7 +1875,7 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
               quantityButtonSize="md"
             />
             {updatingItemError ? (
-              <p className="m-0 text-xs text-rose-200">{updatingItemError}</p>
+              <p className="m-0 text-xs text-tomato-deep">{updatingItemError}</p>
             ) : null}
           </form>
         ) : null}
@@ -1882,12 +1897,12 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
             }}
             size="sm"
             closeOnOverlayClick={deletingItemId === null}
-            title="Izbriši artikel"
+            title="Izbriši izdelek"
             description={
               itemToDelete ? (
                 <>
                   Ali res želiš trajno izbrisati{' '}
-                  <strong className="text-slate-100">{formatItemTitle(itemToDelete.title)}</strong>?
+                  <strong className="text-ink">{formatItemTitle(itemToDelete.title)}</strong>?
                 </>
               ) : undefined
             }
@@ -1926,15 +1941,15 @@ export function ListDetailsPage({ token, authUser, onLogout: _onLogout }: ListDe
                 onCheckedChange={setDeleteFromCatalog}
                 disabled={deletingItemId !== null}
               >
-                Izbriši tudi iz kataloga artiklov
+                Izbriši tudi iz kataloga izdelkov
               </Checkbox>
               {deleteFromCatalog && (
-                <p className="text-xs text-amber-300/80">
-                  Artikel bo trajno odstranjen s prav vseh nakupovalnih seznamov.
+                <p className="text-xs text-carrot">
+                  Izdelek bo trajno odstranjen z vseh nakupovalnih seznamov.
                 </p>
               )}
               {deleteItemError && (
-                <p className="text-xs text-rose-300">{deleteItemError}</p>
+                <p className="text-xs text-tomato-deep">{deleteItemError}</p>
               )}
             </div>
           </Dialog>

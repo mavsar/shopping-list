@@ -13,7 +13,7 @@ type SharedTabsItem = {
 
 const sharedTabsClassName = cva("w-full min-w-0");
 const sharedTabsScrollClassName = cva("min-w-0 overflow-x-auto overscroll-x-contain");
-const sharedTabsListClassName = cva("inline-flex w-max flex-nowrap items-center");
+const sharedTabsListClassName = cva("inline-flex w-max flex-nowrap items-center gap-0.5 rounded-xl bg-paper-deep p-1");
 const sharedTabsTriggerClassName = cva("h-8 rounded-md px-2.5 py-1 text-[11px] font-semibold");
 
 type SharedTabsProps = {

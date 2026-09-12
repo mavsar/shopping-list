@@ -3,7 +3,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AppHeader } from '../components/AppHeader';
-import { CheckCheck, Edit, Plus, Trash2 } from '../components/lordicon/icons';
+import { Fab } from '../components/Fab';
+import { CheckCheck, Edit, Plus, ShoppingBasket, Trash2 } from '../components/lordicon/icons';
 import { Button, Card, Checkbox, Dialog, Input, Loader } from '../components/ui';
 import { toListSlug } from '../domain/list-slug';
 import type { AuthUser } from '../types/auth';
@@ -14,6 +15,43 @@ type ListsPageProps = {
   authUser: AuthUser;
   onLogout: () => Promise<void>;
 };
+
+function pluralizeItems(count: number): string {
+  const mod100 = count % 100;
+  if (mod100 === 1) return 'izdelek';
+  if (mod100 === 2) return 'izdelka';
+  if (mod100 === 3 || mod100 === 4) return 'izdelki';
+  return 'izdelkov';
+}
+
+function ListProgress({ list }: { list: ShoppingList }) {
+  const active = list.activeCount ?? 0;
+  const completed = list.completedCount ?? 0;
+  const total = active + completed;
+  if (total === 0) {
+    return <p className="m-0 text-xs text-ink-muted">Prazen seznam</p>;
+  }
+  const ratio = completed / total;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-deep">
+        <div
+          className="h-full rounded-full bg-basil transition-[width] duration-300"
+          style={{ width: `${Math.round(ratio * 100)}%` }}
+        />
+      </div>
+      <p className="m-0 shrink-0 text-xs font-medium tabular-nums text-ink-muted">
+        {active === 0 ? (
+          <span className="text-basil-deep">Vse kupljeno</span>
+        ) : (
+          <>
+            {active} {pluralizeItems(active)}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
 
 export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
   const navigate = useNavigate();
@@ -220,13 +258,13 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       <motion.section
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12, duration: 0.42 }}
-        className="relative mt-6 min-h-[12rem]"
+        transition={{ delay: 0.08, duration: 0.38 }}
+        className="relative mt-4 min-h-[12rem]"
       >
-        {listsLoading ? <Loader placement="overlay" label="Nalagam sezname..." /> : null}
-        {listsError ? <p className="m-0 text-sm text-rose-300">{listsError}</p> : null}
+        {listsLoading ? <Loader placement="overlay" label="Nalagam sezname…" /> : null}
+        {listsError ? <p className="m-0 text-sm text-tomato-deep">{listsError}</p> : null}
         {!listsLoading && !listsError ? (
-          <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
+          <motion.ul layout className="grid list-none gap-3 p-0">
             {lists.map((list) => (
               <motion.li
                 layout
@@ -248,60 +286,65 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
                 tabIndex={0}
               >
                 <Card interactive>
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="m-0 text-xl font-semibold text-slate-50">{list.name}</p>
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-basil-soft">
+                      <ShoppingBasket size={24} colors="primary:#2e7a4c,secondary:#2e7a4c" animateOnHover={false} />
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <p className="m-0 min-w-0 flex-1 truncate text-base font-semibold text-ink">{list.name}</p>
+                        {list.isPrivate ? (
+                          <span className="inline-flex shrink-0 rounded-full bg-paper-deep px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                            Zasebno
+                          </span>
+                        ) : null}
+                      </div>
+                      <ListProgress list={list} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      {list.isPrivate ? (
-                        <span className="inline-flex rounded-full border border-white/20 bg-slate-950/45 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-200 uppercase">
-                          Zasebno
-                        </span>
-                      ) : null}
-                      <Button
-                        color="white"
-                        appearance="transparent"
-                        type="button"
-                        icon={<Edit animateOnHover />}
-                        iconOnly
-                        aria-label={`Uredi ${list.name}`}
-                        title={`Uredi ${list.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          beginEditList(list);
-                        }}
-                        disabled={deleteListLoadingId === list.id}
-                      />
-                    </div>
+                    <Button
+                      color="white"
+                      appearance="transparent"
+                      type="button"
+                      size="sm"
+                      icon={<Edit animateOnHover />}
+                      iconOnly
+                      aria-label={`Uredi ${list.name}`}
+                      title={`Uredi ${list.name}`}
+                      className="-mr-1 -mt-1 shrink-0"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        beginEditList(list);
+                      }}
+                      disabled={deleteListLoadingId === list.id}
+                    />
                   </div>
                 </Card>
               </motion.li>
             ))}
             {!lists.length ? (
-              <li className="rounded-2xl border border-dashed border-white/18 bg-slate-900/20 p-4 text-sm text-slate-300">
-                Še ni seznamov. Za dodajanje prvega uporabi gumb + spodaj desno.
+              <li className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-line-strong bg-surface/60 px-6 py-12 text-center">
+                <ShoppingBasket size={64} animate colors="primary:#8b7c6d,secondary:#8b7c6d" />
+                <p className="m-0 text-base font-semibold text-ink">Še ni seznamov</p>
+                <p className="m-0 max-w-xs text-sm text-ink-muted">
+                  Ustvari prvi seznam — na primer »Tedenski nakup« — in začni dodajati izdelke.
+                </p>
               </li>
             ) : null}
           </motion.ul>
         ) : null}
       </motion.section>
-      <div className="fixed right-8 bottom-8 z-40">
-        <Button
-          type="button"
-          icon={<Plus animateOnHover />}
-          iconOnly
-          size="lg"
-          aria-label="Ustvari seznam"
-          title="Ustvari seznam"
-          className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
-          onClick={() => {
-            setNewListName('');
-            setNewListIsPrivate(false);
-            setCreateListError('');
-            setCreateListDialogOpen(true);
-          }}
-        />
-      </div>
+
+      <Fab
+        icon={<Plus animateOnHover />}
+        label="Nov seznam"
+        extended
+        onClick={() => {
+          setNewListName('');
+          setNewListIsPrivate(false);
+          setCreateListError('');
+          setCreateListDialogOpen(true);
+        }}
+      />
 
       <Dialog
         open={createListDialogOpen}
@@ -353,7 +396,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           <Checkbox checked={newListIsPrivate} onCheckedChange={setNewListIsPrivate}>
             Zasebni seznam
           </Checkbox>
-          {createListError ? <p className="m-0 text-xs text-rose-200">{createListError}</p> : null}
+          {createListError ? <p className="m-0 text-xs text-tomato-deep">{createListError}</p> : null}
         </form>
       </Dialog>
 
@@ -409,7 +452,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
           <Checkbox checked={editingListIsPrivate} onCheckedChange={setEditingListIsPrivate}>
             Zasebni seznam
           </Checkbox>
-          {updateListError ? <p className="m-0 text-xs text-rose-200">{updateListError}</p> : null}
+          {updateListError ? <p className="m-0 text-xs text-tomato-deep">{updateListError}</p> : null}
         </form>
       </Dialog>
 
@@ -456,7 +499,7 @@ export function ListsPage({ token, authUser, onLogout }: ListsPageProps) {
       >
         {deleteConfirmList ? (
           deleteListError ? (
-            <p className="m-0 text-xs text-rose-200">{deleteListError}</p>
+            <p className="m-0 text-xs text-tomato-deep">{deleteListError}</p>
           ) : null
         ) : null}
       </Dialog>

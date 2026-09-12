@@ -1,13 +1,16 @@
+import { cx } from 'class-variance-authority';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { BookRecipes, GridList, LogOut, SettingsCog, ShoppingBasket, X } from './lordicon/icons';
+import { BookRecipes, GridList, LogOut, Refresh, SettingsCog, ShoppingBasket, X } from './lordicon/icons';
 import { Button } from './ui/button';
 import type { AuthUser } from '../types/auth';
 
 type AppHeaderProps = {
   title: string;
+  /** Small line under the title (e.g. progress "3 od 12"). */
+  subtitle?: ReactNode;
   actions?: ReactNode;
   authUser?: AuthUser | null;
   onLogout?: () => void | Promise<void>;
@@ -19,38 +22,28 @@ type AppHeaderProps = {
 };
 
 function formatLastSynced(lastSyncedAt: Date | null, nowMs: number): string {
-  if (!lastSyncedAt) {
-    return 'Še ni sinhronizirano';
-  }
+  if (!lastSyncedAt) return 'Še ni sinhronizirano';
 
   const diffMs = Math.max(0, nowMs - lastSyncedAt.getTime());
   const diffMinutes = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMinutes < 1) {
-    return 'Pred kratkim';
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes} min nazaj`;
-  }
-  if (diffHours < 24) {
-    return `${diffHours} ur nazaj`;
-  }
-  if (diffDays < 2) {
-    return 'Včeraj';
-  }
+  if (diffMinutes < 1) return 'Pred kratkim';
+  if (diffMinutes < 60) return `${diffMinutes} min nazaj`;
+  if (diffHours < 24) return `${diffHours} ur nazaj`;
+  if (diffDays < 2) return 'Včeraj';
 
-  return new Intl.DateTimeFormat('sl-SI', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(lastSyncedAt);
+  return new Intl.DateTimeFormat('sl-SI', { day: 'numeric', month: 'long', year: 'numeric' }).format(lastSyncedAt);
 }
 
+const BASIL = 'primary:#2e7a4c,secondary:#2e7a4c';
+const INK = 'primary:#2a211a,secondary:#2a211a';
+const MUTED = 'primary:#8b7c6d,secondary:#8b7c6d';
+
 const navItems = [
-  { to: '/', label: 'Nakupovalni seznam', Icon: ShoppingBasket },
-  { to: '/recipes', label: 'Recepti', Icon: BookRecipes },
+  { to: '/', label: 'Nakupovalni seznam', Icon: ShoppingBasket, match: (p: string) => p === '/' || p.startsWith('/lists') },
+  { to: '/recipes', label: 'Recepti', Icon: BookRecipes, match: (p: string) => p.startsWith('/recipes') },
 ];
 
 function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onLogout?: () => void | Promise<void> }) {
@@ -69,7 +62,9 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [open]);
 
   const overlay = (
@@ -82,73 +77,67 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
         >
-          {/* backdrop — identical to dialog */}
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute inset-0 bg-ink/40"
             initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
-            animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
+            animate={{ opacity: 1, backdropFilter: 'blur(6px)' }}
             exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
-            transition={{ duration: 0.24, ease: 'easeOut' }}
-            style={{ backgroundColor: 'rgba(2, 6, 23, 0.55)', WebkitBackdropFilter: 'blur(8px)' }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            style={{ WebkitBackdropFilter: 'blur(6px)' }}
           />
 
-          {/* close button — identical to dialog */}
           <Button
             color="white"
-            appearance="transparent"
+            appearance="full"
             icon={<X />}
             iconOnly
-            size="sm"
+            size="md"
             type="button"
             aria-label="Zapri meni"
-            className="absolute right-2 top-[calc(env(safe-area-inset-top)+0.5rem)]"
+            className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] rounded-full"
             onClick={() => setOpen(false)}
           />
 
-          {/* nav cards + footer */}
           <motion.div
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 270, damping: 24 }}
-            className="relative z-10 flex w-full max-w-2xl flex-col gap-4"
+            className="relative z-10 flex w-full max-w-2xl flex-col gap-3"
             onClick={(e) => e.stopPropagation()}
           >
             {/* main page cards */}
-            <div className="flex flex-col gap-4 sm:flex-row">
-              {navItems.map(({ to, label, Icon }) => {
-                const active = location.pathname === to;
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {navItems.map(({ to, label, Icon, match }) => {
+                const active = match(location.pathname);
                 return (
                   <Link
                     key={to}
                     to={to}
                     onClick={() => setOpen(false)}
-                    className={`group relative flex flex-1 flex-col items-center justify-center gap-5 overflow-hidden rounded-3xl border px-8 py-12 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45 ${
-                      active
-                        ? 'border-cyan-400/50 bg-cyan-950/60 shadow-[inset_0_1px_0_rgba(34,211,238,0.18),0_0_0_1px_rgba(34,211,238,0.18),0_24px_64px_rgba(6,182,212,0.22)]'
-                        : 'border-white/20 bg-slate-900/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_24px_64px_rgba(2,8,23,0.6)] hover:bg-slate-800/85'
-                    }`}
-                  >
-                    {active && (
-                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(6,182,212,0.22),transparent_65%)]" />
+                    className={cx(
+                      'group relative flex flex-1 flex-col items-center justify-center gap-4 overflow-hidden rounded-3xl border px-8 py-10 text-center shadow-float transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40',
+                      active ? 'border-basil/50 bg-basil-soft' : 'border-line bg-surface hover:bg-paper',
                     )}
-                    <div className={`flex h-20 w-20 items-center justify-center rounded-2xl border transition-colors duration-200 ${
-                      active
-                        ? 'border-cyan-400/50 bg-cyan-500/25 shadow-[0_0_24px_rgba(6,182,212,0.25)]'
-                        : 'border-white/10 bg-white/6 group-hover:border-white/18 group-hover:bg-white/10'
-                    }`}>
-                      <Icon size={44} animate />
+                  >
+                    <div
+                      className={cx(
+                        'flex h-20 w-20 items-center justify-center rounded-2xl transition-colors duration-200',
+                        active ? 'bg-basil text-white shadow-basil' : 'bg-paper-deep',
+                      )}
+                    >
+                      <Icon size={44} animate colors={active ? 'primary:#ffffff,secondary:#ffffff' : INK} />
                     </div>
-                    <div className="space-y-1">
-                      <p className={`text-xl font-semibold tracking-tight ${active ? 'text-cyan-200' : 'text-slate-100'}`}>
+                    <div className="space-y-0.5">
+                      <p className={cx('m-0 text-lg font-semibold tracking-tight', active ? 'text-basil-deep' : 'text-ink')}>
                         {label}
                       </p>
-                      {active && (
-                        <p className="text-xs font-medium tracking-wide text-cyan-400">Trenutna stran</p>
-                      )}
+                      {active && <p className="m-0 text-xs font-medium text-basil">Trenutna stran</p>}
                     </div>
                   </Link>
                 );
@@ -156,31 +145,36 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
             </div>
 
             {/* footer row: settings + logout */}
-            <div className="flex items-center gap-3 rounded-2xl border border-white/20 bg-slate-900/85 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+            <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-2 shadow-float">
               {authUser && (
                 <button
                   type="button"
-                  onClick={() => { setOpen(false); navigate('/settings'); }}
-                  className={`flex flex-1 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45 ${
+                  onClick={() => {
+                    setOpen(false);
+                    navigate('/settings');
+                  }}
+                  className={cx(
+                    'flex h-11 flex-1 cursor-pointer items-center justify-center gap-2.5 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40',
                     location.pathname === '/settings'
-                      ? 'bg-cyan-500/12 text-cyan-300'
-                      : 'text-slate-300 hover:bg-white/6 hover:text-slate-100'
-                  }`}
+                      ? 'bg-basil-soft text-basil-deep'
+                      : 'text-ink-soft hover:bg-paper-deep hover:text-ink',
+                  )}
                 >
-                  <SettingsCog size={20} animateOnHover />
+                  <SettingsCog size={20} animateOnHover colors={location.pathname === '/settings' ? BASIL : INK} />
                   Nastavitve
                 </button>
               )}
-              {authUser && onLogout && (
-                <div className="h-5 w-px bg-white/10" />
-              )}
+              {authUser && onLogout && <div className="h-6 w-px bg-line" />}
               {onLogout && (
                 <button
                   type="button"
-                  onClick={() => { setOpen(false); void onLogout(); }}
-                  className="flex flex-1 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/6 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+                  onClick={() => {
+                    setOpen(false);
+                    void onLogout();
+                  }}
+                  className="flex h-11 flex-1 cursor-pointer items-center justify-center gap-2.5 rounded-xl px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-tomato-soft hover:text-tomato-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
                 >
-                  <LogOut size={20} animateOnHover />
+                  <LogOut size={20} animateOnHover colors={INK} />
                   Odjava
                 </button>
               )}
@@ -209,67 +203,57 @@ function HamburgerMenu({ authUser, onLogout }: { authUser?: AuthUser | null; onL
   );
 }
 
-export function AppHeader({ title, actions, authUser, onLogout, syncInfo }: AppHeaderProps) {
+export function AppHeader({ title, subtitle, actions, authUser, onLogout, syncInfo }: AppHeaderProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const syncLabel = useMemo(
-    () =>
-      syncInfo?.refreshing
-        ? 'Sinhroniziram...'
-        : formatLastSynced(syncInfo?.lastSyncedAt ?? null, nowMs),
+    () => (syncInfo?.refreshing ? 'Sinhroniziram…' : formatLastSynced(syncInfo?.lastSyncedAt ?? null, nowMs)),
     [nowMs, syncInfo?.lastSyncedAt, syncInfo?.refreshing],
   );
 
   useEffect(() => {
-    if (!syncInfo) {
-      return;
-    }
+    if (!syncInfo) return;
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 30000);
     return () => window.clearInterval(intervalId);
   }, [syncInfo]);
 
   const handleRefresh = () => {
-    if (!syncInfo?.onRefresh || syncInfo.refreshing) {
-      return;
-    }
+    if (!syncInfo?.onRefresh || syncInfo.refreshing) return;
     void syncInfo.onRefresh();
   };
 
   return (
-    <div className="h-[calc(74px+env(safe-area-inset-top))]">
-      <header className="fixed top-0 left-1/2 z-40 w-screen -translate-x-1/2 overflow-hidden border-b border-white/14 bg-slate-950/58 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 shadow-[0_18px_44px_rgba(2,8,23,0.62)] backdrop-blur-2xl">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(2,6,23,0.72),rgba(15,23,42,0.5)_40%,rgba(30,41,59,0.38)_75%,rgba(51,65,85,0.34))]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_18%,rgba(14,116,144,0.18),transparent_34%),radial-gradient(circle_at_90%_80%,rgba(76,29,149,0.18),transparent_36%)]" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-linear-to-r from-transparent via-cyan-300/40 to-transparent" />
-        <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 md:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link
-              to="/"
-              className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
-            >
-              <img src="/logo-icon.svg" alt="Logotip nakupovalnega seznama" className="h-11 w-11 shrink-0" />
-            </Link>
-            <p className="m-0 truncate text-base font-semibold tracking-tight text-slate-100 md:text-lg">
+    <div className="h-[calc(66px+env(safe-area-inset-top))]">
+      <header className="fixed left-1/2 top-0 z-40 w-screen -translate-x-1/2 border-b border-line bg-paper/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+        <div className="mx-auto flex h-[66px] w-full max-w-3xl items-center gap-3 px-3 md:px-8">
+          <Link
+            to="/"
+            className="shrink-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+            aria-label="Domov"
+          >
+            <img src="/logo-icon.svg" alt="" className="h-10 w-10" />
+          </Link>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="m-0 truncate text-[17px] font-semibold leading-tight tracking-tight text-ink md:text-lg">
               {title}
-            </p>
+            </h1>
+            {subtitle ? <p className="m-0 truncate text-xs leading-tight text-ink-muted">{subtitle}</p> : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex shrink-0 items-center gap-1">
             {syncInfo ? (
               <button
                 type="button"
-                className="inline-flex cursor-pointer items-center px-2 py-1 text-[11px] text-slate-300 transition hover:text-slate-100 disabled:cursor-default"
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium text-ink-muted transition hover:bg-ink/6 hover:text-ink disabled:cursor-default"
                 aria-label="Osveži podatke"
-                title="Osveži podatke"
+                title={syncLabel}
                 onClick={handleRefresh}
                 disabled={Boolean(syncInfo.refreshing)}
               >
-                {syncInfo.refreshing ? (
-                  <span
-                    className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-300/60 border-t-transparent"
-                    aria-hidden
-                  />
-                ) : (
-                  <span>{syncLabel}</span>
-                )}
+                <span className={cx(syncInfo.refreshing && 'animate-spin')}>
+                  <Refresh size={16} colors={MUTED} animateOnHover={false} />
+                </span>
+                <span className="hidden sm:inline">{syncLabel}</span>
               </button>
             ) : null}
             {actions}

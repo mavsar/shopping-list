@@ -4,9 +4,9 @@ import type { HTMLAttributes, ReactNode } from "react";
 const labelClassName = cva("inline-flex items-center rounded-md font-semibold uppercase", {
   variants: {
     tone: {
-      neutral: "bg-slate-500/18 text-slate-200",
-      info: "bg-cyan-400/12 text-cyan-200",
-      success: "bg-emerald-400/12 text-emerald-200"
+      neutral: "bg-paper-deep text-ink-soft",
+      info: "bg-blueberry-soft text-blueberry",
+      success: "bg-basil-soft text-basil-deep"
     }
   },
   defaultVariants: {
@@ -17,9 +17,9 @@ const labelClassName = cva("inline-flex items-center rounded-md font-semibold up
 const dotClassName = cva("rounded-full", {
   variants: {
     tone: {
-      neutral: "bg-slate-300/80",
-      info: "bg-cyan-300/90",
-      success: "bg-emerald-300/90"
+      neutral: "bg-ink-muted",
+      info: "bg-blueberry",
+      success: "bg-basil"
     }
   },
   defaultVariants: {

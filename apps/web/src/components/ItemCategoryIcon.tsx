@@ -82,6 +82,41 @@ const ICONS: Record<ItemCategory, { reveal: string; base: string }> = {
   ciscenje_in_pranje: { reveal: '/lordicon/cleaning-reveal.json', base: '/lordicon/cleaning.json' },
 };
 
+/** Aisle colours: icon tint + soft chip background per category. */
+export const itemCategoryColors: Record<ItemCategory, { accent: string; soft: string }> = {
+  sadje: { accent: '#d9482b', soft: '#fbe5df' },
+  zelenjava: { accent: '#3b8f5e', soft: '#e2f2e7' },
+  meso_in_perutnina: { accent: '#c2434f', soft: '#fae3e6' },
+  ribe_in_morski_sadezi: { accent: '#3f7fb8', soft: '#e1edf8' },
+  mlecni_izdelki_in_jajca: { accent: '#5b6abf', soft: '#e6e9f8' },
+  pekovski_izdelki: { accent: '#b8772b', soft: '#f7e9d6' },
+  pijace: { accent: '#2f9aa8', soft: '#dff3f5' },
+  alkoholi: { accent: '#8e4a8b', soft: '#f1e4f0' },
+  kava_in_caj: { accent: '#7a4f2a', soft: '#f0e4d8' },
+  sladkarije: { accent: '#d65a8e', soft: '#fbe3ee' },
+  prigrizki: { accent: '#ef8a2c', soft: '#fdebd8' },
+  konzervirana_zivila: { accent: '#7d8a3c', soft: '#eef1dc' },
+  suhi_izdelki: { accent: '#c9a227', soft: '#fbf3d2' },
+  zamrznjeni_izdelki: { accent: '#4aa3c9', soft: '#e0f2f9' },
+  zacimbe_omake_in_olja: { accent: '#c96a2b', soft: '#f9e6d8' },
+  rastlinski_izdelki: { accent: '#5aa05a', soft: '#e6f3e6' },
+  pripravljeni_obroki: { accent: '#d4772e', soft: '#f9e8d8' },
+  osebna_nega: { accent: '#7c6fcd', soft: '#ebe8f9' },
+  ciscenje_in_pranje: { accent: '#3a9c9c', soft: '#dff3f3' },
+  dom_in_vrt: { accent: '#6f8f3a', soft: '#ecf2df' },
+  hisni_ljubljencki: { accent: '#a5732b', soft: '#f6ead7' },
+  za_otroke: { accent: '#e07aa3', soft: '#fbe6ef' },
+  zdravje: { accent: '#d64545', soft: '#fbe3e3' },
+  elektronika: { accent: '#5a6b7c', soft: '#e6ebef' },
+  oblacila: { accent: '#8a5fb8', soft: '#eee6f7' },
+  pisalne_potrebscine: { accent: '#4c7fd6', soft: '#e3ecfa' },
+  drugo: { accent: '#8b7c6d', soft: '#f2eadc' },
+};
+
+export function getItemCategoryColors(category: ItemCategory) {
+  return itemCategoryColors[category] ?? itemCategoryColors.drugo;
+}
+
 type ItemCategoryIconProps = {
   category: ItemCategory;
   className?: string;
@@ -89,6 +124,8 @@ type ItemCategoryIconProps = {
   size?: number;
   /** Skip hover-driven animation; use for list rows where hover breaks iOS taps. */
   staticDisplay?: boolean;
+  /** Tint with the category's aisle colour (default) or ink. */
+  tinted?: boolean;
 };
 
 function ItemCategoryIconComponent({
@@ -96,7 +133,10 @@ function ItemCategoryIconComponent({
   className,
   size = 24,
   staticDisplay = false,
+  tinted = true,
 }: ItemCategoryIconProps) {
+  const { accent } = getItemCategoryColors(category);
+  const colors = tinted ? `primary:${accent},secondary:${accent}` : undefined;
   const [showRevealOverlay, setShowRevealOverlay] = useState(true);
   const [revealReady, setRevealReady] = useState(false);
   const iconSet = ICONS[category] ?? {
@@ -129,6 +169,7 @@ function ItemCategoryIconComponent({
         animateOnHover={false}
         className={showRevealOverlay && revealReady ? 'opacity-0' : 'opacity-100'}
         size={size}
+        colors={colors}
       />
       {!staticDisplay && showRevealOverlay ? (
         <LordIcon
@@ -137,6 +178,7 @@ function ItemCategoryIconComponent({
           animateOnHover={false}
           className="pointer-events-none absolute inset-0"
           size={size}
+          colors={colors}
           onReady={() => setRevealReady(true)}
           onComplete={() => setShowRevealOverlay(false)}
         />

@@ -4,9 +4,9 @@ import { cx } from "class-variance-authority";
 import { LordIcon } from "./lordicon/lord-icon";
 
 const SPARKLE_COUNT = 10;
-const EMERALD_FILL = "rgb(16 185 129)";
-const EMERALD_BORDER = "rgb(52 211 153)";
-const EMPTY_BORDER = "rgba(255 255 255 / 0.35)";
+const BASIL_FILL = "rgb(59 143 94)";
+const BASIL_BORDER = "rgb(46 122 76)";
+const EMPTY_BORDER = "rgba(42 33 26 / 0.28)";
 
 type CompletionCircleToggleProps = {
   completed: boolean;
@@ -52,8 +52,8 @@ export function CompletionCircleToggle({
     return () => window.clearTimeout(id);
   }, [sparkleBurst]);
 
-  const controlSizeClass = size === "sm" ? "h-6 w-6" : "h-10 w-10";
-  const checkSize = size === "sm" ? 14 : 18;
+  const controlSizeClass = size === "sm" ? "h-7 w-7" : "h-10 w-10";
+  const checkSize = size === "sm" ? 16 : 18;
   const sparkleDistanceBase = size === "sm" ? 14 : 22;
   const ControlTag = presentational ? motion.div : motion.button;
 
@@ -76,21 +76,21 @@ export function CompletionCircleToggle({
               onHoverEnd: () => setIsHovered(false),
             })}
         className={cx(
-          "relative z-[1] flex shrink-0 items-center justify-center rounded-full border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70",
+          "relative z-[1] flex shrink-0 items-center justify-center rounded-full border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-basil/70",
           !presentational && "cursor-pointer disabled:pointer-events-none disabled:cursor-default disabled:opacity-50",
           controlSizeClass
         )}
         initial={false}
         animate={{
-          backgroundColor: completed ? EMERALD_FILL : "rgba(0, 0, 0, 0)",
-          borderColor: completed ? EMERALD_BORDER : EMPTY_BORDER,
+          backgroundColor: completed ? BASIL_FILL : "rgba(255, 255, 255, 0)",
+          borderColor: completed ? BASIL_BORDER : EMPTY_BORDER,
           color: completed ? "rgb(255 255 255)" : "transparent",
           scale: sparkleBurst ? [1, 1.1, 1] : 1,
           boxShadow: sparkleBurst
             ? [
                 "inset 0 1px 0 rgba(255,255,255,0.15)",
-                "inset 0 1px 0 rgba(255,255,255,0.25), 0 0 0 10px rgba(52,211,153,0.35), 0 0 24px rgba(16,185,129,0.55)",
-                "inset 0 1px 0 rgba(255,255,255,0.2), 0 0 0 0 rgba(52,211,153,0)"
+                "inset 0 1px 0 rgba(255,255,255,0.25), 0 0 0 10px rgba(59,143,94,0.28), 0 0 24px rgba(59,143,94,0.5)",
+                "inset 0 1px 0 rgba(255,255,255,0.2), 0 0 0 0 rgba(59,143,94,0)"
               ]
             : completed
               ? "inset 0 1px 0 rgba(255,255,255,0.2)"
@@ -162,7 +162,7 @@ export function CompletionCircleToggle({
             return (
               <motion.span
                 key={i}
-                className="pointer-events-none absolute left-1/2 top-1/2 z-[2] size-[5px] rounded-full bg-amber-100 shadow-[0_0_8px_rgba(253,224,71,0.95)]"
+                className="pointer-events-none absolute left-1/2 top-1/2 z-[2] size-[5px] rounded-full bg-butter shadow-[0_0_8px_rgba(242,193,78,0.95)]"
                 style={{ marginLeft: "-2.5px", marginTop: "-2.5px" }}
                 initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
                 animate={{

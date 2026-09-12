@@ -2,6 +2,10 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 import { cx } from "class-variance-authority";
 
+/** Default icon tint — matches `--color-ink`. */
+export const INK_ICON_COLORS = "primary:#2a211a,secondary:#2a211a";
+export const WHITE_ICON_COLORS = "primary:#ffffff,secondary:#ffffff";
+
 export type LordIconTrigger = "in" | "click" | "hover" | "loop" | "loop-on-hover" | "morph" | "boomerang" | "sequence";
 
 type LordIconProps = {
@@ -29,7 +33,7 @@ export function LordIcon({
   animate = false,
   animateOnHover = true,
   animation: _animation,
-  colors = "primary:#ffffff,secondary:#ffffff",
+  colors = INK_ICON_COLORS,
   stroke = "bold",
   speed = 1,
   state,

@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 
-import { Edit, Plus, Trash2 } from "../components/lordicon/icons";
+import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
 import { RecipeLabelBadge, type RecipeLabel } from "../components/RecipeLabelBadge";
 import { Button, Card, Checkbox, Dialog, Input, Label, Loader, Select } from "../components/ui";
@@ -9,18 +9,18 @@ import type { AuthUser, ManagedUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
 
 const LABEL_COLORS = [
-  '#6366f1',
-  '#8b5cf6',
-  '#ec4899',
-  '#ef4444',
-  '#f97316',
-  '#f59e0b',
-  '#84cc16',
-  '#10b981',
-  '#06b6d4',
-  '#3b82f6',
-  '#64748b',
-  '#a16207',
+  '#d9482b',
+  '#ef8a2c',
+  '#c9a227',
+  '#3b8f5e',
+  '#2f9aa8',
+  '#3f7fb8',
+  '#5b6abf',
+  '#8e4a8b',
+  '#d65a8e',
+  '#7a4f2a',
+  '#6f8f3a',
+  '#8b7c6d',
 ];
 
 const DEFAULT_LIST_ID_KEY = 'shopping-list-default-list-id';
@@ -366,230 +366,263 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
     }
   }
 
+  const initials = (authUser.name || authUser.username)
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <>
       <AppHeader title="Nastavitve" authUser={authUser} onLogout={onLogout} />
 
-      <div className="mt-6 space-y-10">
-
-        {/* ---- Default shopping list section ---- */}
+      <div className="mt-4 space-y-4">
+        {/* ---- Profile ---- */}
         <motion.section
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.38 }}
+          transition={{ duration: 0.34 }}
         >
-          <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">
-            Privzeti nakupovalni seznam
-          </h2>
-          <p className="mt-1 text-xs text-slate-400">
-            Sestavine iz receptov se dodajajo na ta seznam brez vprašanja. Nastavitev se shrani lokalno na tej napravi.
-          </p>
-          <div className="mt-4 space-y-3">
-            {listsLoading ? (
-              <Loader label="Nalagam sezname..." />
-            ) : lists.length === 0 ? (
-              <p className="text-sm text-slate-400">Nimaš nakupovalnih seznamov.</p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <Select
-                  value={defaultListId ? String(defaultListId) : ''}
-                  onChange={(e) => handleDefaultListChange(Number(e.target.value) || null)}
-                  className="max-w-xs"
-                >
-                  <option value="">— Vedno vprašaj —</option>
-                  {lists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </Select>
-                {defaultListId && (
-                  <Button
-                    color="white"
-                    appearance="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => handleDefaultListChange(null)}
-                  >
-                    Ponastavi
-                  </Button>
-                )}
+          <Card>
+            <div className="flex items-center gap-3">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-basil text-base font-semibold text-white">
+                {initials}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="m-0 truncate text-base font-semibold text-ink">{authUser.name || authUser.username}</p>
+                <p className="m-0 truncate text-xs text-ink-muted">
+                  @{authUser.username}
+                  {authUser.email ? ` · ${authUser.email}` : ''}
+                </p>
               </div>
-            )}
-            {defaultListId && defaultListName && (
-              <p className="text-xs text-cyan-400">
-                Privzeto: <strong>{defaultListName}</strong>
-              </p>
-            )}
-          </div>
+              <Label tone={authUser.isAdmin ? "info" : "neutral"} withDot>
+                {authUser.isAdmin ? "skrbnik" : "uporabnik"}
+              </Label>
+            </div>
+            <div className="mt-4 border-t border-line pt-3">
+              <Button
+                color="danger"
+                appearance="outline"
+                size="sm"
+                type="button"
+                icon={<LogOut animateOnHover />}
+                onClick={() => void onLogout()}
+              >
+                Odjava
+              </Button>
+            </div>
+          </Card>
+        </motion.section>
+
+        {/* ---- Default shopping list ---- */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.04, duration: 0.34 }}
+        >
+          <Card>
+            <h2 className="m-0 text-sm font-semibold text-ink">Privzeti nakupovalni seznam</h2>
+            <p className="m-0 mt-1 text-xs text-ink-muted">
+              Sestavine iz receptov gredo na ta seznam brez vprašanja. Shrani se samo na tej napravi.
+            </p>
+            <div className="mt-3 space-y-2">
+              {listsLoading ? (
+                <Loader label="Nalagam sezname…" />
+              ) : lists.length === 0 ? (
+                <p className="m-0 text-sm text-ink-muted">Nimaš nakupovalnih seznamov.</p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1 basis-56">
+                    <Select
+                      value={defaultListId ? String(defaultListId) : ''}
+                      onChange={(e) => handleDefaultListChange(Number(e.target.value) || null)}
+                    >
+                      <option value="">— Vedno vprašaj —</option>
+                      {lists.map((list) => (
+                        <option key={list.id} value={list.id}>
+                          {list.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  {defaultListId && (
+                    <Button
+                      color="white"
+                      appearance="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => handleDefaultListChange(null)}
+                    >
+                      Ponastavi
+                    </Button>
+                  )}
+                </div>
+              )}
+              {defaultListId && defaultListName && (
+                <p className="m-0 text-xs text-basil-deep">
+                  Privzeto: <strong>{defaultListName}</strong>
+                </p>
+              )}
+            </div>
+          </Card>
         </motion.section>
 
         {/* ---- Recipe labels ---- */}
         <motion.section
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.38 }}
-          className="relative min-h-[4rem]"
+          transition={{ delay: 0.08, duration: 0.34 }}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Oznake receptov</h2>
-              <p className="mt-1 text-xs text-slate-400">Ustvari oznake za organizacijo in filtriranje receptov.</p>
+          <Card>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="m-0 text-sm font-semibold text-ink">Oznake receptov</h2>
+                <p className="m-0 mt-1 text-xs text-ink-muted">Za razvrščanje in filtriranje shranjenih receptov.</p>
+              </div>
+              <Button
+                type="button"
+                icon={<Plus animateOnHover />}
+                iconOnly
+                size="sm"
+                color="gradient"
+                appearance="outline"
+                aria-label="Dodaj oznako"
+                title="Dodaj oznako"
+                onClick={openCreateLabelDialog}
+              />
             </div>
-            <Button
-              type="button"
-              icon={<Plus animateOnHover />}
-              iconOnly
-              size="sm"
-              color="white"
-              appearance="outline"
-              aria-label="Dodaj oznako"
-              title="Dodaj oznako"
-              onClick={openCreateLabelDialog}
-            />
-          </div>
-          {labelsLoading ? (
-            <Loader label="Nalagam oznake..." />
-          ) : recipeLabels.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-400">Še nimaš oznak. Klikni + za dodajanje.</p>
-          ) : (
-            <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
-              {recipeLabels.map((label) => (
-                <motion.li
-                  layout
-                  initial={{ opacity: 0, y: 8, scale: 0.985 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.25 }}
-                  key={label.id}
-                  className="list-none"
-                >
-                  <Card interactive>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className="h-4 w-4 shrink-0 rounded-full"
-                          style={{ backgroundColor: label.color }}
-                        />
-                        <p className="m-0 text-base font-semibold text-slate-50">{label.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          color="white"
-                          appearance="outline"
-                          type="button"
-                          icon={<Edit animateOnHover />}
-                          iconOnly
-                          size="sm"
-                          aria-label={`Uredi ${label.name}`}
-                          title={`Uredi ${label.name}`}
-                          onClick={() => openEditLabelDialog(label)}
-                        />
-                        <Button
-                          color="danger"
-                          appearance="outline"
-                          type="button"
-                          icon={<Trash2 animateOnHover />}
-                          iconOnly
-                          size="sm"
-                          aria-label={`Izbriši ${label.name}`}
-                          title={`Izbriši ${label.name}`}
-                          onClick={() => setDeleteLabelId(label.id)}
-                          disabled={deleteLabelLoading && deleteLabelId === label.id}
-                        />
-                      </div>
+            {labelsLoading ? (
+              <div className="mt-3">
+                <Loader label="Nalagam oznake…" />
+              </div>
+            ) : recipeLabels.length === 0 ? (
+              <p className="m-0 mt-3 text-sm text-ink-muted">Še nimaš oznak. Dodaj jih s plusom.</p>
+            ) : (
+              <ul className="m-0 mt-3 grid list-none gap-1.5 p-0">
+                {recipeLabels.map((label) => (
+                  <li
+                    key={label.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-line bg-paper px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ backgroundColor: label.color }} />
+                      <p className="m-0 truncate text-sm font-medium text-ink">{label.name}</p>
                     </div>
-                  </Card>
-                </motion.li>
-              ))}
-            </motion.ul>
-          )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        color="white"
+                        appearance="transparent"
+                        type="button"
+                        icon={<Edit animateOnHover />}
+                        iconOnly
+                        size="sm"
+                        aria-label={`Uredi ${label.name}`}
+                        title={`Uredi ${label.name}`}
+                        onClick={() => openEditLabelDialog(label)}
+                      />
+                      <Button
+                        color="danger"
+                        appearance="transparent"
+                        type="button"
+                        icon={<Trash2 animateOnHover />}
+                        iconOnly
+                        size="sm"
+                        aria-label={`Izbriši ${label.name}`}
+                        title={`Izbriši ${label.name}`}
+                        onClick={() => setDeleteLabelId(label.id)}
+                        disabled={deleteLabelLoading && deleteLabelId === label.id}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </motion.section>
 
         {/* ---- Admin: user management ---- */}
         {authUser.isAdmin && (
-          <motion.article
+          <motion.section
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.38 }}
-            className="relative min-h-[12rem]"
+            transition={{ delay: 0.12, duration: 0.34 }}
           >
-            <h2 className="text-sm font-medium tracking-[0.12em] text-slate-300 uppercase">Uporabniki</h2>
-            {usersLoading ? <Loader placement="overlay" label="Nalagam uporabnike..." /> : null}
-            {usersError ? <p className="m-0 text-sm text-rose-300">{usersError}</p> : null}
-            {!usersLoading && !usersError ? (
-              <motion.ul layout className="mt-4 grid list-none gap-2 p-0">
-                {users.map((user) => (
-                  <motion.li
-                    layout
-                    initial={{ opacity: 0, y: 8, scale: 0.985 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.25 }}
-                    key={user.id}
-                    className="list-none"
-                  >
-                    <Card interactive>
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="m-0 text-base font-semibold text-slate-50">{user.username}</p>
-                          <p className="m-0 text-sm text-slate-300">
-                            {user.name}
-                            {user.email ? ` - ${user.email}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Label tone={user.isAdmin ? "info" : "neutral"} withDot>
+            <Card className="relative min-h-[6rem]">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h2 className="m-0 text-sm font-semibold text-ink">Uporabniki</h2>
+                  <p className="m-0 mt-1 text-xs text-ink-muted">Kdo lahko uporablja aplikacijo.</p>
+                </div>
+                <Button
+                  type="button"
+                  icon={<Plus animateOnHover />}
+                  iconOnly
+                  size="sm"
+                  color="gradient"
+                  appearance="outline"
+                  aria-label="Dodaj uporabnika"
+                  title="Dodaj uporabnika"
+                  onClick={() => { setCreateUserError(""); setCreateUserDialogOpen(true); }}
+                />
+              </div>
+              {usersLoading ? <Loader placement="overlay" label="Nalagam uporabnike…" /> : null}
+              {usersError ? <p className="m-0 mt-3 text-sm text-tomato-deep">{usersError}</p> : null}
+              {!usersLoading && !usersError ? (
+                <ul className="m-0 mt-3 grid list-none gap-1.5 p-0">
+                  {users.map((user) => (
+                    <li
+                      key={user.id}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-line bg-paper px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="m-0 flex items-center gap-2 text-sm font-medium text-ink">
+                          <span className="truncate">{user.name || user.username}</span>
+                          <Label tone={user.isAdmin ? "info" : "neutral"}>
                             {user.isAdmin ? "skrbnik" : "uporabnik"}
                           </Label>
-                          <Button
-                            color="white"
-                            appearance="outline"
-                            type="button"
-                            icon={<Edit animateOnHover />}
-                            iconOnly
-                            aria-label={`Uredi ${user.username}`}
-                            title={`Uredi ${user.username}`}
-                            onClick={() => beginEditUser(user)}
-                            disabled={deleteUserLoadingId === user.id}
-                          />
-                          <Button
-                            color="danger"
-                            appearance="outline"
-                            type="button"
-                            icon={<Trash2 animateOnHover />}
-                            iconOnly
-                            aria-label={`Izbriši ${user.username}`}
-                            title={`Izbriši ${user.username}`}
-                            onClick={() => beginDeleteUserConfirmation(user.id)}
-                            disabled={deleteUserLoadingId === user.id}
-                          />
-                        </div>
+                        </p>
+                        <p className="m-0 truncate text-xs text-ink-muted">
+                          @{user.username}
+                          {user.email ? ` · ${user.email}` : ""}
+                        </p>
                       </div>
-                    </Card>
-                  </motion.li>
-                ))}
-              </motion.ul>
-            ) : null}
-            {/* suppress unused warning */}
-            {lastSyncedAt && null}
-          </motion.article>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          color="white"
+                          appearance="transparent"
+                          type="button"
+                          icon={<Edit animateOnHover />}
+                          iconOnly
+                          size="sm"
+                          aria-label={`Uredi ${user.username}`}
+                          title={`Uredi ${user.username}`}
+                          onClick={() => beginEditUser(user)}
+                          disabled={deleteUserLoadingId === user.id}
+                        />
+                        <Button
+                          color="danger"
+                          appearance="transparent"
+                          type="button"
+                          icon={<Trash2 animateOnHover />}
+                          iconOnly
+                          size="sm"
+                          aria-label={`Izbriši ${user.username}`}
+                          title={`Izbriši ${user.username}`}
+                          onClick={() => beginDeleteUserConfirmation(user.id)}
+                          disabled={deleteUserLoadingId === user.id}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {/* suppress unused warning */}
+              {lastSyncedAt && null}
+            </Card>
+          </motion.section>
         )}
       </div>
-
-      {/* FAB: add user (admin only) */}
-      {authUser.isAdmin && (
-        <div className="fixed right-8 bottom-8 z-40">
-          <Button
-            type="button"
-            icon={<Plus animateOnHover />}
-            iconOnly
-            size="lg"
-            aria-label="Dodaj novega uporabnika"
-            title="Dodaj novega uporabnika"
-            className="shadow-[0_12px_35px_rgba(99,102,241,0.4)]"
-            onClick={() => { setCreateUserError(""); setCreateUserDialogOpen(true); }}
-          />
-        </div>
-      )}
 
       {/* Create / Edit label dialog */}
       <Dialog
@@ -608,7 +641,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
         }
       >
         <form id="label-form" className="grid gap-4" onSubmit={handleSaveLabel}>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Ime oznake
             <Input
               value={labelName}
@@ -619,7 +652,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
             />
           </label>
           <div className="grid gap-2">
-            <p className="text-sm text-slate-200">Barva</p>
+            <p className="text-sm font-medium text-ink-soft">Barva</p>
             <div className="flex flex-wrap gap-2">
               {LABEL_COLORS.map((color) => {
                 const selected = labelColor === color;
@@ -628,7 +661,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
                     key={color}
                     type="button"
                     onClick={() => setLabelColor(color)}
-                    className="relative h-7 w-7 rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    className="relative h-7 w-7 rounded-full transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
                     style={{ backgroundColor: color, opacity: selected ? 1 : 0.45 }}
                     aria-label={color}
                     title={color}
@@ -652,11 +685,11 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
               })}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Predogled:</span>
+              <span className="text-xs text-ink-muted">Predogled:</span>
               <RecipeLabelBadge name={labelName || "Oznaka"} color={labelColor} dot />
             </div>
           </div>
-          {labelError ? <p className="m-0 text-sm text-rose-300">{labelError}</p> : null}
+          {labelError ? <p className="m-0 text-sm text-tomato-deep">{labelError}</p> : null}
         </form>
       </Dialog>
 
@@ -706,19 +739,19 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
         }
       >
         <form id="edit-user-form" className="grid gap-3" onSubmit={handleUpdateUser}>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Uporabniško ime
             <Input value={editingUsername} onChange={(event) => setEditingUsername(event.target.value)} minLength={3} required />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Polno ime
             <Input value={editingName} onChange={(event) => setEditingName(event.target.value)} required />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             E-pošta (neobvezno)
             <Input type="email" value={editingEmail} onChange={(event) => setEditingEmail(event.target.value)} />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Novo geslo (neobvezno)
             <Input
               type="password"
@@ -731,7 +764,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
           <Checkbox checked={editingIsAdmin} onChange={(event) => setEditingIsAdmin(event.target.checked)}>
             Skrbniški uporabnik
           </Checkbox>
-          {updateUserError ? <p className="m-0 text-sm text-rose-300">{updateUserError}</p> : null}
+          {updateUserError ? <p className="m-0 text-sm text-tomato-deep">{updateUserError}</p> : null}
         </form>
       </Dialog>
 
@@ -752,26 +785,26 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
         }
       >
         <form id="create-user-form" className="grid gap-3" onSubmit={handleCreateUser}>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Uporabniško ime
             <Input value={newUsername} onChange={(event) => setNewUsername(event.target.value)} minLength={3} required />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Polno ime
             <Input value={newName} onChange={(event) => setNewName(event.target.value)} required />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             Geslo
             <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} required />
           </label>
-          <label className="grid gap-1 text-sm text-slate-200">
+          <label className="grid gap-1 text-sm font-medium text-ink-soft">
             E-pošta (neobvezno)
             <Input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} />
           </label>
           <Checkbox checked={newIsAdmin} onChange={(event) => setNewIsAdmin(event.target.checked)}>
             Dodeli skrbniške pravice
           </Checkbox>
-          {createUserError ? <p className="m-0 text-sm text-rose-300">{createUserError}</p> : null}
+          {createUserError ? <p className="m-0 text-sm text-tomato-deep">{createUserError}</p> : null}
         </form>
       </Dialog>
 
@@ -807,7 +840,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
       >
         {deleteConfirmUser ? (
           <div className="grid gap-2">
-            <label className="grid gap-1 text-sm text-slate-200">
+            <label className="grid gap-1 text-sm font-medium text-ink-soft">
               Prenesi lastništvo seznamov na
               <Select
                 value={deleteTransferToUserId ? String(deleteTransferToUserId) : ""}
@@ -824,7 +857,7 @@ export function SettingsPage({ token, authUser, onLogout }: SettingsPageProps) {
                   ))}
               </Select>
             </label>
-            {deleteUserError ? <p className="m-0 text-xs text-rose-200">{deleteUserError}</p> : null}
+            {deleteUserError ? <p className="m-0 text-xs text-tomato-deep">{deleteUserError}</p> : null}
           </div>
         ) : null}
       </Dialog>

@@ -123,14 +123,16 @@ listsRouter.get("/", requireAuth, (_req, res) => {
   const lists = sqlite
     .prepare(
       `
-      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.is_private AS isPrivate, l.created_at AS createdAt, l.updated_at AS updatedAt
+      SELECT l.id, l.name, l.created_by_user_id AS createdByUserId, l.is_private AS isPrivate, l.created_at AS createdAt, l.updated_at AS updatedAt,
+        (SELECT COUNT(*) FROM list_items li WHERE li.list_id = l.id AND li.status = 'active') AS activeCount,
+        (SELECT COUNT(*) FROM list_items li WHERE li.list_id = l.id AND li.status = 'completed') AS completedCount
       FROM shopping_lists l
       LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
       WHERE l.is_private = 0 OR m.user_id IS NOT NULL
       ORDER BY l.updated_at DESC
       `
     )
-    .all(authUser.id) as ShoppingListRow[];
+    .all(authUser.id) as Array<ShoppingListRow & { activeCount: number; completedCount: number }>;
 
   return res.json({ lists: lists.map(mapShoppingListRow) });
 });

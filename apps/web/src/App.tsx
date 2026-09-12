@@ -6,7 +6,6 @@ import { AppShell } from "./layouts/AppShell";
 import type { AuthUser } from "./types/auth";
 import { rememberMeCookieKey, tokenStorageKey } from "./ui/constants";
 
-const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage").then((m) => ({ default: m.AdminUsersPage })));
 const ListDetailsPage = lazy(() => import("./pages/ListDetailsPage").then((m) => ({ default: m.ListDetailsPage })));
 const ListsPage = lazy(() => import("./pages/ListsPage").then((m) => ({ default: m.ListsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
@@ -31,6 +30,15 @@ function setPermanentCookie(name: string, value: string): void {
 function clearCookie(name: string): void {
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+}
+
+function SessionCheck() {
+  return (
+    <p className="flex min-h-[50vh] items-center justify-center gap-2 text-sm text-ink-muted">
+      <span className="inline-block h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" aria-hidden />
+      Preverjam sejo…
+    </p>
+  );
 }
 
 export default function App() {
@@ -130,12 +138,12 @@ export default function App() {
           path="/login"
           element={
             authChecking ? (
-              <p className="mb-2 mt-0 text-sm text-slate-300">Checking session...</p>
+              <SessionCheck />
             ) : authUser ? (
               <Navigate to="/" replace />
             ) : (
               <>
-                {authError ? <p className="mb-2 mt-0 text-sm text-rose-300">{authError}</p> : null}
+                {authError ? <p className="mb-2 mt-0 text-center text-sm text-tomato-deep">{authError}</p> : null}
                 <LoginPage onLoginSuccess={handleLoginSuccess} />
               </>
             )
@@ -145,7 +153,7 @@ export default function App() {
           path="/"
           element={
             authChecking ? (
-              <p className="text-slate-300">Checking session...</p>
+              <SessionCheck />
             ) : authUser ? (
               <ListsPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (
@@ -154,22 +162,10 @@ export default function App() {
           }
         />
         <Route
-          path="/admin/users"
-          element={
-            authChecking ? (
-              <p className="text-slate-300">Checking session...</p>
-            ) : authUser?.isAdmin ? (
-              <AdminUsersPage token={token} authUser={authUser} onLogout={handleLogout} />
-            ) : (
-              <Navigate to={authUser ? "/" : "/login"} replace />
-            )
-          }
-        />
-        <Route
           path="/settings"
           element={
             authChecking ? (
-              <p className="text-slate-300">Checking session...</p>
+              <SessionCheck />
             ) : authUser ? (
               <SettingsPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (
@@ -181,7 +177,7 @@ export default function App() {
           path="/lists/:listSlug"
           element={
             authChecking ? (
-              <p className="text-slate-300">Checking session...</p>
+              <SessionCheck />
             ) : authUser ? (
               <ListDetailsPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (
@@ -193,7 +189,7 @@ export default function App() {
           path="/recipes"
           element={
             authChecking ? (
-              <p className="text-slate-300">Checking session...</p>
+              <SessionCheck />
             ) : authUser ? (
               <RecipesPage token={token} authUser={authUser} onLogout={handleLogout} />
             ) : (

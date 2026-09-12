@@ -1,4 +1,45 @@
 @import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — "tržnica" palette: warm paper, espresso ink,
+   basil (primary / done), tomato (danger), carrot & butter accents.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-paper: #fbf7f0;
+  --color-paper-deep: #f2eadc;
+  --color-surface: #ffffff;
+  --color-line: #ebe3d5;
+  --color-line-strong: #d9cdba;
+
+  --color-ink: #2a211a;
+  --color-ink-soft: #5a4d42;
+  --color-ink-muted: #8b7c6d;
+  --color-ink-faint: #b5a898;
+
+  --color-basil: #3b8f5e;
+  --color-basil-deep: #2e7a4c;
+  --color-basil-soft: #e2f2e7;
+
+  --color-tomato: #d9482b;
+  --color-tomato-deep: #b93a22;
+  --color-tomato-soft: #fbe5df;
+
+  --color-carrot: #ef8a2c;
+  --color-carrot-soft: #fdebd8;
+
+  --color-butter: #f2c14e;
+  --color-butter-soft: #fff4cf;
+
+  --color-blueberry: #5b6abf;
+  --color-blueberry-soft: #e6e9f8;
+
+  --shadow-card: 0 1px 2px rgba(42, 33, 26, 0.05), 0 10px 24px -14px rgba(42, 33, 26, 0.25);
+  --shadow-float: 0 10px 30px -10px rgba(42, 33, 26, 0.35);
+  --shadow-basil: 0 10px 22px -10px rgba(59, 143, 94, 0.75);
+}
 
 * {
   box-sizing: border-box;
@@ -23,7 +64,9 @@ button {
 }
 
 :root {
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 html,
@@ -59,13 +102,21 @@ select,
 }
 
 html {
-  background-color: #020617;
+  background-color: var(--color-paper);
 }
 
 body {
   margin: 0;
-  background-color: #020617;
-  color: #e2e8f0;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* Subtle paper grain so large cream areas don't read as flat white. */
+.paper-grain {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(242, 193, 78, 0.16), transparent 32%),
+    radial-gradient(circle at 85% 0%, rgba(59, 143, 94, 0.12), transparent 30%),
+    radial-gradient(circle at 60% 100%, rgba(239, 138, 44, 0.1), transparent 34%);
 }
 
 /* ── Custom scrollbars ── */
@@ -79,12 +130,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.18);
+  background: rgba(42, 33, 26, 0.16);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.35);
+  background: rgba(42, 33, 26, 0.3);
 }
 
 ::-webkit-scrollbar-corner {
@@ -94,5 +145,5 @@ body {
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.18) transparent;
+  scrollbar-color: rgba(42, 33, 26, 0.16) transparent;
 }

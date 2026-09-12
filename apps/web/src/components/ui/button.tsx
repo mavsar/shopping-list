@@ -3,12 +3,23 @@ import type { HTMLMotionProps } from "motion/react";
 import { cloneElement, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { cva, cx } from "class-variance-authority";
+import { INK_ICON_COLORS, WHITE_ICON_COLORS } from "../lordicon/lord-icon";
 
+/**
+ * Colour roles kept from the previous design system so call sites stay untouched:
+ *  - gradient → primary (basil)
+ *  - success  → basil (same family, used for confirmations)
+ *  - danger   → tomato
+ *  - white    → neutral surface
+ */
 type ButtonColor = "gradient" | "success" | "danger" | "white";
 type ButtonAppearance = "full" | "outline" | "transparent";
 
+const BASIL_ICON_COLORS = "primary:#2e7a4c,secondary:#2e7a4c";
+const TOMATO_ICON_COLORS = "primary:#b93a22,secondary:#b93a22";
+
 const buttonClassName = cva(
-  "inline-flex cursor-pointer items-center justify-center rounded-2xl font-semibold text-slate-50 transition disabled:cursor-default disabled:opacity-60",
+  "inline-flex cursor-pointer items-center justify-center rounded-2xl font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-default disabled:opacity-50",
   {
     variants: {
       color: {
@@ -23,10 +34,10 @@ const buttonClassName = cva(
         transparent: ""
       },
       size: {
-        xs: "h-6 px-2 text-xs",
-        sm: "h-8 px-3 text-xs",
-        md: "h-10 px-4 text-sm",
-        lg: "h-16 px-8 text-base"
+        xs: "h-7 px-2.5 text-xs",
+        sm: "h-9 px-3 text-sm",
+        md: "h-11 px-4 text-sm",
+        lg: "h-14 px-6 text-base"
       },
       stretch: {
         true: "w-full",
@@ -38,89 +49,75 @@ const buttonClassName = cva(
       }
     },
     compoundVariants: [
-      {
-        size: "xs",
-        iconOnly: true,
-        className: "h-6 w-6"
-      },
-      {
-        size: "sm",
-        iconOnly: true,
-        className: "h-8 w-8"
-      },
-      {
-        size: "md",
-        iconOnly: true,
-        className: "h-10 w-10"
-      },
-      {
-        size: "lg",
-        iconOnly: true,
-        className: "h-16 w-16"
-      },
+      { size: "xs", iconOnly: true, className: "h-7 w-7" },
+      { size: "sm", iconOnly: true, className: "h-9 w-9" },
+      { size: "md", iconOnly: true, className: "h-11 w-11" },
+      { size: "lg", iconOnly: true, className: "h-14 w-14" },
+
+      // ── primary / basil ──
       {
         color: "gradient",
         appearance: "full",
-        className: "group relative overflow-hidden shadow-[0_12px_35px_rgba(99,102,241,0.35)] text-white"
+        className: "bg-basil text-white shadow-basil hover:bg-basil-deep"
       },
       {
         color: "success",
         appearance: "full",
-        className: "border border-emerald-300/40 bg-emerald-500/80 text-emerald-50 backdrop-blur-sm hover:bg-emerald-500"
-      },
-      {
-        color: "danger",
-        appearance: "full",
-        className: "border border-rose-300/40 bg-rose-500/75 text-rose-50 backdrop-blur-sm hover:bg-rose-500/85"
-      },
-      {
-        color: "white",
-        appearance: "full",
-        className: "border border-white/30 bg-white/16 text-slate-100 backdrop-blur-sm hover:bg-white/24"
+        className: "bg-basil text-white shadow-basil hover:bg-basil-deep"
       },
       {
         color: "gradient",
         appearance: "outline",
-        className:
-          "border border-cyan-300/45 bg-transparent text-cyan-100 backdrop-blur-sm hover:bg-[linear-gradient(120deg,#22d3ee,#3b82f6,#8b5cf6,#ec4899)] hover:text-white"
+        className: "border border-basil/40 bg-surface text-basil-deep hover:bg-basil-soft"
       },
       {
         color: "success",
         appearance: "outline",
-        className:
-          "border border-emerald-300/50 bg-transparent text-emerald-200 backdrop-blur-sm hover:bg-emerald-500/80 hover:text-emerald-50"
-      },
-      {
-        color: "danger",
-        appearance: "outline",
-        className:
-          "border border-rose-300/45 bg-transparent text-rose-100 backdrop-blur-sm hover:bg-rose-500/75 hover:text-rose-50"
-      },
-      {
-        color: "white",
-        appearance: "outline",
-        className: "border border-white/35 bg-transparent text-slate-100 backdrop-blur-sm hover:bg-white/16"
+        className: "border border-basil/40 bg-surface text-basil-deep hover:bg-basil-soft"
       },
       {
         color: "gradient",
         appearance: "transparent",
-        className:
-          "border border-transparent bg-transparent text-cyan-100 hover:bg-[linear-gradient(120deg,#22d3ee,#3b82f6,#8b5cf6,#ec4899)] hover:text-white"
+        className: "bg-transparent text-basil-deep hover:bg-basil-soft"
       },
       {
         color: "success",
         appearance: "transparent",
-        className: "border border-transparent bg-transparent text-emerald-200 hover:bg-emerald-500/80 hover:text-emerald-50"
+        className: "bg-transparent text-basil-deep hover:bg-basil-soft"
+      },
+
+      // ── danger / tomato ──
+      {
+        color: "danger",
+        appearance: "full",
+        className: "bg-tomato text-white hover:bg-tomato-deep"
+      },
+      {
+        color: "danger",
+        appearance: "outline",
+        className: "border border-tomato/40 bg-surface text-tomato-deep hover:bg-tomato-soft"
       },
       {
         color: "danger",
         appearance: "transparent",
-        className: "border border-transparent bg-transparent text-rose-100 hover:bg-rose-500/75 hover:text-rose-50"
+        className: "bg-transparent text-tomato-deep hover:bg-tomato-soft"
+      },
+
+      // ── neutral ──
+      {
+        color: "white",
+        appearance: "full",
+        className: "border border-line bg-surface text-ink shadow-card hover:bg-paper-deep"
+      },
+      {
+        color: "white",
+        appearance: "outline",
+        className: "border border-line-strong bg-transparent text-ink hover:bg-surface"
       },
       {
         color: "white",
         appearance: "transparent",
-        className: "border border-transparent bg-transparent text-slate-100 hover:bg-white/16"
+        className: "bg-transparent text-ink-soft hover:bg-ink/6 hover:text-ink"
       }
     ],
     defaultVariants: {
@@ -133,21 +130,28 @@ const buttonClassName = cva(
   }
 );
 
-const buttonForegroundClassName = cva("relative z-10");
-
 const buttonIconClassName = cva("inline-flex shrink-0 items-center justify-center", {
   variants: {
     size: {
       xs: "[&_svg]:size-4 [&_.lord-icon-wrapper]:size-4",
       sm: "[&_svg]:size-5 [&_.lord-icon-wrapper]:size-5",
       md: "[&_svg]:size-6 [&_.lord-icon-wrapper]:size-6",
-      lg: "[&_svg]:size-10 [&_.lord-icon-wrapper]:size-10"
+      lg: "[&_svg]:size-8 [&_.lord-icon-wrapper]:size-8"
     }
   },
   defaultVariants: {
     size: "md"
   }
 });
+
+function iconColorsFor(color: ButtonColor, appearance: ButtonAppearance): string {
+  if (appearance === "full") {
+    return color === "white" ? INK_ICON_COLORS : WHITE_ICON_COLORS;
+  }
+  if (color === "danger") return TOMATO_ICON_COLORS;
+  if (color === "white") return INK_ICON_COLORS;
+  return BASIL_ICON_COLORS;
+}
 
 type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
   children?: ReactNode;
@@ -161,6 +165,14 @@ type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
   iconOnly?: boolean;
 };
 
+type IconElementProps = {
+  animate?: boolean | string;
+  animation?: string;
+  animateOnHover?: boolean | string;
+  target?: string;
+  colors?: string;
+};
+
 export function Button({
   children,
   className,
@@ -168,7 +180,7 @@ export function Button({
   appearance,
   size = "md",
   stretch = false,
-  tapScale = 0.95,
+  tapScale = 0.96,
   icon,
   iconPosition = "start",
   iconOnly = false,
@@ -180,31 +192,28 @@ export function Button({
   const buttonLabel = props["aria-label"] ?? (showOnlyIcon && typeof props.title === "string" ? props.title : undefined);
   const resolvedColor: ButtonColor = color ?? "gradient";
   const resolvedAppearance: ButtonAppearance = appearance ?? "full";
-  const isGradientFull = resolvedColor === "gradient" && resolvedAppearance === "full";
-  type IconElementProps = {
-    animate?: boolean | string;
-    animation?: string;
-    animateOnHover?: boolean | string;
-    target?: string;
-  };
+
   const resolvedIcon = isValidElement(icon)
     ? cloneElement(icon as ReactElement<IconElementProps>, {
         animate: Boolean((icon as ReactElement<IconElementProps>).props.animate),
         animateOnHover: (icon as ReactElement<IconElementProps>).props.animateOnHover ?? true,
         animation: (icon as ReactElement<IconElementProps>).props.animation ?? "default",
-        target: (icon as ReactElement<IconElementProps>).props.target ?? "button"
+        target: (icon as ReactElement<IconElementProps>).props.target ?? "button",
+        colors: (icon as ReactElement<IconElementProps>).props.colors ?? iconColorsFor(resolvedColor, resolvedAppearance)
       })
     : icon;
+
+  const iconSlot = icon ? (
+    <span aria-hidden className={buttonIconClassName({ size })}>
+      {resolvedIcon}
+    </span>
+  ) : null;
 
   return (
     <motion.button
       whileTap={isDisabled ? undefined : { scale: tapScale }}
-      onHoverStart={(event, info) => {
-        onHoverStart?.(event, info);
-      }}
-      onHoverEnd={(event, info) => {
-        onHoverEnd?.(event, info);
-      }}
+      onHoverStart={(event, info) => onHoverStart?.(event, info)}
+      onHoverEnd={(event, info) => onHoverEnd?.(event, info)}
       className={cx(
         buttonClassName({
           color: resolvedColor,
@@ -218,59 +227,17 @@ export function Button({
       aria-label={buttonLabel}
       {...restProps}
     >
-      {isGradientFull ? (
-        <>
-          <span aria-hidden className="absolute inset-0 bg-[linear-gradient(120deg,#22d3ee,#3b82f6,#8b5cf6,#ec4899)]" />
-          <span className="pointer-events-none absolute inset-0 bg-white/0 transition group-hover:bg-white/10" />
-          <span className={cx(buttonForegroundClassName(), "inline-flex items-center", showOnlyIcon ? "justify-center" : "gap-2")}>
-            {showOnlyIcon ? (
-              icon ? (
-                <span aria-hidden className={buttonIconClassName({ size })}>
-                  {resolvedIcon}
-                </span>
-              ) : null
-            ) : (
-              <>
-                {icon && iconPosition === "start" ? (
-                  <span aria-hidden className={buttonIconClassName({ size })}>
-                    {resolvedIcon}
-                  </span>
-                ) : null}
-                {children}
-                {icon && iconPosition === "end" ? (
-                  <span aria-hidden className={buttonIconClassName({ size })}>
-                    {resolvedIcon}
-                  </span>
-                ) : null}
-              </>
-            )}
-          </span>
-        </>
-      ) : (
-        <span className={cx(buttonForegroundClassName(), "inline-flex items-center", showOnlyIcon ? "justify-center" : "gap-2")}>
-          {showOnlyIcon ? (
-            icon ? (
-              <span aria-hidden className={buttonIconClassName({ size })}>
-                {resolvedIcon}
-              </span>
-            ) : null
-          ) : (
-            <>
-              {icon && iconPosition === "start" ? (
-                <span aria-hidden className={buttonIconClassName({ size })}>
-                  {resolvedIcon}
-                </span>
-              ) : null}
-              {children}
-              {icon && iconPosition === "end" ? (
-                <span aria-hidden className={buttonIconClassName({ size })}>
-                  {resolvedIcon}
-                </span>
-              ) : null}
-            </>
-          )}
-        </span>
-      )}
+      <span className={cx("inline-flex items-center", showOnlyIcon ? "justify-center" : "gap-2")}>
+        {showOnlyIcon ? (
+          iconSlot
+        ) : (
+          <>
+            {iconPosition === "start" ? iconSlot : null}
+            {children}
+            {iconPosition === "end" ? iconSlot : null}
+          </>
+        )}
+      </span>
     </motion.button>
   );
 }

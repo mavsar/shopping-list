@@ -2,7 +2,7 @@ import { motion } from "motion/react";
 import { cva, cx } from "class-variance-authority";
 import { type ChangeEvent, type InputHTMLAttributes, type ReactNode, useEffect, useState } from "react";
 
-const checkboxRootClassName = cva("inline-flex items-center gap-2 text-sm text-slate-200", {
+const checkboxRootClassName = cva("inline-flex items-center gap-2.5 text-sm text-ink", {
   variants: {
     disabled: {
       true: "cursor-default opacity-70",
@@ -15,16 +15,16 @@ const checkboxRootClassName = cva("inline-flex items-center gap-2 text-sm text-s
 });
 
 const checkboxBoxClassName = cva(
-  "inline-flex items-center justify-center rounded-md border backdrop-blur-sm transition",
+  "inline-flex items-center justify-center rounded-md border transition",
   {
     variants: {
       uiSize: {
-        md: "h-4 w-4",
-        lg: "h-5 w-5"
+        md: "h-5 w-5",
+        lg: "h-6 w-6"
       },
       checked: {
-        true: "border-cyan-300/70 bg-cyan-400/25 text-cyan-100",
-        false: "border-slate-400/40 bg-slate-950/85 text-transparent"
+        true: "border-basil bg-basil text-white",
+        false: "border-line-strong bg-surface text-transparent"
       },
       disabled: {
         true: "",

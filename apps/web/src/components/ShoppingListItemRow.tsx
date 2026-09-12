@@ -3,9 +3,9 @@ import { memo } from 'react';
 
 import { getItemUnitLabel, ShoppingListItem } from '../types/lists';
 import { CompletionCircleToggle } from './CompletionCircleToggle';
-import { ItemCategoryIcon } from './ItemCategoryIcon';
+import { getItemCategoryColors, ItemCategoryIcon } from './ItemCategoryIcon';
 import { Minus, Plus } from './lordicon/icons';
-import { Button, Card } from './ui';
+import { Button } from './ui';
 
 const SLOVENIAN_MONTHS = [
   'januar',
@@ -29,7 +29,7 @@ function formatCompletedAt(isoString: string): string {
   const year = d.getFullYear();
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${day} ${month} ${year} ob ${hours}:${minutes}`;
+  return `${day}. ${month} ${year} ob ${hours}:${minutes}`;
 }
 
 type ShoppingListItemRowProps = {
@@ -60,27 +60,38 @@ function ShoppingListItemRowComponent({
   onIncreaseQuantity,
 }: ShoppingListItemRowProps) {
   const displayTitle = formatTitle(item.title);
+  const completed = item.status === 'completed';
   const showMobileQuantityControls = !supportsHoverPointer && quantityExpanded;
   const quantityLabel = `${item.quantity} ${getItemUnitLabel(item.unit)}`;
+  const { soft } = getItemCategoryColors(item.category);
+
+  const stepperSlotClassName = cx(
+    'inline-flex shrink-0 items-center overflow-hidden transition-[width,opacity] duration-150 ease-out',
+    supportsHoverPointer
+      ? 'pointer-events-none w-0 opacity-0 group-hover/qty:pointer-events-auto group-hover/qty:w-8 group-hover/qty:opacity-100'
+      : showMobileQuantityControls
+        ? 'w-8 opacity-100'
+        : 'pointer-events-none w-0 opacity-0',
+  );
 
   return (
-    <Card
-      tone={item.status === 'completed' ? 'completed' : 'default'}
-      interactive={item.status !== 'completed'}
-      padding="none"
+    <div
+      className={cx(
+        'grid min-h-12 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-stretch',
+        completed && 'opacity-60',
+      )}
     >
-      <div className="grid min-h-14 grid-cols-[3.5rem_minmax(0,1fr)_auto] items-stretch">
         <button
           type="button"
-          className="flex h-full w-full items-center justify-center border-0 bg-transparent px-3 disabled:cursor-default disabled:opacity-50"
-          aria-label={item.status === 'completed' ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
-          aria-pressed={item.status === 'completed'}
+          className="flex h-full w-full items-center justify-center border-0 bg-transparent pl-1 disabled:cursor-default disabled:opacity-50"
+          aria-label={completed ? 'Označi kot aktivno' : 'Označi kot kupljeno'}
+          aria-pressed={completed}
           disabled={updating}
           onClick={() => onCompletionToggle(item)}
         >
           <CompletionCircleToggle
             size="sm"
-            completed={item.status === 'completed'}
+            completed={completed}
             disabled={updating}
             sparkleOnMount={sparkleOnMount}
             presentational
@@ -88,8 +99,16 @@ function ShoppingListItemRowComponent({
           />
         </button>
 
-        <div className="flex min-w-0 items-center gap-4 py-2.5 pr-2">
-          <ItemCategoryIcon category={item.category} size={30} staticDisplay />
+        <div className="flex min-w-0 items-center gap-2.5 py-1.5 pr-1">
+          <span
+            className={cx(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+              completed && 'grayscale',
+            )}
+            style={{ backgroundColor: completed ? 'transparent' : soft }}
+          >
+            <ItemCategoryIcon category={item.category} size={22} staticDisplay />
+          </span>
           <div className="min-w-0 flex-1">
             <button
               type="button"
@@ -97,34 +116,28 @@ function ShoppingListItemRowComponent({
               aria-label={`Uredi ${displayTitle}`}
               onClick={() => onOpenDetails(item)}
             >
-              <span className="block line-clamp-2 text-sm leading-4 font-semibold text-slate-50">
+              <span
+                className={cx(
+                  'block line-clamp-2 text-sm font-medium leading-4',
+                  completed ? 'text-ink-muted line-through decoration-ink-faint' : 'text-ink',
+                )}
+              >
                 {displayTitle}
               </span>
             </button>
-            {item.status === 'completed' ? (
-              <span className="mt-0.5 block text-[10px] leading-3 text-white/50">
-                Kupljeno ({formatCompletedAt(item.updatedAt)})
+            {completed ? (
+              <span className="mt-0.5 block text-[10px] leading-3 text-ink-faint">
+                Kupljeno {formatCompletedAt(item.updatedAt)}
               </span>
             ) : null}
             {item.note ? (
-              <span className="mt-0.5 block line-clamp-1 text-xs text-slate-200/90">
-                {item.note}
-              </span>
+              <span className="mt-0.5 block line-clamp-1 text-xs text-ink-muted">{item.note}</span>
             ) : null}
           </div>
         </div>
 
         <div className="group/qty flex items-center pr-2">
-          <div
-            className={cx(
-              'inline-flex shrink-0 items-center overflow-hidden transition-[width,opacity] duration-150 ease-out',
-              supportsHoverPointer
-                ? 'w-0 opacity-0 pointer-events-none group-hover/qty:w-7 group-hover/qty:opacity-100 group-hover/qty:pointer-events-auto'
-                : showMobileQuantityControls
-                  ? 'w-7 opacity-100'
-                  : 'w-0 opacity-0 pointer-events-none',
-            )}
-          >
+          <div className={stepperSlotClassName}>
             <Button
               type="button"
               color="white"
@@ -141,8 +154,9 @@ function ShoppingListItemRowComponent({
           <button
             type="button"
             className={cx(
-              'min-w-14 whitespace-nowrap rounded-lg border-0 bg-transparent px-1.5 py-1 text-center text-xs text-slate-100',
-              supportsHoverPointer ? 'cursor-default' : 'cursor-pointer hover:bg-white/10',
+              'min-w-11 whitespace-nowrap rounded-full border-0 px-2 py-0.5 text-center text-[11px] font-semibold tabular-nums',
+              completed ? 'bg-transparent text-ink-faint' : 'bg-paper-deep text-ink-soft',
+              supportsHoverPointer ? 'cursor-default' : 'cursor-pointer active:bg-line',
             )}
             aria-label={`Količina za ${displayTitle}`}
             aria-expanded={showMobileQuantityControls}
@@ -151,16 +165,7 @@ function ShoppingListItemRowComponent({
             {quantityLabel}
           </button>
 
-          <div
-            className={cx(
-              'inline-flex shrink-0 items-center overflow-hidden transition-[width,opacity] duration-150 ease-out',
-              supportsHoverPointer
-                ? 'w-0 opacity-0 pointer-events-none group-hover/qty:w-7 group-hover/qty:opacity-100 group-hover/qty:pointer-events-auto'
-                : showMobileQuantityControls
-                  ? 'w-7 opacity-100'
-                  : 'w-0 opacity-0 pointer-events-none',
-            )}
-          >
+          <div className={stepperSlotClassName}>
             <Button
               type="button"
               color="white"
@@ -174,8 +179,7 @@ function ShoppingListItemRowComponent({
             />
           </div>
         </div>
-      </div>
-    </Card>
+    </div>
   );
 }
 

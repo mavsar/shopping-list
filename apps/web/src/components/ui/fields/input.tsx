@@ -3,15 +3,15 @@ import type { InputHTMLAttributes } from "react";
 import { cva, cx } from "class-variance-authority";
 
 const inputClassName = cva(
-  "rounded-2xl border border-white/20 bg-slate-950/45 px-3 py-2 text-slate-50 backdrop-blur-sm outline-none transition focus:border-cyan-300/75 focus:ring-1 focus:ring-inset focus:ring-cyan-300/30 disabled:cursor-default disabled:opacity-60",
+  "rounded-2xl border border-line bg-surface px-3 py-2 text-ink placeholder:text-ink-faint outline-none transition focus:border-basil focus:ring-2 focus:ring-inset focus:ring-basil/15 disabled:cursor-default disabled:opacity-60",
   {
     variants: {
       size: {
-        md: "h-10 text-base md:text-sm",
-        lg: "h-12 px-4 py-2.5 text-base"
+        md: "h-11 text-base md:h-10 md:text-sm",
+        lg: "h-13 px-4 py-2.5 text-base"
       },
       invalid: {
-        true: "border-rose-300/65 focus:border-rose-300/75 focus:ring-rose-300/35",
+        true: "border-tomato/60 focus:border-tomato focus:ring-tomato/25",
         false: ""
       }
     },

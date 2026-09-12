@@ -7,6 +7,9 @@ export type ShoppingList = {
   isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Present on GET /api/lists only. */
+  activeCount?: number;
+  completedCount?: number;
 };
 
 export const itemUnitValues = [

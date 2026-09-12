@@ -4,8 +4,8 @@ import type { HTMLAttributes, ReactNode } from "react";
 const headingClassName = cva("font-semibold tracking-tight", {
   variants: {
     color: {
-      white: "text-slate-50",
-      gradient: "bg-linear-to-r from-cyan-300 via-blue-300 to-fuchsia-300 bg-clip-text text-transparent"
+      white: "text-ink",
+      gradient: "bg-linear-to-r from-basil-deep via-basil to-carrot bg-clip-text text-transparent"
     }
   },
   defaultVariants: {

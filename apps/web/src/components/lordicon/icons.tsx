@@ -1,4 +1,4 @@
-import { LordIcon } from "./lord-icon";
+import { LordIcon, type LordIconTrigger } from "./lord-icon";
 
 type IconProps = {
   className?: string;
@@ -7,6 +7,9 @@ type IconProps = {
   animateOnHover?: boolean | string;
   animation?: string;
   target?: string;
+  /** Lordicon tint, e.g. "primary:#fff,secondary:#fff". Defaults to ink. */
+  colors?: string;
+  trigger?: LordIconTrigger;
 };
 
 export function Plus(props: IconProps) {
@@ -79,3 +82,31 @@ export function Sad(props: IconProps) {
   return <LordIcon src="/lordicon/sad.json" {...props} />;
 }
 
+
+export function ChevronDown(props: IconProps) {
+  return <LordIcon src="/lordicon/chevron-down.json" {...props} />;
+}
+
+export function ChevronRight(props: IconProps) {
+  return <LordIcon src="/lordicon/chevron-right.json" {...props} />;
+}
+
+export function ArrowRight(props: IconProps) {
+  return <LordIcon src="/lordicon/arrow-right.json" {...props} />;
+}
+
+export function Refresh(props: IconProps) {
+  return <LordIcon src="/lordicon/refresh.json" {...props} />;
+}
+
+export function Camera(props: IconProps) {
+  return <LordIcon src="/lordicon/camera.json" {...props} />;
+}
+
+export function Copy(props: IconProps) {
+  return <LordIcon src="/lordicon/copy.json" {...props} />;
+}
+
+export function ThumbUp(props: IconProps) {
+  return <LordIcon src="/lordicon/thumb-up.json" {...props} />;
+}

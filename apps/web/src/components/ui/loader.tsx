@@ -12,7 +12,7 @@ const loaderContainerClassName = cva("", {
   }
 });
 
-const loaderContentClassName = cva("m-0 flex items-center gap-2 text-xs text-slate-300");
+const loaderContentClassName = cva("m-0 flex items-center gap-2 text-xs text-ink-muted");
 
 type LoaderProps = {
   label?: string;
@@ -23,7 +23,7 @@ export function Loader({ label = "Nalaganje...", placement = "inline" }: LoaderP
   return (
     <div className={loaderContainerClassName({ placement })} role="status" aria-live="polite" aria-busy="true">
       <p className={loaderContentClassName()}>
-        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-300/60 border-t-transparent" aria-hidden />
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" aria-hidden />
         {label}
       </p>
     </div>

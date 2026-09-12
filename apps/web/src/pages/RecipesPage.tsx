@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
+import { Fab } from '../components/Fab';
 import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
 import { Edit, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
@@ -99,7 +100,7 @@ function scaleIngredientText(ingredient: string, scale: number): string {
 
 function SourceBadge({ source }: { source: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-200">
+    <span className="inline-flex items-center rounded-full bg-paper-deep px-2 py-0.5 text-[10px] font-medium tracking-wide text-ink-muted">
       {source}
     </span>
   );
@@ -116,10 +117,10 @@ function RecipeResultCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full cursor-pointer gap-4 rounded-2xl border border-white/10 bg-white/4 p-4 text-left transition-all duration-200 hover:border-white/20 hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+      className="group flex w-full cursor-pointer gap-3 rounded-2xl border border-line bg-surface p-3 text-left shadow-card transition-all duration-200 hover:border-basil/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
     >
       {result.imageUrl && (
-        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/10">
+        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-line">
           <img
             src={result.imageUrl}
             alt=""
@@ -132,11 +133,11 @@ function RecipeResultCard({
         </div>
       )}
       <div className="min-w-0 flex-1 space-y-1.5">
-        <p className="truncate text-sm font-semibold text-slate-100 group-hover:text-white">
+        <p className="truncate text-sm font-semibold text-ink group-hover:text-ink">
           {result.title}
         </p>
         {result.description && (
-          <p className="line-clamp-2 text-xs leading-relaxed text-slate-400">
+          <p className="line-clamp-2 text-xs leading-relaxed text-ink-muted">
             {result.description}
           </p>
         )}
@@ -260,11 +261,11 @@ function ChooseListDialog({
     >
       <div className="space-y-4">
         {listsLoading ? (
-          <p className="text-sm text-slate-400">Nalagam sezname…</p>
+          <p className="text-sm text-ink-muted">Nalagam sezname…</p>
         ) : lists.length === 0 ? (
-          <p className="text-sm text-slate-400">Nimaš nakupovalnih seznamov.</p>
+          <p className="text-sm text-ink-muted">Nimaš nakupovalnih seznamov.</p>
         ) : (
-          <label className="grid gap-1.5 text-sm text-slate-200">
+          <label className="grid gap-1.5 text-sm text-ink-soft">
             Nakupovalni seznam
             <Select
               value={selectedId ? String(selectedId) : ''}
@@ -322,13 +323,13 @@ function SimilarItemDialog({
         </>
       }
     >
-      <div className="space-y-3 text-sm text-slate-300">
+      <div className="space-y-3 text-sm text-ink-soft">
         <p>
-          Dodajaš <strong className="text-slate-100">{ingredientName}</strong>, na seznamu pa že
-          obstaja podobna sestavina <strong className="text-slate-100">{existingTitle}</strong>.
+          Dodajaš <strong className="text-ink">{ingredientName}</strong>, na seznamu pa že
+          obstaja podobna sestavina <strong className="text-ink">{existingTitle}</strong>.
         </p>
-        {suggestion && <p className="text-xs text-slate-400">{suggestion}</p>}
-        <p className="text-slate-400">Kaj želiš narediti?</p>
+        {suggestion && <p className="text-xs text-ink-muted">{suggestion}</p>}
+        <p className="text-ink-muted">Kaj želiš narediti?</p>
       </div>
     </Dialog>
   );
@@ -368,10 +369,10 @@ function UnitConflictDialog({
         </>
       }
     >
-      <p className="text-sm text-slate-300">
-        Sestavina <strong className="text-slate-100">{ingredientTitle}</strong> je na seznamu že v
-        enoti <strong className="text-slate-100">{existingUnit}</strong>, dodajaš pa v enoti{' '}
-        <strong className="text-slate-100">{newUnit}</strong>. Želiš vseeno dodati?
+      <p className="text-sm text-ink-soft">
+        Sestavina <strong className="text-ink">{ingredientTitle}</strong> je na seznamu že v
+        enoti <strong className="text-ink">{existingUnit}</strong>, dodajaš pa v enoti{' '}
+        <strong className="text-ink">{newUnit}</strong>. Želiš vseeno dodati?
       </p>
     </Dialog>
   );
@@ -402,7 +403,7 @@ function AnimatedStepsLoader({
     <div className="flex flex-col items-center gap-4 text-center">
       <span
         className={cx(
-          'animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400',
+          'animate-spin rounded-full border-2 border-basil/30 border-t-basil',
           size === 'sm' ? 'h-5 w-5' : 'h-8 w-8',
         )}
       />
@@ -411,7 +412,7 @@ function AnimatedStepsLoader({
           <AnimatePresence mode="wait">
             <motion.p
               key={stepIndex}
-              className={cx(size === 'sm' ? 'text-xs text-slate-300' : 'text-sm text-slate-300')}
+              className={cx(size === 'sm' ? 'text-xs text-ink-soft' : 'text-sm text-ink-soft')}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -421,7 +422,7 @@ function AnimatedStepsLoader({
             </motion.p>
           </AnimatePresence>
         </div>
-        {secondaryMessage && <p className="text-xs text-slate-500">{secondaryMessage}</p>}
+        {secondaryMessage && <p className="text-xs text-ink-muted">{secondaryMessage}</p>}
         {steps.length > 1 && (
           <div className="flex items-center gap-1.5 pt-0.5">
             {steps.map((_, i) => (
@@ -429,7 +430,7 @@ function AnimatedStepsLoader({
                 key={i}
                 className={cx(
                   'rounded-full transition-all duration-500',
-                  i === stepIndex ? 'h-1.5 w-3 bg-cyan-400' : 'h-1.5 w-1.5 bg-slate-600',
+                  i === stepIndex ? 'h-1.5 w-3 bg-basil' : 'h-1.5 w-1.5 bg-line-strong',
                 )}
               />
             ))}
@@ -570,11 +571,11 @@ function InlineItemCombobox({
             if (open) setQuery(e.target.value);
           }}
           disabled={disabled}
-          className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3 py-1.5 pr-7 text-xs text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-1 focus:ring-cyan-300/25 disabled:opacity-50"
+          className="w-full rounded-xl border border-line bg-surface px-3 py-1.5 pr-7 text-xs text-ink-soft outline-none transition focus:border-basil focus:ring-1 focus:ring-basil/20 disabled:opacity-50"
         />
         <svg
           aria-hidden
-          className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+          className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-muted"
           viewBox="0 0 20 20"
           fill="none"
         >
@@ -592,40 +593,40 @@ function InlineItemCombobox({
           <div
             ref={dropdownRef}
             style={dropdownStyle}
-            className="overflow-hidden rounded-xl border border-white/15 bg-slate-900 shadow-2xl"
+            className="overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
           >
             <div className="max-h-56 overflow-y-auto">
               <button
                 type="button"
                 onMouseDown={() => select('new')}
                 className={cx(
-                  'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
-                  value === 'new' ? 'bg-cyan-500/10 text-cyan-300' : 'text-slate-300',
+                  'w-full px-3 py-2 text-left text-xs transition hover:bg-paper-deep',
+                  value === 'new' ? 'bg-basil-soft text-basil-deep' : 'text-ink-soft',
                 )}
               >
                 <span className="font-medium">+ Dodaj novo:</span>{' '}
-                <span className="text-slate-400">
+                <span className="text-ink-muted">
                   {parsedTitle} · {parsedQuantity} {parsedUnit}
                 </span>
               </button>
-              {listItems.length > 0 && <div className="mx-2 border-t border-white/8" />}
+              {listItems.length > 0 && <div className="mx-2 border-t border-line" />}
               {filtered.map((li) => (
                 <button
                   key={li.id}
                   type="button"
                   onMouseDown={() => select(String(li.id))}
                   className={cx(
-                    'w-full px-3 py-2 text-left text-xs transition hover:bg-white/8',
+                    'w-full px-3 py-2 text-left text-xs transition hover:bg-paper-deep',
                     String(li.id) === value
-                      ? 'bg-emerald-500/10 text-emerald-300'
-                      : 'text-slate-300',
+                      ? 'bg-basil-soft text-basil-deep'
+                      : 'text-ink-soft',
                   )}
                 >
                   {li.title}
                 </button>
               ))}
               {filtered.length === 0 && query && (
-                <p className="px-3 py-2.5 text-xs text-slate-500">Ni zadetkov za „{query}"</p>
+                <p className="px-3 py-2.5 text-xs text-ink-muted">Ni zadetkov za „{query}"</p>
               )}
             </div>
           </div>,
@@ -691,18 +692,18 @@ function BulkAddReviewDialog({
           const hasUnitConflict =
             item.match?.type === 'unit_conflict' && item.selectedValue !== 'new';
           return (
-            <li key={i} className="rounded-xl border border-white/10 bg-white/4 p-3">
+            <li key={i} className="rounded-xl border border-line bg-surface p-3">
               <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:gap-4">
                 {/* Left: ingredient as in recipe */}
                 <div className="min-w-0 flex-1">
-                  <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-slate-500">
+                  <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-ink-muted">
                     Sestavina
                   </p>
-                  <p className="text-sm leading-snug text-slate-200">{item.scaled}</p>
+                  <p className="text-sm leading-snug text-ink-soft">{item.scaled}</p>
                 </div>
                 {/* Right: searchable combobox to pick a list item */}
                 <div className="shrink-0 sm:min-w-[220px]">
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-slate-500">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-ink-muted">
                     Doda v seznam
                   </p>
                   <InlineItemCombobox
@@ -715,7 +716,7 @@ function BulkAddReviewDialog({
                     disabled={busy}
                   />
                   {hasUnitConflict && (
-                    <p className="mt-1 text-[10px] text-amber-400/80">
+                    <p className="mt-1 text-[10px] text-carrot">
                       Enota: {item.parsed.unit} (seznam: {item.match!.listItemUnit})
                     </p>
                   )}
@@ -1163,7 +1164,7 @@ function RecipeDetailModal({
       >
         <div className="space-y-5">
           {recipe.imageUrl && !imageBroken ? (
-            <div className="overflow-hidden rounded-2xl border border-white/10">
+            <div className="overflow-hidden rounded-2xl border border-line">
               <img
                 src={recipe.imageUrl}
                 alt={recipe.title}
@@ -1172,23 +1173,23 @@ function RecipeDetailModal({
               />
             </div>
           ) : (
-            <div className="flex h-56 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/4 text-sm text-slate-500">
+            <div className="flex h-56 w-full items-center justify-center rounded-2xl border border-line bg-surface text-sm text-ink-muted">
               Ni slike
             </div>
           )}
 
           {recipe.description && (
-            <p className="text-sm leading-relaxed text-slate-300">{recipe.description}</p>
+            <p className="text-sm leading-relaxed text-ink-soft">{recipe.description}</p>
           )}
 
           {saved && labels && labels.length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-2">
-                <h4 className="text-sm font-semibold uppercase tracking-widest text-slate-400">
+                <h4 className="text-sm font-semibold uppercase tracking-widest text-ink-muted">
                   Oznake
                 </h4>
                 {labelSaving && (
-                  <span className="h-3 w-3 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                  <span className="h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" />
                 )}
               </div>
               <div className="flex flex-wrap gap-3">
@@ -1209,32 +1210,32 @@ function RecipeDetailModal({
           {hasMeta && (
             <div className="flex flex-wrap gap-3">
               {recipe.prepTime && (
-                <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                <div className="flex flex-col items-center rounded-xl border border-line bg-surface px-4 py-2 text-center">
+                  <span className="text-[10px] uppercase tracking-widest text-ink-muted">
                     Priprava
                   </span>
-                  <span className="text-sm font-semibold text-slate-200">{recipe.prepTime}</span>
+                  <span className="text-sm font-semibold text-ink-soft">{recipe.prepTime}</span>
                 </div>
               )}
               {recipe.cookTime && (
-                <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                <div className="flex flex-col items-center rounded-xl border border-line bg-surface px-4 py-2 text-center">
+                  <span className="text-[10px] uppercase tracking-widest text-ink-muted">
                     Kuhanje
                   </span>
-                  <span className="text-sm font-semibold text-slate-200">{recipe.cookTime}</span>
+                  <span className="text-sm font-semibold text-ink-soft">{recipe.cookTime}</span>
                 </div>
               )}
               {recipe.totalTime && (
-                <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                <div className="flex flex-col items-center rounded-xl border border-line bg-surface px-4 py-2 text-center">
+                  <span className="text-[10px] uppercase tracking-widest text-ink-muted">
                     Skupaj
                   </span>
-                  <span className="text-sm font-semibold text-slate-200">{recipe.totalTime}</span>
+                  <span className="text-sm font-semibold text-ink-soft">{recipe.totalTime}</span>
                 </div>
               )}
               {recipe.servings && (
-                <div className="flex flex-col items-center rounded-xl border border-white/10 bg-white/4 px-3 py-2 text-center">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">
+                <div className="flex flex-col items-center rounded-xl border border-line bg-surface px-3 py-2 text-center">
+                  <span className="text-[10px] uppercase tracking-widest text-ink-muted">
                     Porcije
                   </span>
                   <div className="flex items-center gap-1.5">
@@ -1243,18 +1244,18 @@ function RecipeDetailModal({
                       aria-label="Zmanjšaj porcije"
                       disabled={servingSize <= 1}
                       onClick={() => setServingSize((s) => Math.max(1, s - 1))}
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30"
+                      className="flex h-5 w-5 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-soft transition hover:border-basil/50 hover:bg-basil-soft hover:text-basil-deep disabled:cursor-default disabled:opacity-30"
                     >
                       <Minus size={10} />
                     </button>
-                    <span className="min-w-[1.5rem] text-center text-sm font-semibold text-slate-200">
+                    <span className="min-w-[1.5rem] text-center text-sm font-semibold text-ink-soft">
                       {servingSize}
                     </span>
                     <button
                       type="button"
                       aria-label="Poveča porcije"
                       onClick={() => setServingSize((s) => s + 1)}
-                      className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300"
+                      className="flex h-5 w-5 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-soft transition hover:border-basil/50 hover:bg-basil-soft hover:text-basil-deep"
                     >
                       <Plus size={10} />
                     </button>
@@ -1267,31 +1268,31 @@ function RecipeDetailModal({
           {/* Serving size control when recipe has no servings meta */}
           {!recipe.servings && (
             <div className="flex items-center gap-3">
-              <span className="text-xs uppercase tracking-widest text-slate-500">Porcije</span>
+              <span className="text-xs uppercase tracking-widest text-ink-muted">Porcije</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   aria-label="Zmanjšaj porcije"
                   disabled={servingSize <= 1}
                   onClick={() => setServingSize((s) => Math.max(1, s - 1))}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30"
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-soft transition hover:border-basil/50 hover:bg-basil-soft hover:text-basil-deep disabled:cursor-default disabled:opacity-30"
                 >
                   <Minus size={12} />
                 </button>
-                <span className="min-w-[1.5rem] text-center text-sm font-semibold text-slate-200">
+                <span className="min-w-[1.5rem] text-center text-sm font-semibold text-ink-soft">
                   {servingSize}
                 </span>
                 <button
                   type="button"
                   aria-label="Povečaj porcije"
                   onClick={() => setServingSize((s) => s + 1)}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300"
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-soft transition hover:border-basil/50 hover:bg-basil-soft hover:text-basil-deep"
                 >
                   <Plus size={12} />
                 </button>
               </div>
               {scale !== 1 && (
-                <span className="text-xs text-cyan-400/70">
+                <span className="text-xs text-basil">
                   ×{scale % 1 === 0 ? scale : scale.toFixed(1)}
                 </span>
               )}
@@ -1303,7 +1304,7 @@ function RecipeDetailModal({
               <button
                 type="button"
                 onClick={handleStartEditContent}
-                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-ink-muted hover:text-ink hover:underline"
               >
                 <Edit size={12} />
                 Uredi sestavine in postopek
@@ -1314,7 +1315,7 @@ function RecipeDetailModal({
           {editingContent ? (
             <section className="space-y-5">
               <div>
-                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-ink-muted">
                   Sestavine
                 </h4>
                 <div className="space-y-2">
@@ -1334,7 +1335,7 @@ function RecipeDetailModal({
                         type="button"
                         aria-label="Odstrani sestavino"
                         onClick={() => setDraftIngredients((prev) => prev.filter((_, idx) => idx !== i))}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-muted transition hover:border-tomato/50 hover:bg-tomato-soft hover:text-tomato-deep"
                       >
                         <X size={12} />
                       </button>
@@ -1344,7 +1345,7 @@ function RecipeDetailModal({
                 <button
                   type="button"
                   onClick={() => setDraftIngredients((prev) => [...prev, ''])}
-                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-basil-deep hover:underline"
                 >
                   <Plus size={10} />
                   Dodaj sestavino
@@ -1352,13 +1353,13 @@ function RecipeDetailModal({
               </div>
 
               <div>
-                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-ink-muted">
                   Postopek
                 </h4>
                 <div className="space-y-2">
                   {draftInstructions.map((step, i) => (
                     <div key={i} className="flex items-start gap-2">
-                      <span className="mt-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                      <span className="mt-2.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-basil-soft text-[10px] font-bold text-basil-deep">
                         {i + 1}
                       </span>
                       <Textarea
@@ -1376,7 +1377,7 @@ function RecipeDetailModal({
                         type="button"
                         aria-label="Odstrani korak"
                         onClick={() => setDraftInstructions((prev) => prev.filter((_, idx) => idx !== i))}
-                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-300"
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-paper-deep text-ink-muted transition hover:border-tomato/50 hover:bg-tomato-soft hover:text-tomato-deep"
                       >
                         <X size={12} />
                       </button>
@@ -1386,14 +1387,14 @@ function RecipeDetailModal({
                 <button
                   type="button"
                   onClick={() => setDraftInstructions((prev) => [...prev, ''])}
-                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
+                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-basil-deep hover:underline"
                 >
                   <Plus size={10} />
                   Dodaj korak
                 </button>
               </div>
 
-              {contentError && <p className="text-xs text-rose-400">{contentError}</p>}
+              {contentError && <p className="text-xs text-tomato-deep">{contentError}</p>}
 
               <div className="flex gap-2">
                 <Button
@@ -1425,7 +1426,7 @@ function RecipeDetailModal({
                 <section>
                   <div className="mb-2.5 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold uppercase tracking-widest text-slate-400">
+                      <h4 className="text-sm font-semibold uppercase tracking-widest text-ink-muted">
                         Sestavine
                       </h4>
                       {!isAddBusy && recipe.ingredients.some((ing) => !addedItems.has(ing)) && (
@@ -1436,7 +1437,7 @@ function RecipeDetailModal({
                             const allChecked = available.every((ing) => checkedIngredients.has(ing));
                             setCheckedIngredients(allChecked ? new Set() : new Set(available));
                           }}
-                          className="text-[11px] text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
+                          className="text-[11px] text-ink-muted underline-offset-2 hover:text-ink hover:underline"
                         >
                           {recipe.ingredients
                             .filter((ing) => !addedItems.has(ing))
@@ -1451,22 +1452,22 @@ function RecipeDetailModal({
                         <button
                           type="button"
                           onClick={() => void handleBulkAdd(Array.from(checkedIngredients))}
-                          className="flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/25"
+                          className="flex items-center gap-1 rounded-lg border border-basil/30 bg-basil-soft px-2.5 py-1 text-xs font-medium text-basil-deep transition hover:bg-basil-soft"
                         >
                           <Plus size={10} />
                           Dodaj ({checkedIngredients.size})
                         </button>
                       )}
                       {isAddBusy && (
-                        <span className="flex items-center gap-1.5 text-xs text-cyan-400">
-                          <span className="h-3 w-3 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-400" />
+                        <span className="flex items-center gap-1.5 text-xs text-basil-deep">
+                          <span className="h-3 w-3 animate-spin rounded-full border border-basil/40 border-t-basil" />
                           {addPhase === 'checking' || addPhase === 'bulk-checking'
                             ? 'Preverjam…'
                             : 'Dodajam…'}
                         </span>
                       )}
                       {addPhase === 'error' && (
-                        <span className="text-xs text-rose-400">{addError}</span>
+                        <span className="text-xs text-tomato-deep">{addError}</span>
                       )}
                     </div>
                   </div>
@@ -1483,11 +1484,11 @@ function RecipeDetailModal({
                           key={i}
                           className={cx(
                             'flex items-center gap-2.5 rounded-xl px-2 py-1 transition',
-                            isAdded ? 'opacity-50' : 'hover:bg-white/4',
+                            isAdded ? 'opacity-50' : 'hover:bg-paper-deep',
                           )}
                         >
                           {isAdded ? (
-                            <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/60" />
+                            <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-basil" />
                           ) : (
                             <Checkbox
                               checked={isChecked}
@@ -1502,7 +1503,7 @@ function RecipeDetailModal({
                               }}
                             />
                           )}
-                          <span className="flex-1 text-sm text-slate-300">{displayText}</span>
+                          <span className="flex-1 text-sm text-ink-soft">{displayText}</span>
                           <button
                             type="button"
                             aria-label={isAdded ? 'Dodano' : `Dodaj "${ing}" v seznam`}
@@ -1511,10 +1512,10 @@ function RecipeDetailModal({
                             className={cx(
                               'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition',
                               isAdded
-                                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-400 cursor-default'
+                                ? 'border-basil/40 bg-basil-soft text-basil-deep cursor-default'
                                 : isCurrent
-                                  ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
-                                  : 'border-white/10 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-300 disabled:cursor-default disabled:opacity-30',
+                                  ? 'border-basil/40 bg-basil-soft text-basil-deep'
+                                  : 'border-line bg-paper-deep text-ink-muted hover:border-basil/50 hover:bg-basil-soft hover:text-basil-deep disabled:cursor-default disabled:opacity-30',
                             )}
                           >
                             {isAdded ? (
@@ -1530,7 +1531,7 @@ function RecipeDetailModal({
                                 <path d="M3 7.2L5.6 9.6L11 4.3" />
                               </svg>
                             ) : isCurrent ? (
-                              <span className="h-2.5 w-2.5 animate-spin rounded-full border border-cyan-400/40 border-t-cyan-300" />
+                              <span className="h-2.5 w-2.5 animate-spin rounded-full border border-basil/40 border-t-basil" />
                             ) : (
                               <Plus size={10} />
                             )}
@@ -1544,13 +1545,13 @@ function RecipeDetailModal({
 
               {recipe.instructions.length > 0 && (
                 <section>
-                  <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+                  <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-ink-muted">
                     Postopek
                   </h4>
                   <ol className="space-y-3">
                     {recipe.instructions.map((step, i) => (
-                      <li key={i} className="flex gap-3 text-sm text-slate-300">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                      <li key={i} className="flex gap-3 text-sm text-ink-soft">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-basil-soft text-[10px] font-bold text-basil-deep">
                           {i + 1}
                         </span>
                         <span className="leading-relaxed">{step}</span>
@@ -1561,7 +1562,7 @@ function RecipeDetailModal({
               )}
 
               {recipe.ingredients.length === 0 && recipe.instructions.length === 0 && (
-                <div className="rounded-xl border border-white/10 bg-white/4 p-4 text-center text-sm text-slate-400">
+                <div className="rounded-xl border border-line bg-surface p-4 text-center text-sm text-ink-muted">
                   Podrobnosti recepta niso na voljo. Odpri originalno stran za celoten recept.
                 </div>
               )}
@@ -1570,7 +1571,7 @@ function RecipeDetailModal({
 
           {galleryImages.length > 0 && (
             <section>
-              <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-slate-400">
+              <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-widest text-ink-muted">
                 Galerija
               </h4>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -1579,7 +1580,7 @@ function RecipeDetailModal({
                     key={`${img}-${i}`}
                     type="button"
                     onClick={() => setExpandedImage(img)}
-                    className="group aspect-square overflow-hidden rounded-xl border border-white/10 bg-white/4 transition-all duration-200 hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+                    className="group aspect-square overflow-hidden rounded-xl border border-line bg-surface transition-all duration-200 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
                     aria-label="Povečaj sliko"
                   >
                     <img
@@ -1603,7 +1604,7 @@ function RecipeDetailModal({
               href={recipe.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-cyan-400 underline-offset-2 hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs text-basil-deep underline-offset-2 hover:underline"
             >
               Odpri na {recipe.source}
               <svg
@@ -1623,11 +1624,11 @@ function RecipeDetailModal({
                 type="button"
                 onClick={() => void handleRefetchImages()}
                 disabled={refetchingImages}
-                className="inline-flex items-center gap-1.5 text-xs text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline disabled:cursor-default disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline disabled:cursor-default disabled:opacity-60"
               >
                 {refetchingImages && (
                   <span
-                    className="h-3 w-3 animate-spin rounded-full border border-slate-400/60 border-t-transparent"
+                    className="h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-transparent"
                     aria-hidden
                   />
                 )}
@@ -1808,10 +1809,10 @@ function SourceChip({
       aria-pressed={selected}
       title={`${source.domain} — dvojni klik ali dolg pritisk: išči samo tukaj`}
       className={cx(
-        'select-none rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45',
+        'select-none rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40',
         selected
-          ? 'border-cyan-300/60 bg-cyan-400/20 text-cyan-50'
-          : 'border-white/10 bg-white/4 text-slate-400 hover:border-white/25 hover:text-slate-200',
+          ? 'border-basil bg-basil-soft text-basil-deep'
+          : 'border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
       )}
       style={{ WebkitTouchCallout: 'none' }}
       onPointerDown={(e) => {
@@ -1861,14 +1862,14 @@ function RecipeSourcePicker({
   const presetClassName = (active: boolean) =>
     cx(
       'rounded-lg px-2 py-1 text-[11px] font-medium transition-colors',
-      active ? 'bg-white/15 text-slate-100' : 'text-slate-400 hover:bg-white/8 hover:text-slate-200',
+      active ? 'bg-paper-deep text-ink' : 'text-ink-muted hover:bg-paper-deep hover:text-ink',
     );
-  const groupActionClassName = 'text-[11px] text-slate-500 transition-colors hover:text-slate-200';
+  const groupActionClassName = 'text-[11px] text-ink-muted transition-colors hover:text-ink';
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Hitro</span>
+        <span className="mr-1 text-[11px] uppercase tracking-wide text-ink-muted">Hitro</span>
         <button
           type="button"
           className={presetClassName(isExactly(allIds))}
@@ -1901,9 +1902,9 @@ function RecipeSourcePicker({
         return (
           <div key={group} className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-300">
+              <p className="text-xs font-semibold text-ink-soft">
                 {SOURCE_GROUP_LABELS[group]}{' '}
-                <span className="font-normal text-slate-500">
+                <span className="font-normal text-ink-muted">
                   {selectedCount}/{groupIds.length}
                 </span>
               </p>
@@ -1948,7 +1949,7 @@ function RecipeSourcePicker({
         );
       })}
 
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-ink-muted">
         Dvojni klik ali dolg pritisk na stran = išči samo na tej strani.
       </p>
     </div>
@@ -2200,15 +2201,14 @@ function SearchOverlay({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
-          {/* backdrop */}
+          {/* backdrop — the search is a full-screen mode, so it gets solid paper */}
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute inset-0"
-            initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
-            animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
-            exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
-            transition={{ duration: 0.24, ease: 'easeOut' }}
-            style={{ backgroundColor: 'rgba(2, 6, 23, 0.55)', WebkitBackdropFilter: 'blur(8px)' }}
+            className="paper-grain pointer-events-none absolute inset-0 bg-paper"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
           />
 
           {/* close button */}
@@ -2239,7 +2239,7 @@ function SearchOverlay({
                   <Input
                     ref={inputRef}
                     type="search"
-                    placeholder="Iskanje receptov… (npr. pica, špageti)"
+                    placeholder="Išči recept… (npr. lazanja)"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     uiSize="lg"
@@ -2263,12 +2263,12 @@ function SearchOverlay({
               <div ref={pickerRef} className="relative mx-auto mt-2 max-w-2xl">
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 text-xs text-slate-400 transition-colors hover:text-slate-200"
+                  className="flex items-center gap-1.5 text-xs text-ink-muted transition-colors hover:text-ink"
                   aria-expanded={pickerOpen}
                   onClick={() => setPickerOpen((v) => !v)}
                 >
-                  <span className="text-slate-500">Iščem na:</span>
-                  <span className="font-medium text-slate-200">{selectionSummary}</span>
+                  <span className="text-ink-muted">Iščem na:</span>
+                  <span className="font-medium text-ink-soft">{selectionSummary}</span>
                   <svg
                     viewBox="0 0 16 16"
                     className={cx(
@@ -2292,7 +2292,7 @@ function SearchOverlay({
                   {pickerOpen && sources.length > 0 && (
                     <motion.div
                       key="source-picker"
-                      className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[min(60vh,32rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-slate-900/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-md"
+                      className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[min(60vh,32rem)] overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface p-3 shadow-2xl shadow-ink/20 backdrop-blur-md"
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
@@ -2326,13 +2326,13 @@ function SearchOverlay({
                 )}
 
                 {!searching && error && (
-                  <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 p-4 text-sm text-rose-300">
+                  <div className="rounded-2xl border border-tomato/30 bg-tomato-soft p-4 text-sm text-tomato-deep">
                     {error}
                   </div>
                 )}
 
                 {!searching && searched && results.length === 0 && !error && (
-                  <div className="py-16 text-center text-sm text-slate-400">
+                  <div className="py-16 text-center text-sm text-ink-muted">
                     Ni rezultatov za &ldquo;{query}&rdquo;
                   </div>
                 )}
@@ -2340,12 +2340,12 @@ function SearchOverlay({
                 {results.length > 0 && (
                   <>
                     <div className="flex items-center justify-between pb-1">
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-ink-muted">
                         {results.length} {pluralizeResults(results.length)}
                       </p>
                       {streaming && (
-                        <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                        <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                          <span className="h-2.5 w-2.5 animate-spin rounded-full border border-ink-faint border-t-basil" />
                           Iščem in prevajam…
                         </span>
                       )}
@@ -2358,8 +2358,8 @@ function SearchOverlay({
                       />
                     ))}
                     {streaming && (
-                      <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-500">
-                        <span className="h-3 w-3 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                      <div className="flex items-center justify-center gap-2 py-4 text-xs text-ink-muted">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" />
                         Nalagam še rezultate…
                       </div>
                     )}
@@ -2369,7 +2369,7 @@ function SearchOverlay({
                 {!searching && !searched && (
                   <div className="flex flex-col items-center gap-3 py-16 text-center">
                     <ReadyToEat size={96} animate />
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-ink-muted">
                       {selectedSourceIds.size === 0
                         ? 'Izberi vsaj eno stran za iskanje'
                         : 'Vnesi ime jedi ali sestavine'}
@@ -2407,12 +2407,12 @@ function SearchOverlay({
             <div
               className="absolute inset-0"
               style={{
-                backgroundColor: 'rgba(2,6,23,0.5)',
+                backgroundColor: 'rgba(251,247,240,0.7)',
                 backdropFilter: 'blur(4px)',
                 WebkitBackdropFilter: 'blur(4px)',
               }}
             />
-            <div className="relative z-10 rounded-2xl border border-white/10 bg-slate-900/80 px-8 py-6 shadow-2xl">
+            <div className="relative z-10 rounded-2xl border border-line bg-surface px-8 py-6 shadow-2xl">
               <AnimatedStepsLoader
                 steps={[
                   'Odpiram stran recepta…',
@@ -2447,9 +2447,9 @@ function SavedRecipeCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/4 text-left transition-all duration-200 hover:border-white/20 hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card transition-all duration-200 hover:border-basil/50 hover:shadow-float focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
     >
-      <div className="aspect-[4/3] w-full overflow-hidden bg-white/5">
+      <div className="aspect-[4/3] w-full overflow-hidden bg-paper-deep">
         {recipe.imageUrl && !imgBroken ? (
           <img
             src={recipe.imageUrl}
@@ -2459,13 +2459,13 @@ function SavedRecipeCard({
             onError={() => setImgBroken(true)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-slate-600">
+          <div className="flex h-full w-full items-center justify-center text-xs text-ink-faint">
             Ni slike
           </div>
         )}
       </div>
       <div className="min-w-0 flex-1 space-y-1.5 p-3">
-        <p className="line-clamp-2 text-sm font-semibold text-slate-100 group-hover:text-white">
+        <p className="line-clamp-2 text-sm font-semibold text-ink group-hover:text-ink">
           {recipe.title}
         </p>
         <SourceBadge source={recipe.source} />
@@ -2629,43 +2629,23 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
     return savedRecipes.filter((r) => r.labelIds.includes(filterLabelId));
   }, [savedRecipes, filterLabelId]);
 
-  const headerActions = (
-    <Button
-      color="white"
-      appearance="transparent"
-      size="md"
-      type="button"
-      icon={<Search />}
-      iconOnly
-      aria-label="Iskanje receptov"
-      onClick={() => setSearchOpen(true)}
-    />
-  );
-
   return (
     <>
-      <AppHeader title="Recepti" authUser={authUser} onLogout={onLogout} actions={headerActions} />
+      <AppHeader title="Recepti" authUser={authUser} onLogout={onLogout} />
 
       {loadingSaved ? (
         <div className="flex min-h-[40vh] items-center justify-center">
           <AnimatedStepsLoader steps={['Nalagam vaše shranjene recepte…']} />
         </div>
       ) : savedRecipes.length > 0 ? (
-        <section className="flex min-h-[calc(100svh-74px-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2.5rem)] flex-col gap-4 py-6">
+        <section className="flex flex-col gap-4 py-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-100">Moji recepti</h2>
-            <Button
-              color="white"
-              appearance="outline"
-              size="sm"
-              icon={<Search />}
-              onClick={() => setSearchOpen(true)}
-            >
-              Dodaj
-            </Button>
+            <h2 className="m-0 text-base font-semibold tracking-tight text-ink">
+              Moji recepti <span className="font-normal text-ink-muted">{savedRecipes.length}</span>
+            </h2>
           </div>
           {labels.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0">
               {labels.map((label) => (
                 <RecipeLabelBadge
                   key={label.id}
@@ -2674,17 +2654,18 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
                   dot
                   active={filterLabelId === label.id}
                   onClick={() => setFilterLabelId(filterLabelId === label.id ? null : label.id)}
+                  className="shrink-0"
                 />
               ))}
             </div>
           )}
           {filterLabelId && filteredRecipes.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-              <Sad size={72} animate />
-              <p className="text-sm text-white">Ni receptov z izbrano oznako.</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <Sad size={72} animate colors="primary:#8b7c6d,secondary:#8b7c6d" />
+              <p className="m-0 text-sm text-ink-muted">Ni receptov z izbrano oznako.</p>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {filteredRecipes.map((recipe) => (
               <SavedRecipeCard
                 key={recipe.id}
@@ -2699,40 +2680,22 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
           </div>
         </section>
       ) : (
-        <section className="flex min-h-[60vh] flex-col items-center justify-center gap-6 py-16 text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-white/5">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-10 w-10 text-slate-400"
-              aria-hidden
-            >
-              <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2Z" />
-              <path d="M12 8v8M8 12h8" />
-            </svg>
-          </div>
-          <div className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight text-slate-100">Iščite recepte</h2>
-            <p className="max-w-xs text-sm text-slate-400">
-              Kliknite ikono za iskanje v zgornjem desnem kotu in poiščite priljubljene slovenske
-              recepte.
+        <section className="mt-4 flex flex-col items-center gap-4 rounded-3xl border border-dashed border-line-strong bg-surface/60 px-6 py-14 text-center">
+          <ReadyToEat size={88} animate colors="primary:#2e7a4c,secondary:#ef8a2c" />
+          <div className="space-y-2">
+            <h2 className="m-0 text-lg font-semibold tracking-tight text-ink">Tvoja kuharska knjiga je prazna</h2>
+            <p className="m-0 max-w-xs text-sm text-ink-muted">
+              Poišči recepte na slovenskih in svetovnih straneh, shrani najboljše in sestavine pošlji na
+              nakupovalni seznam.
             </p>
           </div>
-          <Button
-            color="white"
-            appearance="outline"
-            size="md"
-            icon={<Search />}
-            onClick={() => setSearchOpen(true)}
-          >
-            Iskanje receptov
+          <Button size="md" icon={<Search />} onClick={() => setSearchOpen(true)}>
+            Poišči recept
           </Button>
         </section>
       )}
+
+      <Fab icon={<Search animateOnHover />} label="Išči recepte" extended onClick={() => setSearchOpen(true)} />
 
       <SearchOverlay
         open={searchOpen}

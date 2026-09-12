@@ -6,13 +6,15 @@ import { X } from "../lordicon/icons";
 import { Button } from "./button";
 
 const dialogPanelClassName = cva(
-  "relative w-full rounded-3xl border border-white/20 bg-slate-900/85 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_24px_64px_rgba(2,8,23,0.6)] backdrop-blur-2xl",
+  "relative flex w-full flex-col border border-line bg-surface shadow-float " +
+    // phone: bottom sheet; larger: centred card
+    "rounded-t-3xl px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:rounded-3xl sm:p-5",
   {
     variants: {
       size: {
-        sm: "max-w-md",
-        md: "max-w-xl",
-        lg: "max-w-2xl"
+        sm: "sm:max-w-md",
+        md: "sm:max-w-xl",
+        lg: "sm:max-w-2xl"
       }
     },
     defaultVariants: {
@@ -45,42 +47,30 @@ export function Dialog({
   fullHeight = false
 }: DialogProps) {
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     return () => {
       document.body.style.overflow = previousBodyOverflow;
     };
   }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onOpenChange(false);
-      }
+      if (event.key === "Escape") onOpenChange(false);
     }
-
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [open, onOpenChange]);
 
-  if (typeof document === "undefined") {
-    return null;
-  }
+  if (typeof document === "undefined") return null;
 
   return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center overflow-hidden overscroll-contain p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-contain sm:items-center sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -88,36 +78,37 @@ export function Dialog({
           onClick={
             closeOnOverlayClick
               ? (event) => {
-                  if (event.target === event.currentTarget) {
-                    onOpenChange(false);
-                  }
+                  if (event.target === event.currentTarget) onOpenChange(false);
                 }
               : undefined
           }
         >
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute inset-0 bg-ink/40"
             initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-            animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
+            animate={{ opacity: 1, backdropFilter: "blur(6px)" }}
             exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-            transition={{ duration: 0.24, ease: "easeOut" }}
-            style={{ backgroundColor: "rgba(2, 6, 23, 0.55)", WebkitBackdropFilter: "blur(8px)" }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            style={{ WebkitBackdropFilter: "blur(6px)" }}
           />
           <motion.section
             role="dialog"
             aria-modal="true"
             className={cx(
               dialogPanelClassName({ size }),
-              fullHeight ? "h-[calc(100dvh-2rem)] h-[calc(100svh-2rem)]" : "max-h-[calc(100dvh-2rem)] max-h-[calc(100svh-2rem)]",
-              "flex flex-col"
+              fullHeight
+                ? "h-[calc(100dvh-2.5rem)] sm:h-[calc(100dvh-2rem)]"
+                : "max-h-[calc(100dvh-2.5rem)] sm:max-h-[calc(100dvh-2rem)]"
             )}
-            initial={{ opacity: 0, y: 14, scale: 0.96 }}
+            initial={{ opacity: 0, y: 48, scale: 1 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 270, damping: 24 }}
+            exit={{ opacity: 0, y: 32, scale: 0.99 }}
+            transition={{ type: "spring", stiffness: 320, damping: 30 }}
             onClick={(event) => event.stopPropagation()}
           >
+            {/* grab handle (phone only) */}
+            <span aria-hidden className="mx-auto -mt-2 mb-3 block h-1.5 w-10 rounded-full bg-line-strong sm:hidden" />
             <Button
               color="white"
               appearance="transparent"
@@ -126,17 +117,17 @@ export function Dialog({
               size="sm"
               type="button"
               aria-label="Zapri pogovorno okno"
-              className="absolute right-2 top-2"
+              className="absolute right-3 top-3 sm:right-2 sm:top-2"
               onClick={() => onOpenChange(false)}
             />
-            <h3 className="pr-10 text-xl font-semibold text-slate-50">{title}</h3>
-            {description ? <p className="mt-2 text-sm text-slate-200/90">{description}</p> : null}
+            <h3 className="pr-10 text-lg font-semibold tracking-tight text-ink">{title}</h3>
+            {description ? <p className="mt-1.5 text-sm text-ink-soft">{description}</p> : null}
             {children ? (
-              <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 touch-pan-y [-webkit-overflow-scrolling:touch]">
+              <div className="mt-4 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1 [-webkit-overflow-scrolling:touch]">
                 {children}
               </div>
             ) : null}
-            {footer ? <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">{footer}</div> : null}
+            {footer ? <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">{footer}</div> : null}
           </motion.section>
         </motion.div>
       ) : null}
