@@ -28,12 +28,46 @@ export const browserHtmlHeaders: HeadersInit = {
   "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7"
 };
 
+// ---------- Page cache ----------
+// Search already downloads every result page to verify it; opening a result shortly
+// afterwards should not fetch it again.
+
+const PAGE_CACHE_TTL_MS = 20 * 60_000;
+const PAGE_CACHE_MAX_ENTRIES = 300;
+const pageCache = new Map<string, { finalUrl: string; html: string; at: number }>();
+
+function rememberPage(url: string, finalUrl: string, html: string): void {
+  const entry = { finalUrl, html, at: Date.now() };
+  for (const key of new Set([url, finalUrl, stripQueryAndFragment(finalUrl)])) {
+    pageCache.delete(key);
+    pageCache.set(key, entry);
+  }
+  while (pageCache.size > PAGE_CACHE_MAX_ENTRIES) {
+    const oldest = pageCache.keys().next().value;
+    if (oldest === undefined) break;
+    pageCache.delete(oldest);
+  }
+}
+
+export function getCachedPage(url: string): { finalUrl: string; html: string } | null {
+  const entry = pageCache.get(url);
+  if (!entry) return null;
+  if (Date.now() - entry.at > PAGE_CACHE_TTL_MS) {
+    pageCache.delete(url);
+    return null;
+  }
+  return { finalUrl: entry.finalUrl, html: entry.html };
+}
+
 /** Fetch a URL following redirects; returns the final resolved URL and HTML body. */
 export async function fetchWithResolvedUrl(
   url: string,
   timeoutMs = 8000,
   signal?: AbortSignal
 ): Promise<{ finalUrl: string; html: string } | null> {
+  const cached = getCachedPage(url);
+  if (cached) return cached;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -44,7 +78,9 @@ export async function fetchWithResolvedUrl(
     });
     if (!response.ok) return null;
     const html = await response.text();
-    return { finalUrl: response.url || url, html };
+    const finalUrl = response.url || url;
+    rememberPage(url, finalUrl, html);
+    return { finalUrl, html };
   } catch {
     return null;
   } finally {
@@ -53,14 +89,73 @@ export async function fetchWithResolvedUrl(
 }
 
 export async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
+  const cached = getCachedPage(url);
+  if (cached) return cached.html;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { headers: browserHtmlHeaders, signal: controller.signal });
+    const response = await fetch(url, { headers: browserHtmlHeaders, redirect: "follow", signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.text();
+    const html = await response.text();
+    rememberPage(url, response.url || url, html);
+    return html;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// ---------- Image fetching ----------
+
+async function fetchImageBufferOnce(url: string, referer: string | undefined, timeoutMs: number): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        ...browserHtmlHeaders,
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        ...(referer ? { Referer: referer } : {})
+      },
+      redirect: "follow",
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !contentType.startsWith("image/") && !contentType.includes("octet-stream")) return null;
+    return Buffer.from(await response.arrayBuffer());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Download an image, trying a couple of header strategies since recipe sites
+ * vary in how they block hotlinking: some require a matching Referer, others
+ * block any cross-origin Referer at all.
+ */
+export async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
+  let referer: string | undefined;
+  try {
+    referer = new URL(url).origin + "/";
+  } catch {
+    /* ignore */
+  }
+
+  const withReferer = referer ? await fetchImageBufferOnce(url, referer, timeoutMs) : null;
+  if (withReferer && withReferer.length > 0) return withReferer;
+
+  return fetchImageBufferOnce(url, undefined, timeoutMs);
+}
+
+/** Resolve a possibly relative/protocol-less image reference against its page URL. */
+export function absoluteUrl(candidate: string, baseUrl: string): string {
+  try {
+    return new URL(candidate.trim(), baseUrl).toString();
+  } catch {
+    return candidate;
   }
 }
 

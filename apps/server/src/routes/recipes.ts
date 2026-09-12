@@ -6,11 +6,19 @@ import { Router } from "express";
 import sharp from "sharp";
 import { z } from "zod";
 import { sqlite } from "../db/client.js";
-import { RECIPE_SOURCES, resolveRecipeSources } from "../domain/recipe-sources.js";
+import { findRecipeSourceByHostname, RECIPE_SOURCES, resolveRecipeSources } from "../domain/recipe-sources.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
-import { GEMINI_MODEL, genai } from "../services/genai.js";
+import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, stripJsonFences } from "../services/genai.js";
+import {
+  getProxiedImage,
+  getSourceImageBuffer,
+  signImageProxyUrl,
+  unproxyImageUrl,
+  verifyImageProxyParams
+} from "../services/image-proxy.js";
 import { runRecipeSearch } from "../services/recipe-search.js";
 import {
+  absoluteUrl,
   browserHtmlHeaders,
   decodeHtmlEntities,
   extractOgMeta,
@@ -22,6 +30,9 @@ import {
   stripQueryAndFragment,
   stripSiteSuffix
 } from "../utils/html.js";
+
+// Simple extraction/translation tasks: the small model without "thinking" is 3-5× faster.
+const fastGeminiConfig = { model: GEMINI_LITE_MODEL, thinking: { thinkingConfig: { thinkingBudget: 0 } } };
 
 export const recipesRouter = Router();
 
@@ -336,7 +347,7 @@ async function probeImageDimensions(url: string): Promise<{ width: number; heigh
   try {
     const res = await fetch(url, {
       headers: { ...browserHtmlHeaders, Range: "bytes=0-65535" },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3500),
     });
     if (!res.ok && res.status !== 206) return null;
     const buf = Buffer.from(await res.arrayBuffer());
@@ -386,9 +397,8 @@ ${candidates.map((u, i) => `${i + 1}. ${u}`).join("\n")}
 Return ONLY a JSON array of the URLs to keep (maximum 8, most relevant first). No markdown, no explanation.`;
 
   try {
-    const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
-    const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
-    const kept = JSON.parse(raw) as unknown;
+    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
+    const kept = JSON.parse(stripJsonFences(r.text ?? "")) as unknown;
     if (Array.isArray(kept)) {
       const candidateSet = new Set(candidates);
       return (kept as unknown[])
@@ -425,15 +435,23 @@ Keep content in its original language. Webpage text:
 ${text}`;
 
   try {
-    const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
-    const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
-    return JSON.parse(raw) as Partial<ParsedRecipe>;
+    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
+    return JSON.parse(stripJsonFences(r.text ?? "")) as Partial<ParsedRecipe>;
   } catch {
     return null;
   }
 }
 
-async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
+/**
+ * Parse a recipe page in two phases: `text` resolves as soon as title/ingredients/
+ * instructions are known (JSON-LD, or a Gemini extraction when the page has none), and
+ * `images` resolves later after cover/gallery candidates were probed and curated. Callers
+ * can start translating the text while the image work is still running.
+ */
+async function parseRecipePagePhased(url: string): Promise<{
+  text: Omit<ParsedRecipe, "imageUrl" | "images">;
+  images: Promise<{ imageUrl?: string; images: string[] }>;
+} | null> {
   let html: string;
   try {
     html = await fetchHtml(url, 10000);
@@ -488,33 +506,28 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
   const ogImage = extractOgMeta(html, "image") || undefined;
   if (!imageUrl) imageUrl = ogImage;
 
-  // Collect all image candidates up front so we can probe dimensions in
-  // parallel with the Gemini ingredient parse when that is needed.
-  const allImageCandidates = dedupeImageUrls([
-    imageUrl,
-    ogImage,
-    ...jsonLdImages,
-    ...instructionImages,
-    ...extractContentImages(html, url),
-  ], 24);
-
-  // Run Gemini ingredient parsing (only when JSON-LD had none) and image
-  // dimension probing in parallel — this saves 2–5 s on pages without JSON-LD.
-  const [geminiRecipe, largeImageSet] = await Promise.all([
-    ingredients.length === 0 ? parseRecipeWithGemini(html, url) : Promise.resolve(null),
-    Promise.allSettled(
-      allImageCandidates.map(async (u) => {
-        const dims = await probeImageDimensions(u);
-        return dims && dims.width >= MIN_IMAGE_DIM && dims.height >= MIN_IMAGE_DIM ? u : null;
-      })
-    ).then((results) =>
+  // Image work starts immediately and runs independently of the text phase.
+  const allImageCandidates = dedupeImageUrls(
+    [imageUrl, ogImage, ...jsonLdImages, ...instructionImages, ...extractContentImages(html, url)].map((u) =>
+      u ? absoluteUrl(u, url) : u
+    ),
+    16
+  );
+  const largeImageSetPromise = Promise.allSettled(
+    allImageCandidates.map(async (u) => {
+      const dims = await probeImageDimensions(u);
+      return dims && dims.width >= MIN_IMAGE_DIM && dims.height >= MIN_IMAGE_DIM ? u : null;
+    })
+  ).then(
+    (results) =>
       new Set<string>(
         results
           .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && r.value !== null)
           .map((r) => r.value)
       )
-    ),
-  ]);
+  );
+
+  const geminiRecipe = ingredients.length === 0 ? await parseRecipeWithGemini(html, url) : null;
 
   if (geminiRecipe) {
     if (!title && geminiRecipe.title) title = geminiRecipe.title;
@@ -543,39 +556,51 @@ async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
     if (d) description = decodeHtmlEntities(d);
   }
 
-  // Cover: first large image from priority-ordered candidates; fall back to any
-  // large image found, then to the first candidate if nothing met the threshold.
-  const coverPriority = dedupeImageUrls([imageUrl, ogImage, ...jsonLdImages]);
-  imageUrl =
-    coverPriority.find((u) => largeImageSet.has(u)) ??
-    [...largeImageSet][0] ??
-    coverPriority[0];
+  const resolvedTitle = title;
+  const coverPriority = dedupeImageUrls([imageUrl, ogImage, ...jsonLdImages].map((u) => (u ? absoluteUrl(u, url) : u)));
 
-  // Gallery: large images (cover excluded), with Gemini curating which ones
-  // are actually food / recipe photos vs. logos, ads, author avatars, etc.
-  const galleryCandidates = allImageCandidates.filter(
-    (u) => largeImageSet.has(u) && u !== imageUrl
-  );
-  const images = await filterGalleryImagesWithGemini(galleryCandidates, title);
+  const images = largeImageSetPromise.then(async (largeImageSet) => {
+    // Cover: first large image from priority-ordered candidates; fall back to any
+    // large image found, then to the first candidate if nothing met the threshold.
+    const cover = coverPriority.find((u) => largeImageSet.has(u)) ?? [...largeImageSet][0] ?? coverPriority[0];
+
+    // Gallery: large images (cover excluded), with Gemini curating which ones
+    // are actually food / recipe photos vs. logos, ads, author avatars, etc.
+    const galleryCandidates = allImageCandidates.filter((u) => largeImageSet.has(u) && u !== cover);
+    const gallery = await filterGalleryImagesWithGemini(galleryCandidates, resolvedTitle);
+    return { imageUrl: cover, images: gallery };
+  });
 
   return {
-    title,
-    description,
-    imageUrl,
-    prepTime,
-    cookTime,
-    totalTime,
-    servings,
-    ingredients,
-    instructions,
+    text: {
+      title,
+      description,
+      prepTime,
+      cookTime,
+      totalTime,
+      servings,
+      ingredients,
+      instructions,
+      url,
+      source,
+    },
     images,
-    url,
-    source,
   };
 }
 
-async function translateRecipeToSlovenian(recipe: ParsedRecipe): Promise<ParsedRecipe> {
+async function parseRecipePage(url: string): Promise<ParsedRecipe | null> {
+  const phased = await parseRecipePagePhased(url);
+  if (!phased) return null;
+  const images = await phased.images;
+  return { ...phased.text, ...images };
+}
+
+type RecipeText = Omit<ParsedRecipe, "imageUrl" | "images">;
+
+async function translateRecipeToSlovenian<T extends RecipeText>(recipe: T): Promise<T> {
   if (!genai) return recipe;
+  // Pages from Slovenian catalog sites are already in Slovenian — no round trip needed.
+  if (findRecipeSourceByHostname(hostname(recipe.url))?.language === "sl") return recipe;
 
   const payload = {
     title: recipe.title,
@@ -592,9 +617,8 @@ Return ONLY valid JSON (no markdown) with the same keys: {"title":"","descriptio
 Input: ${JSON.stringify(payload)}`;
 
   try {
-    const response = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
-    const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
-    const t = JSON.parse(raw) as { title?: string; description?: string; ingredients?: string[]; instructions?: string[] };
+    const response = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
+    const t = JSON.parse(stripJsonFences(response.text ?? "")) as { title?: string; description?: string; ingredients?: string[]; instructions?: string[] };
     return {
       ...recipe,
       title: typeof t.title === "string" && t.title ? t.title : recipe.title,
@@ -673,55 +697,47 @@ recipesRouter.get("/fetch", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "URL not allowed." });
   }
 
-  let recipe = await parseRecipePage(url);
-  if (!recipe) {
+  const phased = await parseRecipePagePhased(url);
+  if (!phased) {
     return res.status(502).json({ error: "Failed to fetch or parse recipe." });
   }
 
-  recipe = await translateRecipeToSlovenian(recipe);
+  // Translation and image probing/curation run side by side.
+  const [text, images] = await Promise.all([translateRecipeToSlovenian(phased.text), phased.images]);
+
+  // Remote images are served through the signed proxy so the browser can actually show
+  // them; saving maps them back to the source URLs.
+  const recipe: ParsedRecipe = {
+    ...text,
+    imageUrl: images.imageUrl ? signImageProxyUrl(images.imageUrl, 1280) : undefined,
+    images: images.images.map((u) => signImageProxyUrl(u, 1280)),
+  };
 
   return res.json({ recipe });
 });
 
-// ---------- Saved recipes (persistence + local image storage) ----------
+const imageProxyQuerySchema = z.object({
+  u: z.string().trim().url().max(2000),
+  w: z.coerce.number().int(),
+  s: z.string().trim().min(8).max(64)
+});
 
-async function fetchImageBufferOnce(url: string, referer: string | undefined, timeoutMs: number): Promise<Buffer | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      headers: {
-        ...browserHtmlHeaders,
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        ...(referer ? { Referer: referer } : {})
-      },
-      redirect: "follow",
-      signal: controller.signal
-    });
-    if (!response.ok) return null;
-    const data = await response.arrayBuffer();
-    return Buffer.from(data);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+// Unauthenticated on purpose (used by <img>); the HMAC signature gates it instead.
+recipesRouter.get("/image", async (req, res) => {
+  const parsed = imageProxyQuerySchema.safeParse(req.query);
+  if (!parsed.success || !verifyImageProxyParams(parsed.data.u, parsed.data.w, parsed.data.s)) {
+    return res.status(403).end();
   }
-}
 
-/**
- * Download an image, trying a couple of header strategies since recipe sites
- * vary in how they block hotlinking: some require a matching Referer, others
- * block any cross-origin Referer at all.
- */
-async function fetchImageBuffer(url: string, timeoutMs = 9000): Promise<Buffer | null> {
-  let referer: string | undefined;
-  try { referer = new URL(url).origin + "/"; } catch { /* ignore */ }
+  const image = await getProxiedImage(parsed.data.u, parsed.data.w);
+  if (!image) return res.status(404).end();
 
-  const withReferer = referer ? await fetchImageBufferOnce(url, referer, timeoutMs) : null;
-  if (withReferer && withReferer.length > 0) return withReferer;
+  res.setHeader("Content-Type", image.contentType);
+  res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+  return res.end(image.body);
+});
 
-  return fetchImageBufferOnce(url, undefined, timeoutMs);
-}
+// ---------- Saved recipes (persistence + local image storage) ----------
 
 /** Guess a safe file extension from the source URL (fallback: jpg). */
 function guessImageExtension(sourceUrl: string): string {
@@ -737,7 +753,7 @@ function guessImageExtension(sourceUrl: string): string {
  *  Falls back to saving the raw bytes (original format) when sharp is unavailable or fails. */
 async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | null> {
   if (!isPublicHttpUrl(sourceImageUrl)) return null;
-  const rawBuffer = await fetchImageBuffer(sourceImageUrl);
+  const rawBuffer = await getSourceImageBuffer(sourceImageUrl);
   if (!rawBuffer || rawBuffer.length === 0) return null;
 
   const hash = crypto.createHash("sha1").update(sourceImageUrl).digest("hex").slice(0, 16);
@@ -808,12 +824,22 @@ async function downloadRecipeImagesLocally(
   gallery: string[]
 ): Promise<StoredRecipeImages> {
   const candidates = dedupeImageUrls([imageUrl, ...gallery], 20);
+  // Download in parallel (bounded) — sequentially this took tens of seconds per save.
+  const results: Array<string | null> = new Array(candidates.length).fill(null);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, candidates.length) }, async () => {
+      while (next < candidates.length) {
+        const index = next++;
+        results[index] = await saveRecipeImageLocally(candidates[index]!);
+      }
+    })
+  );
   const images: string[] = [];
-  for (const candidate of candidates) {
-    const local = await saveRecipeImageLocally(candidate);
+  for (const local of results) {
     if (local && !images.includes(local)) images.push(local);
   }
-  const mainImage = (imageUrl ? await saveRecipeImageLocally(imageUrl) : null) ?? images[0] ?? null;
+  const mainImage = (imageUrl ? results[candidates.indexOf(imageUrl)] ?? null : null) ?? images[0] ?? null;
   return { imageUrl: mainImage, images };
 }
 
@@ -984,14 +1010,14 @@ const saveRecipeSchema = z.object({
   source: z.string().trim().max(200).optional(),
   title: z.string().trim().min(1).max(300),
   description: z.string().trim().max(4000).optional(),
-  imageUrl: z.string().trim().url().max(2000).optional(),
+  imageUrl: z.string().trim().max(2000).transform(unproxyImageUrl).pipe(z.string().url()).optional(),
   prepTime: z.string().trim().max(100).optional(),
   cookTime: z.string().trim().max(100).optional(),
   totalTime: z.string().trim().max(100).optional(),
   servings: z.string().trim().max(100).optional(),
   ingredients: z.array(z.string().trim().max(1000)).max(200).default([]),
   instructions: z.array(z.string().trim().max(5000)).max(200).default([]),
-  images: z.array(z.string().trim().url().max(2000)).max(30).default([])
+  images: z.array(z.string().trim().max(2000).transform(unproxyImageUrl).pipe(z.string().url())).max(30).default([])
 });
 
 recipesRouter.get("/saved", requireAuth, (_req, res) => {
@@ -1164,8 +1190,8 @@ OR when a match is found:
 }`;
 
     try {
-      const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
-      const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
+      const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: fastGeminiConfig.thinking });
+      const raw = stripJsonFences(r.text ?? "");
       const result = JSON.parse(raw) as {
         parsed?: { title?: string; quantity?: number; unit?: string };
         match?: null | { type?: string; id?: number; suggestion?: string };

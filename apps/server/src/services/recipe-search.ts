@@ -17,7 +17,9 @@ import {
   type RecipeSource,
   type RecipeSourceLanguage
 } from "../domain/recipe-sources.js";
+import { signImageProxyUrl } from "./image-proxy.js";
 import {
+  absoluteUrl,
   extractMetaName,
   extractOgMeta,
   extractPageTitle,
@@ -322,7 +324,9 @@ async function resolveCandidate(
   if (!title || title.length < 3) return reject("no title", cleanUrl);
 
   const description = (extractOgMeta(html, "description") || extractMetaName(html, "description")).slice(0, 350);
-  const imageUrl = extractOgMeta(html, "image") || undefined;
+  const ogImage = extractOgMeta(html, "image");
+  // Thumbnails go through the signed proxy — most sites refuse hotlinked <img> requests.
+  const imageUrl = ogImage ? signImageProxyUrl(absoluteUrl(ogImage, finalUrl), 320) : undefined;
 
   return { title, description, imageUrl, url: cleanUrl, source: hostname(cleanUrl), sourceId: source.id };
 }
