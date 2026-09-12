@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import cors from "cors";
 import express from "express";
+import { Agent, setGlobalDispatcher } from "undici";
+
+// undici 8 (Node ≥ 26) negotiates HTTP/2 by default, which multiplexes every Gemini call
+// onto one warm connection where the API serves them nearly one at a time — recipe search
+// fan-out went from ~15s to 60-80s. Plain HTTP/1.1 opens a connection per request.
+setGlobalDispatcher(new Agent({ allowH2: false }));
 
 import { ensureBootstrapAdmin } from "./auth/bootstrap-admin.js";
 import { sqlite } from "./db/client.js";

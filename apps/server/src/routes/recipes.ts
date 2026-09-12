@@ -2,12 +2,26 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GoogleGenAI } from "@google/genai";
 import { Router } from "express";
 import sharp from "sharp";
 import { z } from "zod";
 import { sqlite } from "../db/client.js";
+import { RECIPE_SOURCES, resolveRecipeSources } from "../domain/recipe-sources.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
+import { GEMINI_MODEL, genai } from "../services/genai.js";
+import { runRecipeSearch } from "../services/recipe-search.js";
+import {
+  browserHtmlHeaders,
+  decodeHtmlEntities,
+  extractOgMeta,
+  extractPageTitle,
+  fetchHtml,
+  hostname,
+  isBlockedHost,
+  isPublicHttpUrl,
+  stripQueryAndFragment,
+  stripSiteSuffix
+} from "../utils/html.js";
 
 export const recipesRouter = Router();
 
@@ -23,256 +37,20 @@ if (!fs.existsSync(recipeImagesDirectoryPath)) {
 }
 console.log(`[recipe-images] storage directory: ${recipeImagesDirectoryPath}`);
 
-const geminiApiKey = process.env.GEMINI_API_KEY;
-const genai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
-
 const recipeSearchQuerySchema = z.object({
-  q: z.string().trim().min(1).max(200)
+  q: z.string().trim().min(1).max(200),
+  // Comma-separated catalog ids; omitted = every source.
+  sites: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .transform((value) => (value ? value.split(",").map((id) => id.trim()).filter(Boolean) : []))
 });
 
 const recipeFetchQuerySchema = z.object({
   url: z.string().trim().url().max(2000)
 });
-
-// Domains that are clearly not single recipe pages — drop them from results
-const BLOCKED_HOSTNAMES = [
-  "youtube.com",
-  "youtu.be",
-  "instagram.com",
-  "facebook.com",
-  "pinterest.com",
-  "pinterest.co.uk",
-  "tiktok.com",
-  "reddit.com",
-  "wikipedia.org",
-  "amazon.com",
-  "books.google.com",
-  "google.com",
-  "x.com",
-  "twitter.com",
-];
-
-// ---------- HTTP helpers ----------
-
-const browserHtmlHeaders: HeadersInit = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7"
-};
-
-/** Fetch a URL following redirects; returns the final resolved URL and HTML body. */
-async function fetchWithResolvedUrl(
-  url: string,
-  timeoutMs = 8000
-): Promise<{ finalUrl: string; html: string } | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      headers: browserHtmlHeaders,
-      redirect: "follow",
-      signal: controller.signal
-    });
-    if (!response.ok) return null;
-    const html = await response.text();
-    return { finalUrl: response.url || url, html };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function fetchHtml(url: string, timeoutMs = 8000): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { headers: browserHtmlHeaders, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.text();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ---------- HTML parsing helpers ----------
-
-function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, c: string) => String.fromCharCode(parseInt(c, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, c: string) => String.fromCharCode(parseInt(c, 16)));
-}
-
-function extractOgMeta(html: string, property: string): string {
-  const p1 = new RegExp(`<meta[^>]+property=["']og:${property}["'][^>]+content=["']([^"']+)["']`, "i");
-  const p2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:${property}["']`, "i");
-  const m = p1.exec(html) ?? p2.exec(html);
-  return m?.[1] ? decodeHtmlEntities(m[1]) : "";
-}
-
-function extractMetaName(html: string, name: string): string {
-  const re = new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, "i");
-  const m = re.exec(html);
-  return m?.[1] ? decodeHtmlEntities(m[1]) : "";
-}
-
-function extractPageTitle(html: string): string {
-  const m = /<title[^>]*>([^<]+)<\/title>/i.exec(html);
-  return m?.[1] ? decodeHtmlEntities(m[1].trim()) : "";
-}
-
-function stripSiteSuffix(title: string): string {
-  return title.replace(/\s*[-|–—]\s*[^-|–—]+$/, "").trim();
-}
-
-function hostname(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-function stripQueryAndFragment(url: string): string {
-  try {
-    const u = new URL(url);
-    return `${u.origin}${u.pathname}`;
-  } catch {
-    return url;
-  }
-}
-
-function isBlockedHost(url: string): boolean {
-  const h = hostname(url);
-  return BLOCKED_HOSTNAMES.some((d) => h === d || h.endsWith(`.${d}`));
-}
-
-/** Block SSRF: only allow public http(s) hosts. */
-function isPublicHttpUrl(url: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-  const h = parsed.hostname.toLowerCase();
-  if (h === "localhost" || h.endsWith(".local")) return false;
-  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return false;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
-  if (h === "0.0.0.0" || h === "::1" || h === "[::1]") return false;
-  return true;
-}
-
-// ---------- Gemini grounding (primary & only search engine) ----------
-
-interface GroundedResult {
-  redirectUri: string;
-  domainHint: string;
-}
-
-async function searchWithGeminiGrounding(query: string): Promise<GroundedResult[]> {
-  if (!genai) return [];
-  try {
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `Find 12 different recipes for "${query}". Include both Slovenian recipe websites (like kulinarika.net, recepti.si, okusno.je, jernejkitchen.com, mojirecepti.com) and popular international recipe websites (like allrecipes.com, bbcgoodfood.com, simplyrecipes.com). For each, give the recipe name and the direct URL to the recipe page.`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
-
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-    const results: GroundedResult[] = [];
-    for (const chunk of chunks) {
-      const web = (chunk as { web?: { uri?: string; title?: string } }).web;
-      if (web?.uri) {
-        results.push({ redirectUri: web.uri, domainHint: web.title ?? "" });
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-}
-
-// ---------- Per-result resolution + metadata ----------
-
-export interface RecipeSearchResult {
-  title: string;
-  description: string;
-  url: string;
-  imageUrl?: string;
-  source: string;
-}
-
-/** Resolve a grounding redirect URL to the real page and extract display metadata. */
-async function resolveGroundedResult(grounded: GroundedResult): Promise<RecipeSearchResult | null> {
-  const fetched = await fetchWithResolvedUrl(grounded.redirectUri, 8000);
-  if (!fetched) return null;
-
-  const { finalUrl, html } = fetched;
-  if (isBlockedHost(finalUrl) || !isPublicHttpUrl(finalUrl)) return null;
-
-  const cleanUrl = stripQueryAndFragment(finalUrl);
-  const rawTitle = extractOgMeta(html, "title") || extractPageTitle(html);
-  const title = stripSiteSuffix(rawTitle);
-  if (!title || title.length < 3) return null;
-
-  const description = (extractOgMeta(html, "description") || extractMetaName(html, "description")).slice(0, 350);
-  const imageUrl = extractOgMeta(html, "image") || undefined;
-
-  return { title, description, imageUrl, url: cleanUrl, source: hostname(cleanUrl) };
-}
-
-function dedupeBySourceAndUrl(results: RecipeSearchResult[]): RecipeSearchResult[] {
-  const seen = new Set<string>();
-  const out: RecipeSearchResult[] = [];
-  for (const r of results) {
-    if (seen.has(r.url)) continue;
-    seen.add(r.url);
-    out.push(r);
-  }
-  return out;
-}
-
-// ---------- Translation ----------
-
-async function batchTranslateToSlovenian(results: RecipeSearchResult[]): Promise<RecipeSearchResult[]> {
-  if (!genai || results.length === 0) return results;
-
-  // Detect the actual language of each result's own text rather than guessing from the
-  // hostname — sites like jernejkitchen.com publish recipes in both Slovenian and English,
-  // so which language a given result is in can't be assumed from its domain alone.
-  const payload = results.map((r) => ({ title: r.title, description: r.description }));
-  const prompt = `For each recipe below, first determine what language the title and description are actually written in.
-- If they are already written in Slovenian, return them unchanged.
-- If they are written in any other language, translate them into natural Slovenian culinary language.
-Return ONLY a JSON array of objects with "title" and "description" keys, in the same order as the input. No markdown, no extra text.
-
-Input: ${JSON.stringify(payload)}`;
-
-  try {
-    const response = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
-    const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
-    const translated = JSON.parse(raw) as Array<{ title: string; description: string }>;
-
-    return results.map((r, i) => {
-      const t = translated[i];
-      return t?.title ? { ...r, title: t.title, description: t.description ?? r.description } : r;
-    });
-  } catch {
-    return results;
-  }
-}
 
 // ---------- Structured recipe parsing (for /fetch endpoint) ----------
 
@@ -608,7 +386,7 @@ ${candidates.map((u, i) => `${i + 1}. ${u}`).join("\n")}
 Return ONLY a JSON array of the URLs to keep (maximum 8, most relevant first). No markdown, no explanation.`;
 
   try {
-    const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
     const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
     const kept = JSON.parse(raw) as unknown;
     if (Array.isArray(kept)) {
@@ -647,7 +425,7 @@ Keep content in its original language. Webpage text:
 ${text}`;
 
   try {
-    const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
     const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
     return JSON.parse(raw) as Partial<ParsedRecipe>;
   } catch {
@@ -814,7 +592,7 @@ Return ONLY valid JSON (no markdown) with the same keys: {"title":"","descriptio
 Input: ${JSON.stringify(payload)}`;
 
   try {
-    const response = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const response = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
     const raw = (response.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
     const t = JSON.parse(raw) as { title?: string; description?: string; ingredients?: string[]; instructions?: string[] };
     return {
@@ -831,6 +609,10 @@ Input: ${JSON.stringify(payload)}`;
 
 // ---------- Route handlers ----------
 
+recipesRouter.get("/sources", requireAuth, (_req, res) => {
+  return res.json({ sources: RECIPE_SOURCES });
+});
+
 recipesRouter.get("/search", requireAuth, async (req, res) => {
   const parsed = recipeSearchQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -842,6 +624,10 @@ recipesRouter.get("/search", requireAuth, async (req, res) => {
   }
 
   const query = parsed.data.q;
+  const sources = parsed.data.sites.length > 0 ? resolveRecipeSources(parsed.data.sites) : [...RECIPE_SOURCES];
+  if (sources.length === 0) {
+    return res.status(400).json({ error: "No known recipe sources selected." });
+  }
 
   // Stream results as NDJSON so the client can render them as they arrive.
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
@@ -858,33 +644,21 @@ recipesRouter.get("/search", requireAuth, async (req, res) => {
     }
   };
 
-  const grounded = await searchWithGeminiGrounding(query);
+  // Stop all outstanding Gemini calls and page fetches when the client goes away.
+  const abort = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) abort.abort();
+  });
 
-  if (grounded.length === 0) {
-    emit({ type: "done" });
-    return res.end();
-  }
-
-  // Fetch up to 12 recipe pages in parallel; emit each result as soon as it resolves.
-  const rawResults: RecipeSearchResult[] = [];
-  await Promise.allSettled(
-    grounded.slice(0, 12).map(async (g) => {
-      const result = await resolveGroundedResult(g);
-      if (result) {
-        rawResults.push(result);
-        emit({ type: "result", result });
-      }
-    })
+  await runRecipeSearch(
+    { query, sources, signal: abort.signal },
+    {
+      onResult: (result) => emit({ type: "result", result }),
+      onUpdate: (results) => emit({ type: "update", results })
+    }
   );
 
-  // Batch-translate all non-Slovenian results and send the updated list.
-  const deduped = dedupeBySourceAndUrl(rawResults);
-  if (deduped.length > 0) {
-    const translated = await batchTranslateToSlovenian(deduped);
-    emit({ type: "translated", results: translated });
-  }
-
-  emit({ type: "done" });
+  if (!abort.signal.aborted) emit({ type: "done" });
   return res.end();
 });
 
@@ -1390,7 +1164,7 @@ OR when a match is found:
 }`;
 
     try {
-      const r = await genai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+      const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt });
       const raw = (r.text ?? "").trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
       const result = JSON.parse(raw) as {
         parsed?: { title?: string; quantity?: number; unit?: string };

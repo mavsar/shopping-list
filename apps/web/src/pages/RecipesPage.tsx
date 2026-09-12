@@ -28,6 +28,7 @@ interface RecipeSearchResult {
   url: string;
   imageUrl?: string;
   source: string;
+  sourceId: string;
 }
 
 interface ParsedRecipe {
@@ -1694,6 +1695,266 @@ function RecipeDetailModal({
   );
 }
 
+// ---------- Recipe source picker ----------
+
+interface RecipeSource {
+  id: string;
+  label: string;
+  domain: string;
+  group: 'slovenian' | 'world';
+  language: string;
+}
+
+const RECIPE_SOURCES_STORAGE_KEY = 'recipe-search-sources';
+const SOURCE_GROUPS: RecipeSource['group'][] = ['slovenian', 'world'];
+const SOURCE_GROUP_LABELS: Record<RecipeSource['group'], string> = {
+  slovenian: 'Slovenske strani',
+  world: 'Svetovne strani',
+};
+const LONG_PRESS_MS = 500;
+
+let recipeSourcesCache: Promise<RecipeSource[]> | null = null;
+
+/** Catalog of searchable sites; fetched once per page load. */
+function loadRecipeSources(token: string): Promise<RecipeSource[]> {
+  if (!recipeSourcesCache) {
+    recipeSourcesCache = fetch('/api/recipes/sources', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Napaka ${response.status}`);
+        const data = (await response.json()) as { sources: RecipeSource[] };
+        return data.sources;
+      })
+      .catch((err: unknown) => {
+        recipeSourcesCache = null;
+        throw err;
+      });
+  }
+  return recipeSourcesCache;
+}
+
+function readStoredSourceIds(): string[] | null {
+  try {
+    const raw = localStorage.getItem(RECIPE_SOURCES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSourceIds(ids: string[]) {
+  try {
+    localStorage.setItem(RECIPE_SOURCES_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage unavailable (private mode / quota) — selection just won't persist */
+  }
+}
+
+function describeSourceSelection(sources: RecipeSource[], selectedIds: Set<string>): string {
+  if (sources.length === 0) return 'Nalagam strani…';
+  if (selectedIds.size === 0) return 'Nobena stran ni izbrana';
+  if (selectedIds.size === 1) {
+    const only = sources.find((s) => selectedIds.has(s.id));
+    return `Samo ${only?.label ?? '1 stran'}`;
+  }
+  if (selectedIds.size === sources.length) return `Vse strani (${sources.length})`;
+  for (const group of SOURCE_GROUPS) {
+    const ids = sources.filter((s) => s.group === group).map((s) => s.id);
+    if (ids.length === selectedIds.size && ids.every((id) => selectedIds.has(id))) {
+      return `${SOURCE_GROUP_LABELS[group]} (${ids.length})`;
+    }
+  }
+  return `${selectedIds.size} strani`;
+}
+
+function pluralizeResults(count: number): string {
+  const mod100 = count % 100;
+  if (mod100 === 1) return 'rezultat';
+  if (mod100 === 2) return 'rezultata';
+  if (mod100 === 3 || mod100 === 4) return 'rezultati';
+  return 'rezultatov';
+}
+
+function SourceChip({
+  source,
+  selected,
+  onToggle,
+  onOnly,
+}: {
+  source: RecipeSource;
+  selected: boolean;
+  onToggle: () => void;
+  /** Select just this site (double click / long press). */
+  onOnly: () => void;
+}) {
+  const pressTimer = useRef<number | null>(null);
+  const longPressed = useRef(false);
+
+  const clearPressTimer = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearPressTimer, []);
+
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      title={`${source.domain} — dvojni klik ali dolg pritisk: išči samo tukaj`}
+      className={cx(
+        'select-none rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/45',
+        selected
+          ? 'border-cyan-300/60 bg-cyan-400/20 text-cyan-50'
+          : 'border-white/10 bg-white/4 text-slate-400 hover:border-white/25 hover:text-slate-200',
+      )}
+      style={{ WebkitTouchCallout: 'none' }}
+      onPointerDown={(e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        longPressed.current = false;
+        clearPressTimer();
+        pressTimer.current = window.setTimeout(() => {
+          longPressed.current = true;
+          onOnly();
+        }, LONG_PRESS_MS);
+      }}
+      onPointerUp={clearPressTimer}
+      onPointerLeave={clearPressTimer}
+      onPointerCancel={clearPressTimer}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => {
+        // The click that follows a completed long press must not undo the "only" selection.
+        if (longPressed.current) {
+          longPressed.current = false;
+          return;
+        }
+        onToggle();
+      }}
+      onDoubleClick={onOnly}
+    >
+      {source.label}
+    </button>
+  );
+}
+
+function RecipeSourcePicker({
+  sources,
+  selectedIds,
+  onChange,
+}: {
+  sources: RecipeSource[];
+  selectedIds: Set<string>;
+  onChange: (ids: Set<string>) => void;
+}) {
+  const groups = SOURCE_GROUPS.map((group) => ({
+    group,
+    items: sources.filter((s) => s.group === group),
+  }));
+  const allIds = sources.map((s) => s.id);
+  const isExactly = (ids: string[]) =>
+    ids.length === selectedIds.size && ids.every((id) => selectedIds.has(id));
+  const presetClassName = (active: boolean) =>
+    cx(
+      'rounded-lg px-2 py-1 text-[11px] font-medium transition-colors',
+      active ? 'bg-white/15 text-slate-100' : 'text-slate-400 hover:bg-white/8 hover:text-slate-200',
+    );
+  const groupActionClassName = 'text-[11px] text-slate-500 transition-colors hover:text-slate-200';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-1 text-[11px] uppercase tracking-wide text-slate-500">Hitro</span>
+        <button
+          type="button"
+          className={presetClassName(isExactly(allIds))}
+          onClick={() => onChange(new Set(allIds))}
+        >
+          Vse
+        </button>
+        {groups.map(({ group, items }) => (
+          <button
+            key={group}
+            type="button"
+            className={presetClassName(isExactly(items.map((s) => s.id)))}
+            onClick={() => onChange(new Set(items.map((s) => s.id)))}
+          >
+            {SOURCE_GROUP_LABELS[group]}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={presetClassName(selectedIds.size === 0)}
+          onClick={() => onChange(new Set())}
+        >
+          Nič
+        </button>
+      </div>
+
+      {groups.map(({ group, items }) => {
+        const groupIds = items.map((s) => s.id);
+        const selectedCount = groupIds.filter((id) => selectedIds.has(id)).length;
+        return (
+          <div key={group} className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-300">
+                {SOURCE_GROUP_LABELS[group]}{' '}
+                <span className="font-normal text-slate-500">
+                  {selectedCount}/{groupIds.length}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={groupActionClassName}
+                  onClick={() => onChange(new Set([...Array.from(selectedIds), ...groupIds]))}
+                >
+                  vse
+                </button>
+                <button
+                  type="button"
+                  className={groupActionClassName}
+                  onClick={() => {
+                    const next = new Set(selectedIds);
+                    for (const id of groupIds) next.delete(id);
+                    onChange(next);
+                  }}
+                >
+                  nič
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {items.map((source) => (
+                <SourceChip
+                  key={source.id}
+                  source={source}
+                  selected={selectedIds.has(source.id)}
+                  onToggle={() => {
+                    const next = new Set(selectedIds);
+                    if (next.has(source.id)) next.delete(source.id);
+                    else next.add(source.id);
+                    onChange(next);
+                  }}
+                  onOnly={() => onChange(new Set([source.id]))}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      <p className="text-[11px] text-slate-500">
+        Dvojni klik ali dolg pritisk na stran = išči samo na tej strani.
+      </p>
+    </div>
+  );
+}
+
 // ---------- Search overlay ----------
 
 function SearchOverlay({
@@ -1713,15 +1974,23 @@ function SearchOverlay({
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<RecipeSearchResult[]>([]);
+  /** Request in flight and nothing shown yet. */
   const [searching, setSearching] = useState(false);
-  const [translating, setTranslating] = useState(false);
+  /** Request in flight; more results (or translations) may still arrive. */
+  const [streaming, setStreaming] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+  const [sources, setSources] = useState<RecipeSource[]>([]);
+  const [sourcesError, setSourcesError] = useState(false);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(() => new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<ParsedRecipe | null>(null);
   const [recipeModalOpen, setRecipeModalOpen] = useState(false);
   const [fetchingRecipe, setFetchingRecipe] = useState(false);
   const [recipeBusy, setRecipeBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const savedEntry = selectedRecipe ? savedByUrl.get(selectedRecipe.url) : undefined;
 
@@ -1745,25 +2014,74 @@ function SearchOverlay({
     }
   }, [savedEntry, onRemoveRecipe]);
 
+  const cancelSearch = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  useEffect(() => cancelSearch, [cancelSearch]);
+
   useEffect(() => {
     if (open) {
       setQuery('');
       setResults([]);
       setSearched(false);
       setError('');
-      setTranslating(false);
+      setPickerOpen(false);
       setTimeout(() => inputRef.current?.focus(), 80);
+    } else {
+      cancelSearch();
+      setSearching(false);
+      setStreaming(false);
     }
-  }, [open]);
+  }, [open, cancelSearch]);
+
+  // Load the site catalog once; restore the last selection (or select everything).
+  useEffect(() => {
+    if (!open || sources.length > 0) return;
+    let cancelled = false;
+    loadRecipeSources(token)
+      .then((list) => {
+        if (cancelled) return;
+        setSources(list);
+        setSourcesError(false);
+        const known = new Set(list.map((s) => s.id));
+        const stored = readStoredSourceIds()?.filter((id) => known.has(id));
+        setSelectedSourceIds(new Set(stored && stored.length > 0 ? stored : Array.from(known)));
+      })
+      .catch(() => {
+        if (!cancelled) setSourcesError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, sources.length]);
+
+  const handleSourcesChange = useCallback((next: Set<string>) => {
+    setSelectedSourceIds(next);
+    writeStoredSourceIds(Array.from(next));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (pickerOpen) setPickerOpen(false);
+      else onClose();
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
+  }, [open, pickerOpen, onClose]);
+
+  // The site picker floats over the results; a click anywhere else dismisses it.
+  useEffect(() => {
+    if (!open || !pickerOpen) return;
+    function handlePointerDown(e: PointerEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open, pickerOpen]);
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
@@ -1776,15 +2094,25 @@ function SearchOverlay({
     async (e?: React.FormEvent) => {
       e?.preventDefault();
       const q = query.trim();
-      if (!q) return;
+      // Without a loaded catalog the server searches every site, so allow an empty selection then.
+      if (!q || (selectedSourceIds.size === 0 && !sourcesError)) return;
+
+      cancelSearch();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setSearching(true);
-      setTranslating(false);
+      setStreaming(true);
       setError('');
       setResults([]);
       setSearched(false);
+      setPickerOpen(false);
       try {
-        const response = await fetch(`/api/recipes/search?q=${encodeURIComponent(q)}`, {
+        const params = new URLSearchParams({ q });
+        if (selectedSourceIds.size > 0) params.set('sites', Array.from(selectedSourceIds).join(','));
+        const response = await fetch(`/api/recipes/search?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         });
         if (!response.ok || !response.body) {
           const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -1804,34 +2132,34 @@ function SearchOverlay({
             try {
               const msg = JSON.parse(line) as
                 | { type: 'result'; result: RecipeSearchResult }
-                | { type: 'translated'; results: RecipeSearchResult[] }
+                | { type: 'update'; results: RecipeSearchResult[] }
                 | { type: 'done' };
               if (msg.type === 'result') {
                 setResults((prev) => [...prev, msg.result]);
-                setSearched(true);
                 setSearching(false);
-                setTranslating(true);
-              } else if (msg.type === 'translated') {
-                setResults(msg.results);
-                setTranslating(false);
-              } else if (msg.type === 'done') {
-                setTranslating(false);
+              } else if (msg.type === 'update') {
+                const byUrl = new Map(msg.results.map((r) => [r.url, r]));
+                setResults((prev) => prev.map((r) => byUrl.get(r.url) ?? r));
               }
             } catch {
               /* skip malformed lines */
             }
           }
         }
-        setSearched(true);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Iskanje ni uspelo.');
-        setSearched(true);
       } finally {
-        setSearching(false);
-        setTranslating(false);
+        // A newer search (or closing the overlay) already owns the state — leave it alone.
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setSearching(false);
+          setStreaming(false);
+          setSearched(true);
+        }
       }
     },
-    [query, token],
+    [query, token, selectedSourceIds, sourcesError, cancelSearch],
   );
 
   const handleOpenRecipe = useCallback(
@@ -1854,6 +2182,12 @@ function SearchOverlay({
     },
     [token],
   );
+
+  const selectionSummary = sourcesError
+    ? 'Seznama strani ni bilo mogoče naložiti'
+    : describeSourceSelection(sources, selectedSourceIds);
+  const canSearch =
+    Boolean(query.trim()) && (selectedSourceIds.size > 0 || sourcesError) && !searching;
 
   const overlay = (
     <AnimatePresence>
@@ -1899,7 +2233,7 @@ function SearchOverlay({
             transition={{ type: 'spring', stiffness: 270, damping: 24 }}
           >
             {/* search bar area */}
-            <div className="shrink-0 px-4 pb-4 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:px-8">
+            <div className="shrink-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:px-8">
               <form onSubmit={handleSearch} className="mx-auto max-w-2xl">
                 <div className="relative flex items-center gap-2">
                   <Input
@@ -1918,12 +2252,61 @@ function SearchOverlay({
                     appearance="full"
                     size="md"
                     icon={<Search />}
-                    disabled={searching || !query.trim()}
+                    disabled={!canSearch}
                   >
                     Išči
                   </Button>
                 </div>
               </form>
+
+              {/* where-to-search toggle + floating picker */}
+              <div ref={pickerRef} className="relative mx-auto mt-2 max-w-2xl">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-xs text-slate-400 transition-colors hover:text-slate-200"
+                  aria-expanded={pickerOpen}
+                  onClick={() => setPickerOpen((v) => !v)}
+                >
+                  <span className="text-slate-500">Iščem na:</span>
+                  <span className="font-medium text-slate-200">{selectionSummary}</span>
+                  <svg
+                    viewBox="0 0 16 16"
+                    className={cx(
+                      'h-3.5 w-3.5 transition-transform duration-200',
+                      pickerOpen && 'rotate-180',
+                    )}
+                    aria-hidden
+                  >
+                    <path
+                      d="M4 6l4 4 4-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                <AnimatePresence>
+                  {pickerOpen && sources.length > 0 && (
+                    <motion.div
+                      key="source-picker"
+                      className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[min(60vh,32rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-slate-900/95 p-3 shadow-2xl shadow-black/40 backdrop-blur-md"
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.16, ease: 'easeOut' }}
+                    >
+                      <RecipeSourcePicker
+                        sources={sources}
+                        selectedIds={selectedSourceIds}
+                        onChange={handleSourcesChange}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
 
             {/* results area */}
@@ -1958,12 +2341,12 @@ function SearchOverlay({
                   <>
                     <div className="flex items-center justify-between pb-1">
                       <p className="text-xs text-slate-500">
-                        {results.length} {results.length === 1 ? 'rezultat' : 'rezultati'}
+                        {results.length} {pluralizeResults(results.length)}
                       </p>
-                      {translating && (
+                      {streaming && (
                         <span className="flex items-center gap-1.5 text-xs text-slate-500">
                           <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
-                          Prevajam naslove…
+                          Iščem in prevajam…
                         </span>
                       )}
                     </div>
@@ -1974,13 +2357,23 @@ function SearchOverlay({
                         onClick={() => void handleOpenRecipe(result.url)}
                       />
                     ))}
+                    {streaming && (
+                      <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-500">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-slate-500/40 border-t-slate-400" />
+                        Nalagam še rezultate…
+                      </div>
+                    )}
                   </>
                 )}
 
                 {!searching && !searched && (
                   <div className="flex flex-col items-center gap-3 py-16 text-center">
                     <ReadyToEat size={96} animate />
-                    <p className="text-sm text-slate-400">Vnesi ime jedi ali sestavine</p>
+                    <p className="text-sm text-slate-400">
+                      {selectedSourceIds.size === 0
+                        ? 'Izberi vsaj eno stran za iskanje'
+                        : 'Vnesi ime jedi ali sestavine'}
+                    </p>
                   </div>
                 )}
               </div>
