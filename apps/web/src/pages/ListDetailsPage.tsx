@@ -156,6 +156,27 @@ function ItemQuantityUnitControls({
   );
 }
 
+function OneTimeItemCheckbox({
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-line bg-paper px-3 py-2.5">
+      <Checkbox checked={checked} onCheckedChange={onChange} disabled={disabled}>
+        Enkratni nakup
+      </Checkbox>
+      <p className="m-0 mt-1 pl-7 text-xs text-ink-muted">
+        Ko ga označiš kot kupljenega, se izbriše s seznama in iz kataloga izdelkov.
+      </p>
+    </div>
+  );
+}
+
 type SharedItemFormFieldsProps = {
   name: string;
   onNameChange: (value: string) => void;
@@ -172,6 +193,8 @@ type SharedItemFormFieldsProps = {
   category: ItemCategory;
   onCategoryChange: (value: ItemCategory) => void;
   categoryLoading?: boolean;
+  oneTime: boolean;
+  onOneTimeChange: (value: boolean) => void;
   imageSearchQuery: string;
   onImageSearchQueryChange: (value: string) => void;
   onFindImage: () => void;
@@ -205,6 +228,8 @@ function SharedItemFormFields({
   category,
   onCategoryChange,
   categoryLoading = false,
+  oneTime,
+  onOneTimeChange,
   imageSearchQuery,
   onImageSearchQueryChange,
   onFindImage,
@@ -312,6 +337,7 @@ function SharedItemFormFields({
         resize="none"
         rows={noteRows}
       />
+      <OneTimeItemCheckbox checked={oneTime} onChange={onOneTimeChange} disabled={disabled} />
       <div className="grid gap-3 rounded-2xl">
         {imageUrl ? (
           <div
@@ -515,6 +541,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
   const [newItemNote, setNewItemNote] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('drugo');
   const [newItemCategoryLoading, setNewItemCategoryLoading] = useState(false);
+  const [newItemOneTime, setNewItemOneTime] = useState(false);
   const [newItemImageUrl, setNewItemImageUrl] = useState('');
   const [newItemImagePreviewUrl, setNewItemImagePreviewUrl] = useState('');
   const [newItemSourceUrl, setNewItemSourceUrl] = useState('');
@@ -537,6 +564,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
   const [detailsEditNote, setDetailsEditNote] = useState('');
   const [detailsEditName, setDetailsEditName] = useState('');
   const [detailsEditCategory, setDetailsEditCategory] = useState<ItemCategory>('drugo');
+  const [detailsEditOneTime, setDetailsEditOneTime] = useState(false);
   const [detailsEditImageUrl, setDetailsEditImageUrl] = useState('');
   const [detailsEditImagePreviewUrl, setDetailsEditImagePreviewUrl] = useState('');
   const [detailsEditSourceUrl, setDetailsEditSourceUrl] = useState('');
@@ -899,6 +927,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
     setNewItemNote('');
     setNewItemCategory('drugo');
     setNewItemCategoryLoading(false);
+    setNewItemOneTime(false);
     categoryManualRef.current = false;
     setNewItemImageUrl('');
     setNewItemImagePreviewUrl('');
@@ -1024,6 +1053,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
           unit: newItemUnit,
           note: newItemNote.trim() ? newItemNote.trim() : undefined,
           category: newItemCategory,
+          oneTime: newItemOneTime,
           imageUrl: newItemImageUrl.trim() ? newItemImageUrl.trim() : undefined,
           sourceUrl: newItemSourceUrl.trim() ? newItemSourceUrl.trim() : undefined,
         }),
@@ -1350,7 +1380,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
   async function patchListItem(
     listItemId: number,
     payload: Partial<
-      Pick<ShoppingListItem, 'title' | 'quantity' | 'unit' | 'note' | 'status' | 'category'>
+      Pick<ShoppingListItem, 'title' | 'quantity' | 'unit' | 'note' | 'status' | 'category' | 'oneTime'>
     > & {
       imageUrl?: string | null;
       sourceUrl?: string | null;
@@ -1424,6 +1454,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
     setDetailsEditNote(item.note ?? '');
     setDetailsEditName(formatItemTitle(item.title));
     setDetailsEditCategory(item.category);
+    setDetailsEditOneTime(Boolean(item.oneTime));
     setDetailsEditImageUrl(item.imageUrl ?? '');
     setDetailsEditImagePreviewUrl(item.imageUrl ?? '');
     setDetailsEditSourceUrl('');
@@ -1493,6 +1524,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
       unit: detailsEditUnit,
       note: detailsEditNote.trim(),
       category: detailsEditCategory,
+      oneTime: detailsEditOneTime,
       imageUrl: detailsEditImageRemoved
         ? null
         : detailsEditImageUrl.trim()
@@ -1602,7 +1634,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
         <div className="mx-auto w-full max-w-3xl px-4 md:px-8">
           <button
             type="button"
-            className="pointer-events-auto flex h-13 w-full items-center gap-3 rounded-full border border-line bg-surface pl-2 pr-5 text-left shadow-float transition-colors hover:border-basil/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+            className="pointer-events-auto -ml-2.5 flex h-13 w-[calc(100%+0.625rem)] items-center gap-3 rounded-full border border-line bg-surface pl-2 pr-5 text-left shadow-float transition-colors hover:border-basil/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
             aria-label="Dodaj izdelek"
             onClick={() => {
               setAddDialogOpen(true);
@@ -1754,6 +1786,8 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
                     setNewItemCategory(value);
                   }}
                   categoryLoading={newItemCategoryLoading}
+                  oneTime={newItemOneTime}
+                  onOneTimeChange={setNewItemOneTime}
                   imageSearchQuery={imageSearchQuery}
                   onImageSearchQueryChange={setImageSearchQuery}
                   onFindImage={findImage}
@@ -1857,6 +1891,8 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
               category={detailsEditCategory}
               onCategoryChange={setDetailsEditCategory}
               categoryLoading={detailsCategoryLoading}
+              oneTime={detailsEditOneTime}
+              onOneTimeChange={setDetailsEditOneTime}
               imageSearchQuery={detailsImageSearchQuery}
               onImageSearchQueryChange={setDetailsImageSearchQuery}
               onFindImage={findDetailsImage}

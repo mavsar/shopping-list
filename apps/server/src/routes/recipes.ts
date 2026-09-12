@@ -6,6 +6,7 @@ import { Router } from "express";
 import sharp from "sharp";
 import { z } from "zod";
 import { sqlite } from "../db/client.js";
+import { inferCategoryFromTitle, isItemCategory, itemCategoryValues, type ItemCategory } from "../domain/item-category.js";
 import { findRecipeSourceByHostname, RECIPE_SOURCES, resolveRecipeSources } from "../domain/recipe-sources.js";
 import { getAuthUser, requireAuth } from "../middleware/auth.js";
 import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, stripJsonFences } from "../services/genai.js";
@@ -752,6 +753,8 @@ function guessImageExtension(sourceUrl: string): string {
 /** Download a remote image, normalize it to webp, and store it under /api/recipe-images.
  *  Falls back to saving the raw bytes (original format) when sharp is unavailable or fails. */
 async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | null> {
+  // Already one of ours (e.g. a cover picked before the recipe was saved) — keep as is.
+  if (localRecipeImageFileExists(sourceImageUrl)) return sourceImageUrl;
   if (!isPublicHttpUrl(sourceImageUrl)) return null;
   const rawBuffer = await getSourceImageBuffer(sourceImageUrl);
   if (!rawBuffer || rawBuffer.length === 0) return null;
@@ -823,7 +826,14 @@ async function downloadRecipeImagesLocally(
   imageUrl: string | undefined,
   gallery: string[]
 ): Promise<StoredRecipeImages> {
-  const candidates = dedupeImageUrls([imageUrl, ...gallery], 20);
+  // Keep already-local pictures (a cover picked before saving) alongside remote ones.
+  const candidates = Array.from(
+    new Set(
+      [imageUrl, ...gallery].filter(
+        (u): u is string => typeof u === "string" && (u.startsWith("http") || isLocalRecipeImageUrl(u))
+      )
+    )
+  ).slice(0, 20);
   // Download in parallel (bounded) — sequentially this took tens of seconds per save.
   const results: Array<string | null> = new Array(candidates.length).fill(null);
   let next = 0;
@@ -1010,14 +1020,135 @@ const saveRecipeSchema = z.object({
   source: z.string().trim().max(200).optional(),
   title: z.string().trim().min(1).max(300),
   description: z.string().trim().max(4000).optional(),
-  imageUrl: z.string().trim().max(2000).transform(unproxyImageUrl).pipe(z.string().url()).optional(),
+  imageUrl: z.string().trim().max(2000).transform(unproxyImageUrl).refine(isRemoteOrLocalImageRef, "Invalid image").optional(),
   prepTime: z.string().trim().max(100).optional(),
   cookTime: z.string().trim().max(100).optional(),
   totalTime: z.string().trim().max(100).optional(),
   servings: z.string().trim().max(100).optional(),
   ingredients: z.array(z.string().trim().max(1000)).max(200).default([]),
   instructions: z.array(z.string().trim().max(5000)).max(200).default([]),
-  images: z.array(z.string().trim().max(2000).transform(unproxyImageUrl).pipe(z.string().url())).max(30).default([])
+  images: z.array(z.string().trim().max(2000).transform(unproxyImageUrl).refine(isRemoteOrLocalImageRef, "Invalid image")).max(30).default([])
+});
+
+/** Accepts a public http(s) URL or a path to an image already stored under /api/recipe-images. */
+function isRemoteOrLocalImageRef(value: string): boolean {
+  return isLocalRecipeImageUrl(value) || z.string().url().safeParse(value).success;
+}
+
+// ---------- Cover image picker ----------
+
+const coverCandidatesQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200)
+});
+
+const setCoverSchema = z.object({
+  // A remote image, a proxied one, or a picture already stored with the recipe.
+  imageUrl: z.string().trim().max(2000).transform(unproxyImageUrl).refine(isRemoteOrLocalImageRef, "Invalid image")
+});
+
+function looksLikeUsableWebImage(url: string): boolean {
+  if (!isPublicHttpUrl(url)) return false;
+  if (/\.(svg|gif)(\?|#|$)/i.test(url)) return false;
+  return !/logo|icon|avatar|sprite|banner|placeholder|thumb_?small|\b1x1\b/i.test(url);
+}
+
+/**
+ * Cover candidates for a recipe: photos of the same dish from other recipe pages, found
+ * with the grounded search and streamed as NDJSON while the search is still running.
+ */
+recipesRouter.get("/cover-candidates", requireAuth, async (req, res) => {
+  const parsed = coverCandidatesQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+  }
+  if (!genai) {
+    return res.status(503).json({ error: "Image search is not configured (missing GEMINI_API_KEY)." });
+  }
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const emit = (data: object) => {
+    if (!res.writableEnded) {
+      res.write(JSON.stringify(data) + "\n");
+      const r = res as unknown as { flush?: () => void };
+      if (typeof r.flush === "function") r.flush();
+    }
+  };
+
+  const abort = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) abort.abort();
+  });
+
+  const seen = new Set<string>();
+  await runRecipeSearch(
+    { query: parsed.data.q, sources: [...RECIPE_SOURCES], signal: abort.signal, maxCalls: 6, translate: false, maxResults: 40 },
+    {
+      onResult: (result) => {
+        const original = result.imageUrl ? unproxyImageUrl(result.imageUrl) : "";
+        if (!original || seen.has(original) || !looksLikeUsableWebImage(original)) return;
+        seen.add(original);
+        emit({
+          type: "candidate",
+          candidate: { imageUrl: original, thumbUrl: signImageProxyUrl(original, 320), source: result.source, title: result.title }
+        });
+      },
+      onUpdate: () => undefined
+    }
+  );
+
+  if (!abort.signal.aborted) emit({ type: "done" });
+  return res.end();
+});
+
+/** Download a chosen cover for a recipe that isn't saved yet; returns the local image path. */
+recipesRouter.post("/cover", requireAuth, async (req, res) => {
+  const parsed = setCoverSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const localUrl = await saveRecipeImageLocally(parsed.data.imageUrl);
+  if (!localUrl) return res.status(422).json({ error: "Slike ni bilo mogoče prenesti." });
+  return res.json({ imageUrl: localUrl });
+});
+
+/** Replace the cover of a saved recipe with a downloaded copy of the chosen image. */
+recipesRouter.post("/saved/:recipeId/cover", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const recipeId = Number(req.params.recipeId);
+  if (!Number.isInteger(recipeId) || recipeId <= 0) {
+    return res.status(400).json({ error: "Invalid recipeId" });
+  }
+  const parsed = setCoverSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const existing = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ? AND user_id = ? LIMIT 1`)
+    .get(recipeId, authUser.id) as SavedRecipeRow | undefined;
+  if (!existing) return res.status(404).json({ error: "Recipe not found" });
+
+  const localUrl = await saveRecipeImageLocally(parsed.data.imageUrl);
+  if (!localUrl) return res.status(422).json({ error: "Slike ni bilo mogoče prenesti." });
+
+  // New cover leads the gallery; the previous cover stays available further down.
+  const gallery = Array.from(new Set([localUrl, ...parseStringArray(existing.images)])).slice(0, 30);
+  sqlite
+    .prepare("UPDATE recipes SET image_url = ?, images = ? WHERE id = ?")
+    .run(localUrl, JSON.stringify(gallery), recipeId);
+
+  const updated = sqlite
+    .prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ? LIMIT 1`)
+    .get(recipeId) as SavedRecipeRow;
+  void pruneOrphanedRecipeImages();
+  return res.json({ recipe: mapSavedRecipeRow(updated) });
 });
 
 recipesRouter.get("/saved", requireAuth, (_req, res) => {
@@ -1111,6 +1242,154 @@ const checkIngredientSchema = z.object({
   listId: z.number().int().positive(),
 });
 
+const checkIngredientsSchema = z.object({
+  ingredients: z.array(z.string().trim().min(1).max(500)).min(1).max(100),
+  baseServings: z.number().positive().default(1),
+  targetServings: z.number().positive().default(1),
+  listId: z.number().int().positive(),
+});
+
+interface ParsedIngredient {
+  title: string;
+  quantity: number;
+  unit: string;
+  category: ItemCategory;
+}
+
+interface IngredientMatch {
+  type: "exact" | "similar" | "unit_conflict";
+  listItemId: number;
+  listItemTitle: string;
+  listItemQuantity: number;
+  listItemUnit: string;
+  suggestion?: string;
+}
+
+interface IngredientCheck {
+  raw: string;
+  parsed: ParsedIngredient;
+  match: IngredientMatch | null;
+}
+
+/** Rule-based fallback: scale a leading number, strip it from the title, guess a category. */
+function checkIngredientHeuristically(ingredient: string, scale: number): ParsedIngredient {
+  const numMatch = /^(\d+(?:[.,]\d+)?)\s*/.exec(ingredient.trim());
+  const quantity = numMatch ? Math.round(parseFloat(numMatch[1]!.replace(",", ".")) * scale * 100) / 100 : 1;
+  const title = ingredient.replace(/^\d+(?:[.,]\d+)?\s*\S*\s*/, "").trim() || ingredient;
+  return { title, quantity: quantity > 0 ? quantity : 1, unit: "kos", category: inferCategoryFromTitle(title) };
+}
+
+/**
+ * Parse recipe ingredient lines (name / scaled quantity / unit / category) and match them
+ * against the active items of a shopping list — all ingredients in ONE Gemini call.
+ */
+async function checkIngredientsAgainstList(
+  listId: number,
+  ingredients: string[],
+  baseServings: number,
+  targetServings: number
+): Promise<IngredientCheck[]> {
+  const listItems = sqlite
+    .prepare(
+      `SELECT li.id, i.title, li.quantity, li.unit
+       FROM list_items li
+       JOIN items i ON i.id = li.item_id
+       WHERE li.list_id = ? AND li.status = 'active'`
+    )
+    .all(listId) as Array<{ id: number; title: string; quantity: number; unit: string }>;
+
+  const scale = targetServings / baseServings;
+  const results: IngredientCheck[] = ingredients.map((raw) => ({
+    raw,
+    parsed: checkIngredientHeuristically(raw, scale),
+    match: null,
+  }));
+
+  if (!genai) return results;
+
+  const itemsContext =
+    listItems.length > 0
+      ? `\n\nExisting active items on the shopping list (check for duplicates):\n${JSON.stringify(
+          listItems.map((item) => ({ id: item.id, title: item.title, unit: item.unit }))
+        )}`
+      : "";
+
+  const prompt = `You are helping manage a shopping list. Parse each recipe ingredient line below and check whether it already exists on the shopping list.
+
+Ingredients (keep this order):
+${ingredients.map((raw, i) => `${i + 1}. ${raw}`).join("\n")}
+
+Recipe base servings: ${baseServings}, target servings: ${targetServings} → scale quantities by factor ${scale.toFixed(4)}.
+Valid units (pick the most fitting): ${VALID_UNITS.join(", ")}
+Valid categories (pick the most fitting): ${itemCategoryValues.join(", ")}${itemsContext}
+
+For every ingredient:
+- Extract the ingredient name (title) without quantity or unit. Write it in the singular nominative form in the ingredient's language (e.g. "piščančje prsi" not "piščančjih prsi", "krompir" not "krompirjev", "rdeča paprika" not "rdečih paprik", "chicken breast" not "chicken breasts").
+- Calculate the scaled quantity (multiply the original quantity by ${scale.toFixed(4)}, round to at most 2 decimal places; use 1 when the line has no quantity).
+- Choose the most appropriate unit and category from the valid lists.
+- If there are existing items: check if any of them is the same ingredient (exact) or very similar (minor spelling variation, synonym, different language). Do NOT match completely different ingredients.
+- Lines that are only section headings (e.g. "Bešamel omaka:") still get a title, quantity 1, unit "kos".
+
+Return ONLY a valid JSON array, no markdown, one object per ingredient in the same order:
+[{"parsed":{"title":"...","quantity":<number>,"unit":"...","category":"..."},"match":null},
+ {"parsed":{...},"match":{"type":"exact"|"similar","id":<existing item id>,"suggestion":"<optional short explanation>"}}]`;
+
+  try {
+    const r = await genai.models.generateContent({ model: fastGeminiConfig.model, contents: prompt, config: fastGeminiConfig.thinking });
+    const parsed = JSON.parse(stripJsonFences(r.text ?? "")) as unknown;
+    if (!Array.isArray(parsed)) return results;
+
+    parsed.forEach((entry, index) => {
+      const target = results[index];
+      if (!target || !entry || typeof entry !== "object") return;
+      const { parsed: p, match } = entry as {
+        parsed?: { title?: string; quantity?: number; unit?: string; category?: string };
+        match?: null | { type?: string; id?: number; suggestion?: string };
+      };
+
+      if (typeof p?.title === "string" && p.title.trim()) target.parsed.title = p.title.trim();
+      if (typeof p?.quantity === "number" && p.quantity > 0) target.parsed.quantity = Math.round(p.quantity * 100) / 100;
+      if (typeof p?.unit === "string" && (VALID_UNITS as readonly string[]).includes(p.unit)) target.parsed.unit = p.unit;
+      if (typeof p?.category === "string" && isItemCategory(p.category)) target.parsed.category = p.category;
+      else target.parsed.category = inferCategoryFromTitle(target.parsed.title);
+
+      if (match && typeof match.id === "number") {
+        const matchedItem = listItems.find((item) => item.id === match.id);
+        if (matchedItem) {
+          const hasSameUnit = matchedItem.unit === target.parsed.unit;
+          target.match = {
+            type: !hasSameUnit ? "unit_conflict" : match.type === "exact" ? "exact" : "similar",
+            listItemId: matchedItem.id,
+            listItemTitle: matchedItem.title,
+            listItemQuantity: matchedItem.quantity,
+            listItemUnit: matchedItem.unit,
+            suggestion: match.suggestion,
+          };
+        }
+      }
+    });
+  } catch (error) {
+    console.warn("[recipes] ingredient check failed, using heuristics:", error instanceof Error ? error.message : error);
+  }
+
+  return results;
+}
+
+function assertListAccess(listId: number, userId: number): { ok: true } | { ok: false; status: number; error: string } {
+  const access = sqlite
+    .prepare(
+      `SELECT l.is_private AS isPrivate, m.role
+       FROM shopping_lists l
+       LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
+       WHERE l.id = ? LIMIT 1`
+    )
+    .get(userId, listId) as { isPrivate: number; role: string | null } | undefined;
+
+  if (!access) return { ok: false, status: 404, error: "List not found" };
+  if (access.isPrivate && !access.role) return { ok: false, status: 403, error: "Access denied" };
+  return { ok: true };
+}
+
 recipesRouter.post("/check-ingredient", requireAuth, async (req, res) => {
   const authUser = getAuthUser(res);
   if (!authUser) return res.status(401).json({ error: "Authentication required" });
@@ -1121,125 +1400,28 @@ recipesRouter.post("/check-ingredient", requireAuth, async (req, res) => {
   }
 
   const { ingredient, baseServings, targetServings, listId } = parsed.data;
+  const access = assertListAccess(listId, authUser.id);
+  if (!access.ok) return res.status(access.status).json({ error: access.error });
 
-  // Verify list access
-  const access = sqlite
-    .prepare(
-      `SELECT l.is_private AS isPrivate, m.role
-       FROM shopping_lists l
-       LEFT JOIN list_members m ON m.list_id = l.id AND m.user_id = ?
-       WHERE l.id = ? LIMIT 1`
-    )
-    .get(authUser.id, listId) as { isPrivate: number; role: string | null } | undefined;
+  const [result] = await checkIngredientsAgainstList(listId, [ingredient], baseServings, targetServings);
+  return res.json({ parsed: result!.parsed, match: result!.match });
+});
 
-  if (!access) return res.status(404).json({ error: "List not found" });
-  if (access.isPrivate && !access.role) return res.status(403).json({ error: "Access denied" });
+recipesRouter.post("/check-ingredients", requireAuth, async (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
 
-  // Fetch active items from the target list
-  const listItems = sqlite
-    .prepare(
-      `SELECT li.id, i.title, li.quantity, li.unit
-       FROM list_items li
-       JOIN items i ON i.id = li.item_id
-       WHERE li.list_id = ? AND li.status = 'active'`
-    )
-    .all(listId) as Array<{ id: number; title: string; quantity: number; unit: string }>;
-
-  // Default fallback result
-  let parsedIngredient = { title: ingredient, quantity: 1, unit: "kos" };
-  let match: {
-    type: "exact" | "similar" | "unit_conflict";
-    listItemId: number;
-    listItemTitle: string;
-    listItemQuantity: number;
-    listItemUnit: string;
-    suggestion?: string;
-  } | null = null;
-
-  if (genai) {
-    const scale = targetServings / baseServings;
-    const itemsContext =
-      listItems.length > 0
-        ? `\n\nExisting active items on the shopping list (check for duplicates):\n${JSON.stringify(
-            listItems.map((item) => ({ id: item.id, title: item.title, unit: item.unit }))
-          )}`
-        : "";
-
-    const prompt = `You are helping manage a shopping list. Parse the following recipe ingredient string and check whether it already exists on the shopping list.
-
-Ingredient: "${ingredient}"
-Recipe base servings: ${baseServings}, target servings: ${targetServings} → scale quantities by factor ${scale.toFixed(4)}.
-Valid units (pick the most fitting): ${VALID_UNITS.join(", ")}${itemsContext}
-
-Instructions:
-- Extract the ingredient name (title) without quantity or unit. Write it in the singular nominative form in the ingredient's language (e.g. "piščančje prsi" not "piščančjih prsi", "krompir" not "krompirjev", "rdeča paprika" not "rdečih paprik", "chicken breast" not "chicken breasts").
-- Calculate the scaled quantity (multiply original quantity by ${scale.toFixed(4)}, round to at most 2 decimal places).
-- Choose the most appropriate unit from the valid units list.
-- If there are existing items: check if any of them is the same ingredient (exact) or very similar (e.g. minor spelling variation, synonym, different language). Do NOT match completely different ingredients.
-- If found: set "match" with the existing item's id and whether it is "exact" or "similar".
-
-Return ONLY valid JSON, no markdown:
-{
-  "parsed": { "title": "...", "quantity": <number>, "unit": "..." },
-  "match": null
-}
-OR when a match is found:
-{
-  "parsed": { "title": "...", "quantity": <number>, "unit": "..." },
-  "match": { "type": "exact" | "similar", "id": <existing item id from the list>, "suggestion": "<optional short explanation>" }
-}`;
-
-    try {
-      const r = await genai.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: fastGeminiConfig.thinking });
-      const raw = stripJsonFences(r.text ?? "");
-      const result = JSON.parse(raw) as {
-        parsed?: { title?: string; quantity?: number; unit?: string };
-        match?: null | { type?: string; id?: number; suggestion?: string };
-      };
-
-      if (typeof result.parsed?.title === "string" && result.parsed.title) {
-        parsedIngredient.title = result.parsed.title;
-      }
-      if (typeof result.parsed?.quantity === "number" && result.parsed.quantity > 0) {
-        parsedIngredient.quantity = result.parsed.quantity;
-      }
-      if (typeof result.parsed?.unit === "string" && (VALID_UNITS as readonly string[]).includes(result.parsed.unit)) {
-        parsedIngredient.unit = result.parsed.unit;
-      }
-
-      if (result.match && typeof result.match.id === "number") {
-        const matchedItem = listItems.find((item) => item.id === result.match!.id);
-        if (matchedItem) {
-          const hasSameUnit = matchedItem.unit === parsedIngredient.unit;
-          match = {
-            type: !hasSameUnit ? "unit_conflict" : result.match.type === "exact" ? "exact" : "similar",
-            listItemId: matchedItem.id,
-            listItemTitle: matchedItem.title,
-            listItemQuantity: matchedItem.quantity,
-            listItemUnit: matchedItem.unit,
-            suggestion: result.match.suggestion,
-          };
-        }
-      }
-    } catch {
-      // Fallback: scale leading number if present
-      const scale = targetServings / baseServings;
-      const numMatch = /^(\d+(?:[.,]\d+)?)\s*/.exec(ingredient.trim());
-      if (numMatch) {
-        parsedIngredient.quantity = parseFloat(numMatch[1].replace(",", ".")) * scale;
-      }
-    }
-  } else {
-    // No Gemini: basic numeric scaling from leading number
-    const scale = targetServings / baseServings;
-    const numMatch = /^(\d+(?:[.,]\d+)?)\s*/.exec(ingredient.trim());
-    if (numMatch) {
-      parsedIngredient.quantity = Math.round(parseFloat(numMatch[1].replace(",", ".")) * scale * 100) / 100;
-    }
-    parsedIngredient.title = ingredient.replace(/^\d+(?:[.,]\d+)?\s*\S*\s*/, "").trim() || ingredient;
+  const parsed = checkIngredientsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
   }
 
-  return res.json({ parsed: parsedIngredient, match });
+  const { ingredients, baseServings, targetServings, listId } = parsed.data;
+  const access = assertListAccess(listId, authUser.id);
+  if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+  const results = await checkIngredientsAgainstList(listId, ingredients, baseServings, targetServings);
+  return res.json({ results });
 });
 
 recipesRouter.delete("/saved/:recipeId", requireAuth, async (req, res) => {

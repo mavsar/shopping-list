@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
 import { Fab } from '../components/Fab';
+import { AmbientBackground } from '../layouts/AppShell';
 import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
-import { Edit, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
+import { Camera, Edit, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
 import { Dialog } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/fields/checkbox';
@@ -54,7 +55,7 @@ interface SavedRecipe extends ParsedRecipe {
 }
 
 interface CheckIngredientResult {
-  parsed: { title: string; quantity: number; unit: string };
+  parsed: { title: string; quantity: number; unit: string; category?: string };
   match: null | {
     type: 'exact' | 'similar' | 'unit_conflict';
     listItemId: number;
@@ -117,7 +118,7 @@ function RecipeResultCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full cursor-pointer gap-3 rounded-2xl border border-line bg-surface p-3 text-left shadow-card transition-all duration-200 hover:border-basil/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+      className="group flex w-full cursor-pointer gap-3 rounded-2xl border border-line bg-surface p-3 text-left transition-all duration-200 hover:border-basil/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
     >
       {result.imageUrl && (
         <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-line">
@@ -730,6 +731,230 @@ function BulkAddReviewDialog({
   );
 }
 
+interface CoverCandidate {
+  imageUrl: string;
+  thumbUrl: string;
+  source?: string;
+}
+
+function CoverPickerDialog({
+  open,
+  onClose,
+  token,
+  initialQuery,
+  ownImages,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  token: string;
+  initialQuery: string;
+  /** Pictures already on the recipe page (proxied or local) — offered first. */
+  ownImages: string[];
+  /** Resolves when the new cover is stored; throws to show an error. */
+  onPick: (imageUrl: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState(initialQuery);
+  const [candidates, setCandidates] = useState<CoverCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selecting, setSelecting] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [broken, setBroken] = useState<Set<string>>(new Set());
+  const abortRef = useRef<AbortController | null>(null);
+
+  const search = useCallback(
+    async (q: string) => {
+      const trimmed = q.trim();
+      if (!trimmed) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLoading(true);
+      setError('');
+      setCandidates([]);
+      setBroken(new Set());
+      let received = 0;
+      try {
+        const res = await fetch(`/api/recipes/cover-candidates?q=${encodeURIComponent(trimmed)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) throw new Error(`Napaka ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line) as { type: 'candidate'; candidate: CoverCandidate } | { type: 'done' };
+              if (msg.type === 'candidate') {
+                received++;
+                setCandidates((prev) =>
+                  prev.some((c) => c.imageUrl === msg.candidate.imageUrl) ? prev : [...prev, msg.candidate],
+                );
+              }
+            } catch {
+              /* skip malformed lines */
+            }
+          }
+        }
+        if (received === 0) setError('Na spletu ni najdenih slik za to jed. Poskusi z drugimi besedami.');
+      } catch (e) {
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Iskanje ni uspelo.');
+      } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setLoading(false);
+        }
+      }
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      return;
+    }
+    setQuery(initialQuery);
+    setSelecting(null);
+    setError('');
+    void search(initialQuery);
+  }, [open, initialQuery, search]);
+
+  async function handlePick(imageUrl: string) {
+    if (selecting) return;
+    setSelecting(imageUrl);
+    setError('');
+    try {
+      await onPick(imageUrl);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Slike ni bilo mogoče shraniti.');
+    } finally {
+      setSelecting(null);
+    }
+  }
+
+  const ownCandidates: CoverCandidate[] = ownImages.map((u) => ({ imageUrl: u, thumbUrl: u }));
+  const webCandidates = candidates.filter((c) => !broken.has(c.imageUrl));
+
+  const renderGrid = (items: CoverCandidate[]) => (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {items.map((candidate) => {
+        const isSelecting = selecting === candidate.imageUrl;
+        return (
+          <button
+            key={candidate.imageUrl}
+            type="button"
+            className={cx(
+              'relative aspect-square cursor-pointer overflow-hidden rounded-xl border bg-paper-deep p-0 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40',
+              isSelecting ? 'border-basil' : 'border-line hover:border-basil/60',
+              selecting && !isSelecting && 'opacity-50',
+            )}
+            disabled={Boolean(selecting)}
+            onClick={() => void handlePick(candidate.imageUrl)}
+            title={candidate.source ? `Uporabi sliko (${candidate.source})` : 'Uporabi to sliko'}
+          >
+            <img
+              src={candidate.thumbUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="block h-full w-full object-cover"
+              onError={() => setBroken((prev) => new Set(prev).add(candidate.imageUrl))}
+            />
+            {candidate.source ? (
+              <span className="absolute inset-x-0 bottom-0 truncate bg-ink/55 px-1.5 py-0.5 text-[10px] text-white">
+                {candidate.source}
+              </span>
+            ) : null}
+            {isSelecting && (
+              <span className="absolute inset-0 flex items-center justify-center bg-surface/70">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-ink-faint border-t-basil" />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && !selecting) onClose();
+      }}
+      title="Zamenjaj naslovno sliko"
+      description="Izbrana slika se prenese in shrani k receptu."
+      size="lg"
+      fullHeight
+    >
+      <div className="flex h-full flex-col gap-4">
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void search(query);
+          }}
+        >
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Išči slike jedi…"
+            aria-label="Iskalna fraza slike"
+            maxLength={200}
+            className="flex-1"
+          />
+          <Button
+            type="submit"
+            color="white"
+            appearance="outline"
+            iconOnly
+            icon={<Search animateOnHover />}
+            aria-label="Poišči slike"
+            disabled={loading || !query.trim()}
+          />
+        </form>
+
+        {ownCandidates.length > 0 ? (
+          <section className="space-y-2">
+            <h4 className="m-0 text-xs font-semibold uppercase tracking-widest text-ink-muted">Slike iz recepta</h4>
+            {renderGrid(ownCandidates)}
+          </section>
+        ) : null}
+
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h4 className="m-0 text-xs font-semibold uppercase tracking-widest text-ink-muted">S spleta</h4>
+            {loading ? (
+              <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-ink-faint border-t-basil" />
+                iščem…
+              </span>
+            ) : null}
+          </div>
+          {error ? <p className="m-0 text-xs text-tomato-deep">{error}</p> : null}
+          {webCandidates.length > 0 ? renderGrid(webCandidates) : null}
+          {loading && webCandidates.length === 0 ? (
+            <div className="flex items-center justify-center py-8">
+              <AnimatedStepsLoader steps={['Iščem fotografije te jedi…', 'Preverjam receptne strani…']} />
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </Dialog>
+  );
+}
+
 function RecipeDetailModal({
   recipe,
   open,
@@ -745,6 +970,7 @@ function RecipeDetailModal({
   onLabelsChange,
   onImagesRefetched,
   onContentUpdated,
+  onCoverChanged,
 }: {
   recipe: ParsedRecipe | null;
   open: boolean;
@@ -760,8 +986,11 @@ function RecipeDetailModal({
   onLabelsChange?: (recipeId: number, newLabelIds: number[]) => void;
   onImagesRefetched?: (recipeId: number, imageUrl: string | undefined, images: string[]) => void;
   onContentUpdated?: (recipeId: number, ingredients: string[], instructions: string[]) => void;
+  /** Unsaved recipes only: the picked cover was downloaded and now lives at this local path. */
+  onCoverChanged?: (imageUrl: string) => void;
 }) {
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [localLabelIds, setLocalLabelIds] = useState<number[]>([]);
   const [labelSaving, setLabelSaving] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
@@ -774,6 +1003,26 @@ function RecipeDetailModal({
   const [contentError, setContentError] = useState('');
 
   useEffect(() => setImageBroken(false), [recipe?.imageUrl]);
+
+  async function handlePickCover(imageUrl: string) {
+    if (!recipe) return;
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (saved && recipeId) {
+      const res = await fetch(`/api/recipes/saved/${recipeId}/cover`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ imageUrl }),
+      });
+      if (!res.ok) throw new Error('Slike ni bilo mogoče shraniti.');
+      const data = (await res.json()) as { recipe: SavedRecipe };
+      onImagesRefetched?.(data.recipe.id, data.recipe.imageUrl, data.recipe.images ?? []);
+    } else {
+      const res = await fetch('/api/recipes/cover', { method: 'POST', headers, body: JSON.stringify({ imageUrl }) });
+      if (!res.ok) throw new Error('Slike ni bilo mogoče prenesti.');
+      const data = (await res.json()) as { imageUrl: string };
+      onCoverChanged?.(data.imageUrl);
+    }
+  }
 
   async function handleRefetchImages() {
     if (!recipeId || refetchingImages) return;
@@ -925,18 +1174,20 @@ function RecipeDetailModal({
       setAddPhase('checking');
       setAddError('');
       try {
-        const res = await fetch('/api/recipes/check-ingredient', {
+        const res = await fetch('/api/recipes/check-ingredients', {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ingredient: ingredient.raw,
+            ingredients: [ingredient.raw],
             baseServings: ingredient.baseServings,
             targetServings: ingredient.targetServings,
             listId,
           }),
         });
         if (!res.ok) throw new Error(`Napaka ${res.status}`);
-        const data = (await res.json()) as CheckIngredientResult;
+        const { results } = (await res.json()) as { results: CheckIngredientResult[] };
+        const data = results[0];
+        if (!data) throw new Error('Prazen odgovor');
         setCheckResult(data);
 
         if (!data.match) {
@@ -967,6 +1218,7 @@ function RecipeDetailModal({
             title: parsed.title,
             quantity: parsed.quantity,
             unit: parsed.unit,
+            category: parsed.category,
           }),
         });
         if (!res.ok) throw new Error(`Napaka ${res.status}`);
@@ -988,37 +1240,35 @@ function RecipeDetailModal({
       setAddPhase('bulk-checking');
       setAddError('');
       try {
-        const [checkResults, itemsRes] = await Promise.all([
-          Promise.all(
-            ingredients.map(async (raw) => {
-              const res = await fetch('/api/recipes/check-ingredient', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  ingredient: raw,
-                  baseServings,
-                  targetServings: servingSize,
-                  listId,
-                }),
-              });
-              if (!res.ok) throw new Error(`Napaka ${res.status}`);
-              const data = (await res.json()) as CheckIngredientResult;
-              return { raw, data };
+        // All ingredients are parsed and matched in a single request (one Gemini call).
+        const [checkRes, itemsRes] = await Promise.all([
+          fetch('/api/recipes/check-ingredients', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ingredients,
+              baseServings,
+              targetServings: servingSize,
+              listId,
             }),
-          ),
+          }),
           fetch(`/api/lists/${listId}/items?status=active`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
+        if (!checkRes.ok) throw new Error(`Napaka ${checkRes.status}`);
+        const { results: checkResults } = (await checkRes.json()) as {
+          results: Array<CheckIngredientResult & { raw: string }>;
+        };
 
         if (itemsRes.ok) {
           const itemsData = (await itemsRes.json()) as { items: ShoppingListItem[] };
           setListItems(itemsData.items);
         }
 
-        const items: BulkAddItem[] = checkResults.map(({ raw, data }) => ({
-          raw,
-          scaled: scaleIngredientText(raw, scale),
+        const items: BulkAddItem[] = checkResults.map((data) => ({
+          raw: data.raw,
+          scaled: scaleIngredientText(data.raw, scale),
           parsed: data.parsed,
           match: data.match,
           selectedValue:
@@ -1055,19 +1305,41 @@ function RecipeDetailModal({
     if (!selectedListId) return;
     setAddPhase('bulk-adding');
     try {
-      for (const item of bulkItems) {
+      // Add items a few at a time instead of strictly one after another.
+      const queue = [...bulkItems];
+      let firstFailure: Error | null = null;
+      const addOne = async (item: BulkAddItem) => {
         const isNew = item.selectedValue === 'new';
         const chosenListItem = isNew
           ? null
           : listItems.find((li) => String(li.id) === item.selectedValue);
         const title = chosenListItem ? chosenListItem.title : item.parsed.title;
-        await fetch(`/api/lists/${selectedListId}/items`, {
+        const res = await fetch(`/api/lists/${selectedListId}/items`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, quantity: item.parsed.quantity, unit: item.parsed.unit }),
+          body: JSON.stringify({
+            title,
+            quantity: item.parsed.quantity,
+            unit: item.parsed.unit,
+            category: chosenListItem ? undefined : item.parsed.category,
+          }),
         });
+        if (!res.ok) throw new Error(`Napaka ${res.status}`);
         setAddedItems((prev) => new Set(prev).add(item.raw));
-      }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(4, queue.length) }, async () => {
+          while (queue.length > 0) {
+            const item = queue.shift()!;
+            try {
+              await addOne(item);
+            } catch (e) {
+              firstFailure ??= e instanceof Error ? e : new Error('Napaka pri dodajanju');
+            }
+          }
+        }),
+      );
+      if (firstFailure) throw firstFailure;
       setAddPhase('idle');
       setBulkItems([]);
       setCheckedIngredients(new Set());
@@ -1163,20 +1435,35 @@ function RecipeDetailModal({
         footer={footer}
       >
         <div className="space-y-5">
-          {recipe.imageUrl && !imageBroken ? (
-            <div className="overflow-hidden rounded-2xl border border-line">
-              <img
-                src={recipe.imageUrl}
-                alt={recipe.title}
-                className="h-56 w-full object-cover"
-                onError={() => setImageBroken(true)}
-              />
-            </div>
-          ) : (
-            <div className="flex h-56 w-full items-center justify-center rounded-2xl border border-line bg-surface text-sm text-ink-muted">
-              Ni slike
-            </div>
-          )}
+          <div className="group relative">
+            {recipe.imageUrl && !imageBroken ? (
+              <div className="overflow-hidden rounded-2xl border border-line">
+                <img
+                  src={recipe.imageUrl}
+                  alt={recipe.title}
+                  className="h-56 w-full object-cover"
+                  onError={() => setImageBroken(true)}
+                />
+              </div>
+            ) : (
+              <div className="flex h-56 w-full items-center justify-center rounded-2xl border border-line bg-surface text-sm text-ink-muted">
+                Ni slike
+              </div>
+            )}
+            {/* Always visible on touch screens; hover-revealed where hover exists. */}
+            <Button
+              type="button"
+              color="white"
+              appearance="full"
+              size="md"
+              icon={<Camera animateOnHover />}
+              iconOnly
+              aria-label="Zamenjaj sliko"
+              title="Zamenjaj sliko"
+              className="absolute bottom-3 right-3 rounded-full shadow-float transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+              onClick={() => setCoverPickerOpen(true)}
+            />
+          </div>
 
           {recipe.description && (
             <p className="text-sm leading-relaxed text-ink-soft">{recipe.description}</p>
@@ -1484,7 +1771,7 @@ function RecipeDetailModal({
                           key={i}
                           className={cx(
                             'flex items-center gap-2.5 rounded-xl px-2 py-1 transition',
-                            isAdded ? 'opacity-50' : 'hover:bg-paper-deep',
+                            isAdded ? 'opacity-50' : 'hover:bg-ink/4',
                           )}
                         >
                           {isAdded ? (
@@ -1640,6 +1927,15 @@ function RecipeDetailModal({
         </div>
         <ImageLightbox src={expandedImage} onClose={() => setExpandedImage(null)} />
       </Dialog>
+
+      <CoverPickerDialog
+        open={coverPickerOpen}
+        onClose={() => setCoverPickerOpen(false)}
+        token={token}
+        initialQuery={recipe.title}
+        ownImages={(recipe.images ?? []).filter((u) => u !== recipe.imageUrl)}
+        onPick={handlePickCover}
+      />
 
       {/* Add-to-list flow modals */}
       <ChooseListDialog
@@ -1965,6 +2261,7 @@ function SearchOverlay({
   savedByUrl,
   onAddRecipe,
   onRemoveRecipe,
+  onSavedImagesChanged,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1972,6 +2269,7 @@ function SearchOverlay({
   savedByUrl: Map<string, SavedRecipe>;
   onAddRecipe: (recipe: ParsedRecipe) => Promise<void>;
   onRemoveRecipe: (id: number) => Promise<void>;
+  onSavedImagesChanged: (recipeId: number, imageUrl: string | undefined, images: string[]) => void;
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<RecipeSearchResult[]>([]);
@@ -2204,12 +2502,14 @@ function SearchOverlay({
           {/* backdrop — the search is a full-screen mode, so it gets solid paper */}
           <motion.div
             aria-hidden
-            className="paper-grain pointer-events-none absolute inset-0 bg-paper"
+            className="pointer-events-none absolute inset-0 bg-paper"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-          />
+          >
+            <AmbientBackground />
+          </motion.div>
 
           {/* close button */}
           <Button
@@ -2250,7 +2550,7 @@ function SearchOverlay({
                     type="submit"
                     color="gradient"
                     appearance="full"
-                    size="md"
+                    size="lg"
                     icon={<Search />}
                     disabled={!canSearch}
                   >
@@ -2399,6 +2699,14 @@ function SearchOverlay({
         onAdd={handleAdd}
         onRemove={handleRemove}
         token={token}
+        recipeId={savedEntry?.id}
+        onImagesRefetched={(recipeId, imageUrl, images) => {
+          onSavedImagesChanged(recipeId, imageUrl, images);
+          setSelectedRecipe((prev) => (prev ? { ...prev, imageUrl, images } : prev));
+        }}
+        onCoverChanged={(imageUrl) =>
+          setSelectedRecipe((prev) => (prev ? { ...prev, imageUrl } : prev))
+        }
       />
       {/* Loading overlay for recipe fetch */}
       {fetchingRecipe &&
@@ -2447,7 +2755,7 @@ function SavedRecipeCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-card transition-all duration-200 hover:border-basil/50 hover:shadow-float focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface text-left transition-all duration-200 hover:border-basil/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
     >
       <div className="aspect-[4/3] w-full overflow-hidden bg-paper-deep">
         {recipe.imageUrl && !imgBroken ? (
@@ -2704,6 +3012,7 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         savedByUrl={savedByUrl}
         onAddRecipe={addRecipe}
         onRemoveRecipe={removeRecipe}
+        onSavedImagesChanged={handleImagesRefetched}
       />
 
       <RecipeDetailModal

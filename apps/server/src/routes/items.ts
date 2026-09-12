@@ -10,6 +10,7 @@ import { sqlite } from "../db/client.js";
 import { buildItemSearchTokens, normalizeTitle } from "../domain/items.js";
 import { requireAuth } from "../middleware/auth.js";
 import { classifyCategory } from "../services/category-classifier.js";
+import { extractBingImageUrls } from "../services/image-search.js";
 
 const suggestQuerySchema = z.object({
   q: z.string().trim().max(200),
@@ -551,36 +552,6 @@ async function collectSearchResultUrls(domain: string, query: string): Promise<s
  * Bing Images embeds full-size URLs in static HTML as `murl&quot;:&quot;https://…&quot;`.
  * Google Images loads results almost entirely via JavaScript, so server-side fetch sees no image URLs.
  */
-function extractBingImagesMurls(html: string): string[] {
-  const urls: string[] = [];
-  const marker = 'murl&quot;:&quot;';
-  let idx = 0;
-  while (idx < html.length) {
-    const start = html.indexOf(marker, idx);
-    if (start === -1) {
-      break;
-    }
-    const urlStart = start + marker.length;
-    const end = html.indexOf("&quot;", urlStart);
-    if (end === -1) {
-      break;
-    }
-    const raw = html.slice(urlStart, end).replace(/&amp;/g, "&");
-    if (raw.startsWith("http")) {
-      urls.push(raw);
-    }
-    idx = end + 6;
-  }
-
-  const plainRe = /"murl":"(https?:[^"]+)"/g;
-  let match: RegExpExecArray | null = plainRe.exec(html);
-  while (match !== null) {
-    urls.push(match[1].replace(/\\\//g, "/"));
-    match = plainRe.exec(html);
-  }
-
-  return Array.from(new Set(urls));
-}
 
 /** Bare mimovrste.com/i/{id} URLs frequently serve promo banners; product shots usually include /w/h segments. */
 function mimovrsteBareTilePenalty(imageUrl: string): number {
@@ -682,7 +653,7 @@ async function lookupBingImageCandidates(query: string): Promise<Array<{ imageUr
         Referer: "https://www.bing.com/"
       }
     });
-    const candidates = extractBingImagesMurls(html);
+    const candidates = extractBingImageUrls(html);
     if (!candidates.length) {
       return [];
     }

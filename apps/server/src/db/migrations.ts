@@ -403,6 +403,13 @@ const migrations: Migration[] = [
       ALTER TABLE items ADD COLUMN search_key TEXT;
       CREATE INDEX IF NOT EXISTS idx_items_search_key ON items(search_key);
     `
+  },
+  {
+    // One-time items vanish from the list (and the catalog, if unused elsewhere) once bought.
+    name: "016_list_items_one_time",
+    sql: `
+      ALTER TABLE list_items ADD COLUMN one_time INTEGER NOT NULL DEFAULT 0;
+    `
   }
 ];
 

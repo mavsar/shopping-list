@@ -36,8 +36,8 @@ const buttonClassName = cva(
       size: {
         xs: "h-7 px-2.5 text-xs",
         sm: "h-9 px-3 text-sm",
-        md: "h-11 px-4 text-sm",
-        lg: "h-14 px-6 text-base"
+        md: "h-11 px-4 text-sm md:h-10",
+        lg: "h-13 px-6 text-base"
       },
       stretch: {
         true: "w-full",
@@ -51,8 +51,8 @@ const buttonClassName = cva(
     compoundVariants: [
       { size: "xs", iconOnly: true, className: "h-7 w-7" },
       { size: "sm", iconOnly: true, className: "h-9 w-9" },
-      { size: "md", iconOnly: true, className: "h-11 w-11" },
-      { size: "lg", iconOnly: true, className: "h-14 w-14" },
+      { size: "md", iconOnly: true, className: "h-11 w-11 md:h-10 md:w-10" },
+      { size: "lg", iconOnly: true, className: "h-13 w-13" },
 
       // ── primary / basil ──
       {

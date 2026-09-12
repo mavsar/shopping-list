@@ -1,15 +1,10 @@
-import { GoogleGenAI } from "@google/genai";
-
 import {
   inferCategoryFromTitle,
   isItemCategory,
   itemCategoryValues,
 } from "../domain/item-category.js";
 import type { ItemCategory } from "../domain/item-category.js";
-
-const apiKey = process.env.GEMINI_API_KEY;
-
-const genai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+import { GEMINI_LITE_MODEL, genai } from "./genai.js";
 
 if (genai) {
   console.log("[category-classifier] Gemini API key detected — LLM classification active");
@@ -45,9 +40,11 @@ export async function classifyCategory(title: string): Promise<ItemCategory> {
   }
 
   try {
+    // Single-token classification — the small model without thinking answers in ~0.5s.
     const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_LITE_MODEL,
       contents: `${PROMPT}\n\nProduct: "${title}"`,
+      config: { thinkingConfig: { thinkingBudget: 0 } },
     });
 
     const raw = response.text?.trim() ?? "";

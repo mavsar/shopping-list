@@ -40,7 +40,9 @@ const createListItemSchema = z.object({
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
   imageUrl: itemImageUrlSchema.optional(),
-  sourceUrl: z.string().trim().url().max(1000).optional()
+  sourceUrl: z.string().trim().url().max(1000).optional(),
+  /** Delete the item from the list and catalog as soon as it is marked bought. */
+  oneTime: z.boolean().default(false)
 });
 
 const listItemsQuerySchema = z.object({
@@ -55,8 +57,14 @@ const patchListItemSchema = z.object({
   note: z.string().trim().max(500).optional(),
   category: itemCategorySchema.optional(),
   imageUrl: itemImageUrlSchema.nullable().optional(),
-  sourceUrl: z.string().trim().url().max(1000).nullable().optional()
+  sourceUrl: z.string().trim().url().max(1000).nullable().optional(),
+  oneTime: z.boolean().optional()
 });
+
+/** SQLite hands back 0/1 for the one_time flag; the API speaks booleans. */
+function mapListItemRow<T extends { oneTime?: number | boolean } | undefined>(row: T): T {
+  return row ? { ...row, oneTime: Boolean(row.oneTime) } : row;
+}
 
 export const listsRouter = Router();
 
@@ -383,7 +391,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
     status === "all"
       ? sqlite.prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.list_id = ?
@@ -392,7 +400,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
         )
       : sqlite.prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.list_id = ? AND li.status = ?
@@ -401,7 +409,7 @@ listsRouter.get("/:listId/items", requireAuth, (req, res) => {
         );
 
   const items = status === "all" ? statement.all(listId) : statement.all(listId, status);
-  return res.json({ items });
+  return res.json({ items: (items as Array<{ oneTime?: number }>).map(mapListItemRow) });
 });
 
 listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
@@ -502,14 +510,14 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
     if (activeListItem) {
       sqlite
         .prepare(
-          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, one_time = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
-        .run(activeListItem.quantity + payload.quantity, payload.unit, payload.note ?? null, activeListItem.id);
+        .run(activeListItem.quantity + payload.quantity, payload.unit, payload.note ?? null, payload.oneTime ? 1 : 0, activeListItem.id);
 
       const listItem = sqlite
         .prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.id = ?
@@ -529,14 +537,14 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
     if (historicalListItem) {
       sqlite
         .prepare(
-          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          "UPDATE list_items SET quantity = ?, unit = ?, note = ?, one_time = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         )
-        .run(payload.quantity, payload.unit, payload.note ?? null, historicalListItem.id);
+        .run(payload.quantity, payload.unit, payload.note ?? null, payload.oneTime ? 1 : 0, historicalListItem.id);
 
       const listItem = sqlite
         .prepare(
           `
-          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+          SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
           FROM list_items li
           JOIN items i ON i.id = li.item_id
           WHERE li.id = ?
@@ -548,13 +556,13 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
     }
 
     const listItemInsert = sqlite
-      .prepare("INSERT INTO list_items (list_id, item_id, quantity, unit, note) VALUES (?, ?, ?, ?, ?)")
-      .run(listId, itemId, payload.quantity, payload.unit, payload.note ?? null);
+      .prepare("INSERT INTO list_items (list_id, item_id, quantity, unit, note, one_time) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(listId, itemId, payload.quantity, payload.unit, payload.note ?? null, payload.oneTime ? 1 : 0);
 
     const listItem = sqlite
       .prepare(
         `
-        SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+        SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
         FROM list_items li
         JOIN items i ON i.id = li.item_id
         WHERE li.id = ?
@@ -566,7 +574,7 @@ listsRouter.post("/:listId/items", requireAuth, async (req, res) => {
   });
 
   const result = assignItem(preResolvedCategory);
-  return res.status(201).json(result);
+  return res.status(201).json({ ...result, listItem: mapListItemRow(result.listItem as { oneTime?: number }) });
 });
 
 listsRouter.delete("/:listId/items/:listItemId", requireAuth, (req, res) => {
@@ -642,7 +650,8 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
     payload.note === undefined &&
     payload.category === undefined &&
     payload.imageUrl === undefined &&
-    payload.sourceUrl === undefined
+    payload.sourceUrl === undefined &&
+    payload.oneTime === undefined
   ) {
     return res.status(400).json({ error: "At least one field to update is required" });
   }
@@ -723,11 +732,20 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
         quantity = COALESCE(?, quantity),
         unit = COALESCE(?, unit),
         note = COALESCE(?, note),
+        one_time = COALESCE(?, one_time),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND list_id = ?
       `
     )
-    .run(payload.status ?? null, payload.quantity ?? null, payload.unit ?? null, payload.note ?? null, listItemId, listId);
+    .run(
+      payload.status ?? null,
+      payload.quantity ?? null,
+      payload.unit ?? null,
+      payload.note ?? null,
+      payload.oneTime === undefined ? null : payload.oneTime ? 1 : 0,
+      listItemId,
+      listId
+    );
 
   if (payload.quantity !== undefined || payload.unit !== undefined) {
     const updatedListItem = sqlite
@@ -743,16 +761,30 @@ listsRouter.patch("/:listId/items/:listItemId", requireAuth, (req, res) => {
     }
   }
 
-  const listItem = sqlite
-    .prepare(
-      `
-      SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.created_at AS createdAt, li.updated_at AS updatedAt
+  const listItem = mapListItemRow(
+    sqlite
+      .prepare(
+        `
+      SELECT li.id, li.list_id AS listId, li.item_id AS itemId, i.title, i.image_url AS imageUrl, i.category AS category, li.quantity, li.unit, li.note, li.status, li.one_time AS oneTime, li.created_at AS createdAt, li.updated_at AS updatedAt
       FROM list_items li
       JOIN items i ON i.id = li.item_id
       WHERE li.id = ?
       `
-    )
-    .get(listItemId);
+      )
+      .get(listItemId) as { itemId: number; status: string; oneTime: number } | undefined
+  );
+
+  // Bought a one-time item: it's gone from the list, and from the catalog unless another
+  // list still uses it. Report it as removed so clients drop it from view.
+  if (listItem && payload.status === "completed" && listItem.oneTime) {
+    sqlite.transaction(() => {
+      sqlite.prepare("DELETE FROM list_items WHERE id = ?").run(listItemId);
+      sqlite
+        .prepare("DELETE FROM items WHERE id = ? AND NOT EXISTS (SELECT 1 FROM list_items WHERE item_id = ?)")
+        .run(listItem.itemId, listItem.itemId);
+    })();
+    return res.json({ listItem: { ...listItem, status: "removed" } });
+  }
 
   return res.json({ listItem });
 });

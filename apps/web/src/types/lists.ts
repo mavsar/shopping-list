@@ -98,6 +98,8 @@ export type ShoppingListItem = {
   unit: ShoppingItemUnit;
   note: string | null;
   status: "active" | "completed" | "removed";
+  /** Deleted from the list and catalog as soon as it is bought. */
+  oneTime: boolean;
   createdAt: string;
   updatedAt: string;
 };

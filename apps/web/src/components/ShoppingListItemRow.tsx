@@ -123,6 +123,14 @@ function ShoppingListItemRowComponent({
                 )}
               >
                 {displayTitle}
+                {item.oneTime ? (
+                  <span
+                    className="ml-1.5 inline-block rounded-full bg-butter-soft px-1.5 py-px align-middle text-[10px] font-medium uppercase tracking-wide leading-3 text-ink-soft no-underline"
+                    title="Enkratni nakup — po nakupu se izbriše"
+                  >
+                    enkratno
+                  </span>
+                ) : null}
               </span>
             </button>
             {completed ? (

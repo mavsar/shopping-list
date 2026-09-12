@@ -54,6 +54,12 @@ export interface RecipeSearchOptions {
   query: string;
   sources: RecipeSource[];
   signal: AbortSignal;
+  /** Cap on grounded Gemini calls (default MAX_GROUNDING_CALLS). */
+  maxCalls?: number;
+  /** Translate non-Slovenian titles (default true). */
+  translate?: boolean;
+  /** Stop after this many results (default MAX_RESULTS). */
+  maxResults?: number;
 }
 
 const MAX_RESULTS = 60;
@@ -157,7 +163,11 @@ interface SearchUnit {
  * first, then further phrases round-robin. Few sites → many calls with one search each
  * (more distinct result sets); many sites → a few searches per call.
  */
-function planGroundingCalls(sources: RecipeSource[], phrases: Record<QueryLanguage, string[]>): SearchUnit[][] {
+function planGroundingCalls(
+  sources: RecipeSource[],
+  phrases: Record<QueryLanguage, string[]>,
+  maxCalls = MAX_GROUNDING_CALLS
+): SearchUnit[][] {
   const units: SearchUnit[] = [];
   for (let i = 0; i < PHRASES_PER_LANGUAGE; i++) {
     for (const source of sources) {
@@ -165,8 +175,8 @@ function planGroundingCalls(sources: RecipeSource[], phrases: Record<QueryLangua
       if (phrase) units.push({ source, phrase });
     }
   }
-  const budget = units.slice(0, MAX_GROUNDING_CALLS * MAX_SEARCHES_PER_CALL);
-  const perCall = Math.min(MAX_SEARCHES_PER_CALL, Math.max(1, Math.ceil(budget.length / MAX_GROUNDING_CALLS)));
+  const budget = units.slice(0, maxCalls * MAX_SEARCHES_PER_CALL);
+  const perCall = Math.min(MAX_SEARCHES_PER_CALL, Math.max(1, Math.ceil(budget.length / maxCalls)));
 
   const calls: SearchUnit[][] = [];
   for (let i = 0; i < budget.length; i += perCall) calls.push(budget.slice(i, i + perCall));
@@ -443,7 +453,7 @@ function createLimiter(max: number) {
  * `emit` as they become available.
  */
 export async function runRecipeSearch(
-  { query, sources, signal }: RecipeSearchOptions,
+  { query, sources, signal, maxCalls, translate = true, maxResults = MAX_RESULTS }: RecipeSearchOptions,
   emit: RecipeSearchEmitter
 ): Promise<void> {
   if (!genai || sources.length === 0) return;
@@ -453,7 +463,7 @@ export async function runRecipeSearch(
   const phrases = await expandQuery(query, languages, signal);
   if (signal.aborted) return;
 
-  const calls = planGroundingCalls(sources, phrases);
+  const calls = planGroundingCalls(sources, phrases, maxCalls);
   const seenCandidates = new Set<string>();
   const seenUrls = new Set<string>();
   const limitResolve = createLimiter(RESOLVE_CONCURRENCY);
@@ -483,8 +493,8 @@ export async function runRecipeSearch(
             seenUrls.add(result.url);
             emitted++;
             emit.onResult(result);
-            if (findRecipeSourceByHostname(result.source, sources)?.language !== "sl") translations.push(result);
-            if (emitted >= MAX_RESULTS) capReached.abort();
+            if (translate && findRecipeSourceByHostname(result.source, sources)?.language !== "sl") translations.push(result);
+            if (emitted >= maxResults) capReached.abort();
           })
         )
       );
