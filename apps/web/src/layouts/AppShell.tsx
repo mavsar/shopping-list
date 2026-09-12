@@ -1,25 +1,12 @@
 import type { PropsWithChildren } from "react";
 import { motion } from "motion/react";
-import { BubbleBackground } from "../components/animate-ui/components/backgrounds/bubble";
+import { MeshBackground } from "../components/MeshBackground";
 
-/** Butter, basil, carrot and a hint of tomato drifting slowly behind the page. */
+/** Soft mesh of butter, basil and carrot slowly flowing behind the page. */
 export function AmbientBackground() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-y-0 -left-[12vw] -right-[12vw] z-0">
-      <BubbleBackground
-        interactive={false}
-        blendClassName="mix-blend-multiply"
-        intensity={0.22}
-        className="absolute inset-0 overflow-visible bg-transparent"
-        colors={{
-          first: '245,205,110', // butter
-          second: '150,205,170', // basil (light)
-          third: '245,190,140', // carrot (light)
-          fourth: '240,180,165', // tomato (soft)
-          fifth: '220,230,170', // olive / fresh greens
-          sixth: '190,198,235', // blueberry (light)
-        }}
-      />
+    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      <MeshBackground />
     </div>
   );
 }
