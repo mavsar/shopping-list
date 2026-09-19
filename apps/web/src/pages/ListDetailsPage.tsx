@@ -195,6 +195,8 @@ type SharedItemFormFieldsProps = {
   categoryLoading?: boolean;
   oneTime: boolean;
   onOneTimeChange: (value: boolean) => void;
+  /** Note + one-time belong to a list row; hide them when editing a catalog item. */
+  showListFields?: boolean;
   imageSearchQuery: string;
   onImageSearchQueryChange: (value: string) => void;
   onFindImage: () => void;
@@ -230,6 +232,7 @@ function SharedItemFormFields({
   categoryLoading = false,
   oneTime,
   onOneTimeChange,
+  showListFields = true,
   imageSearchQuery,
   onImageSearchQueryChange,
   onFindImage,
@@ -270,7 +273,7 @@ function SharedItemFormFields({
 
   return (
     <>
-      <div className="flex no-wrap gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
@@ -279,7 +282,7 @@ function SharedItemFormFields({
           minLength={1}
           maxLength={200}
           required
-          className="flex-1"
+          className="w-full sm:flex-1"
         />
         <ItemQuantityUnitControls
           quantity={quantity}
@@ -329,15 +332,19 @@ function SharedItemFormFields({
           </p>
         ) : null}
       </div>
-      <Textarea
-        value={note}
-        onChange={(event) => onNoteChange(event.target.value)}
-        placeholder={notePlaceholder}
-        maxLength={500}
-        resize="none"
-        rows={noteRows}
-      />
-      <OneTimeItemCheckbox checked={oneTime} onChange={onOneTimeChange} disabled={disabled} />
+      {showListFields ? (
+        <>
+          <Textarea
+            value={note}
+            onChange={(event) => onNoteChange(event.target.value)}
+            placeholder={notePlaceholder}
+            maxLength={500}
+            resize="none"
+            rows={noteRows}
+          />
+          <OneTimeItemCheckbox checked={oneTime} onChange={onOneTimeChange} disabled={disabled} />
+        </>
+      ) : null}
       <div className="grid gap-3 rounded-2xl">
         {imageUrl ? (
           <div
@@ -558,7 +565,13 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
   const [recentlyCompletedItemId, setRecentlyCompletedItemId] = useState<number | null>(null);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [expandedQuantityItemId, setExpandedQuantityItemId] = useState<number | null>(null);
-  const [detailsListItemId, setDetailsListItemId] = useState<number | null>(null);
+  /** What the details editor is editing: a row on this list, or a catalog item picked from search. */
+  const [editorTarget, setEditorTarget] = useState<
+    { kind: 'list-item'; listItemId: number } | { kind: 'catalog'; item: CatalogItem } | null
+  >(null);
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [deleteCatalogItem, setDeleteCatalogItem] = useState<CatalogItem | null>(null);
+  const [deletingCatalogItem, setDeletingCatalogItem] = useState(false);
   const [detailsEditQuantity, setDetailsEditQuantity] = useState(1);
   const [detailsEditUnit, setDetailsEditUnit] = useState<ShoppingItemUnit>('kos');
   const [detailsEditNote, setDetailsEditNote] = useState('');
@@ -586,11 +599,15 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
 
   const detailsItem = useMemo(
     () =>
-      detailsListItemId === null
-        ? null
-        : (items.find((row) => row.id === detailsListItemId) ?? null),
-    [detailsListItemId, items],
+      editorTarget?.kind === 'list-item'
+        ? (items.find((row) => row.id === editorTarget.listItemId) ?? null)
+        : null,
+    [editorTarget, items],
   );
+  const catalogTarget = editorTarget?.kind === 'catalog' ? editorTarget.item : null;
+  const editorOpen = editorTarget !== null && (detailsItem !== null || catalogTarget !== null);
+  const editorBusy =
+    (detailsItem !== null && updatingItemId === detailsItem.id) || catalogSaving || deletingCatalogItem;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -965,18 +982,6 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
       quantity: globalItem.defaultQuantity ?? 1,
       unit: globalItem.defaultUnit != null ? normalizeShoppingItemUnit(globalItem.defaultUnit) : 'kos',
     };
-  }
-
-  function openCreateItemEditStep(item: CatalogItem) {
-    openCreateItemStep(item.title);
-    categoryManualRef.current = true;
-    setNewItemCategory(item.category);
-    setNewItemImageUrl(item.imageUrl ?? '');
-    setNewItemImagePreviewUrl(item.imageUrl ?? '');
-    setNewItemSourceUrl('');
-    const defaults = resolveItemDefaults(item.id, item);
-    setNewItemQuantity(defaults.quantity);
-    setNewItemUnit(defaults.unit);
   }
 
   async function addExistingItem(item: CatalogItem) {
@@ -1436,8 +1441,83 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
 
   function openItemDetails(item: ShoppingListItem) {
     applyDetailsItemToEditState(item);
-    setDetailsListItemId(item.id);
+    setEditorTarget({ kind: 'list-item', listItemId: item.id });
     setUpdatingItemError('');
+  }
+
+  /** Edit a catalog item straight from the add-item search (name, category, picture, defaults). */
+  function openCatalogItemEditor(item: CatalogItem) {
+    setDetailsEditQuantity(item.defaultQuantity ?? 1);
+    setDetailsEditUnit(item.defaultUnit != null ? normalizeShoppingItemUnit(item.defaultUnit) : 'kos');
+    setDetailsEditNote('');
+    setDetailsEditName(formatItemTitle(item.title));
+    setDetailsEditCategory(item.category);
+    setDetailsEditOneTime(false);
+    setDetailsEditImageUrl(item.imageUrl ?? '');
+    setDetailsEditImagePreviewUrl(item.imageUrl ?? '');
+    setDetailsEditSourceUrl('');
+    setDetailsEditImageRemoved(false);
+    resetDetailsEditImageSearchState();
+    setUpdatingItemError('');
+    setEditorTarget({ kind: 'catalog', item });
+  }
+
+  async function saveCatalogItemEdit(item: CatalogItem) {
+    setCatalogSaving(true);
+    setUpdatingItemError('');
+    try {
+      const response = await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formatItemTitle(detailsEditName),
+          category: detailsEditCategory,
+          defaultQuantity: detailsEditQuantity,
+          defaultUnit: detailsEditUnit,
+          imageUrl: detailsEditImageRemoved ? null : detailsEditImageUrl.trim() || undefined,
+          sourceUrl: detailsEditImageRemoved ? null : detailsEditSourceUrl.trim() || undefined,
+        }),
+      });
+      const payload = (await response.json()) as { item?: CatalogItem; error?: string };
+      if (!response.ok || !payload.item) {
+        throw new Error(payload.error ?? `Posodobitev izdelka ni uspela (status ${response.status}).`);
+      }
+      const updated = payload.item;
+      setSearchResults((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      // Rows on this list that point at the same catalog item show the new name/category/picture.
+      setItems((current) =>
+        current.map((row) =>
+          row.itemId === updated.id
+            ? { ...row, title: updated.title, category: updated.category, imageUrl: updated.imageUrl }
+            : row,
+        ),
+      );
+      setEditorTarget(null);
+    } catch (error) {
+      setUpdatingItemError(error instanceof Error ? error.message : 'Neznana napaka');
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
+  async function removeCatalogItem(item: CatalogItem) {
+    setDeletingCatalogItem(true);
+    setDeleteItemError('');
+    try {
+      const response = await fetch(`/api/items/${item.id}`, { method: 'DELETE', headers: authHeaders });
+      if (!response.ok && response.status !== 204) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? `Brisanje ni uspelo (status ${response.status}).`);
+      }
+      setSearchResults((current) => current.filter((row) => row.id !== item.id));
+      setItems((current) => current.filter((row) => row.itemId !== item.id));
+      setDeleteCatalogItem(null);
+      setEditorTarget(null);
+    } catch (error) {
+      setDeleteItemError(error instanceof Error ? error.message : 'Neznana napaka');
+    } finally {
+      setDeletingCatalogItem(false);
+    }
   }
 
   function resetDetailsEditImageSearchState() {
@@ -1511,11 +1591,15 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
 
   async function saveDetailsEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!detailsItem) {
-      return;
-    }
     if (!detailsEditName.trim()) {
       setUpdatingItemError('Ime izdelka je obvezno.');
+      return;
+    }
+    if (catalogTarget) {
+      await saveCatalogItemEdit(catalogTarget);
+      return;
+    }
+    if (!detailsItem) {
       return;
     }
     const ok = await patchListItem(detailsItem.id, {
@@ -1537,12 +1621,12 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
           : undefined,
     });
     if (ok) {
-      setDetailsListItemId(null);
+      setEditorTarget(null);
     }
   }
 
   function cancelDetailsEdit() {
-    setDetailsListItemId(null);
+    setEditorTarget(null);
   }
 
   async function deleteListItem(listItemId: number, fromCatalog: boolean) {
@@ -1558,7 +1642,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
       }
       setItems((current) => current.filter((item) => item.id !== listItemId));
       setDeleteConfirmItemId(null);
-      setDetailsListItemId(null);
+      setEditorTarget(null);
     } catch (error) {
       setDeleteItemError(error instanceof Error ? error.message : 'Neznana napaka');
     } finally {
@@ -1750,7 +1834,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
                           icon={<Edit animateOnHover />}
                           aria-label={`Uredi ${formatItemTitle(item.title)}`}
                           disabled={addItemLoading}
-                          onClick={() => openCreateItemEditStep(item)}
+                          onClick={() => openCatalogItemEditor(item)}
                         />
                       </div>
                     </div>
@@ -1811,39 +1895,37 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
       </Dialog>
 
       <Dialog
-        open={detailsListItemId !== null}
+        open={editorOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setDetailsListItemId(null);
+          if (!open && !editorBusy) {
+            setEditorTarget(null);
           }
         }}
         size="md"
         title={
-          detailsItem ? (
-            <span className="flex items-center gap-2">
-              <ItemCategoryIcon category={detailsEditCategory} size={36} />
-              <span className="break-words">{formatItemTitle(detailsItem.title)}</span>
+          <span className="flex items-center gap-2">
+            <ItemCategoryIcon category={detailsEditCategory} size={36} />
+            <span className="break-words">
+              {formatItemTitle(detailsItem?.title ?? catalogTarget?.title ?? 'Podrobnosti')}
             </span>
-          ) : (
-            <span className="break-words">Podrobnosti</span>
-          )
+          </span>
         }
         footer={
-          detailsItem ? (
+          editorOpen ? (
             <>
               <Button
                 type="submit"
                 form="details-edit-form"
                 icon={<CheckCheck animateOnHover />}
-                disabled={updatingItemId === detailsItem.id}
+                disabled={editorBusy}
               >
-                {updatingItemId === detailsItem.id ? 'Shranjujem...' : 'Shrani'}
+                {editorBusy ? 'Shranjujem…' : 'Shrani'}
               </Button>
               <Button
                 type="button"
                 color="white"
                 appearance="outline"
-                disabled={updatingItemId === detailsItem.id}
+                disabled={editorBusy}
                 onClick={cancelDetailsEdit}
               >
                 Prekliči
@@ -1857,24 +1939,36 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
                 aria-label="Izbriši izdelek"
                 title="Izbriši izdelek"
                 className="ml-auto"
-                disabled={updatingItemId === detailsItem.id}
+                disabled={editorBusy}
                 onClick={() => {
-                  setDeleteConfirmItemId(detailsItem.id);
-                  setDeleteFromCatalog(false);
                   setDeleteItemError('');
+                  if (catalogTarget) {
+                    setDeleteCatalogItem(catalogTarget);
+                  } else if (detailsItem) {
+                    setDeleteConfirmItemId(detailsItem.id);
+                    setDeleteFromCatalog(false);
+                  }
                 }}
               />
             </>
           ) : null
         }
       >
-        {detailsItem ? (
+        {editorOpen ? (
           <form id="details-edit-form" className="grid gap-3" onSubmit={saveDetailsEdit}>
             <p className="m-0 text-xs text-ink-muted">
-              Stanje:{' '}
-              <span className="font-medium text-ink">
-                {detailsItem.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
-              </span>
+              {catalogTarget ? (
+                <>
+                  Izdelek iz kataloga — spremembe veljajo na vseh seznamih.
+                </>
+              ) : (
+                <>
+                  Stanje:{' '}
+                  <span className="font-medium text-ink">
+                    {detailsItem?.status === 'completed' ? 'Kupljeno' : 'Aktivno'}
+                  </span>
+                </>
+              )}
             </p>
             <SharedItemFormFields
               name={detailsEditName}
@@ -1893,6 +1987,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
               categoryLoading={detailsCategoryLoading}
               oneTime={detailsEditOneTime}
               onOneTimeChange={setDetailsEditOneTime}
+              showListFields={!catalogTarget}
               imageSearchQuery={detailsImageSearchQuery}
               onImageSearchQueryChange={setDetailsImageSearchQuery}
               onFindImage={findDetailsImage}
@@ -1907,7 +2002,7 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
               onRemoveImage={removeDetailsEditImage}
               onUploadImageFile={uploadDetailsItemImage}
               onPasteImageFromClipboard={pasteDetailsImageFromClipboard}
-              disabled={updatingItemId === detailsItem.id}
+              disabled={editorBusy}
               quantityButtonSize="md"
             />
             {updatingItemError ? (
@@ -1915,6 +2010,55 @@ export function ListDetailsPage({ token, authUser, onLogout }: ListDetailsPagePr
             ) : null}
           </form>
         ) : null}
+      </Dialog>
+
+      <Dialog
+        open={deleteCatalogItem !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingCatalogItem) {
+            setDeleteCatalogItem(null);
+            setDeleteItemError('');
+          }
+        }}
+        size="sm"
+        closeOnOverlayClick={!deletingCatalogItem}
+        title="Izbriši izdelek iz kataloga"
+        description={
+          deleteCatalogItem ? (
+            <>
+              <strong className="text-ink">{formatItemTitle(deleteCatalogItem.title)}</strong> bo trajno
+              odstranjen iz kataloga in z vseh nakupovalnih seznamov.
+            </>
+          ) : undefined
+        }
+        footer={
+          <>
+            <Button
+              type="button"
+              color="danger"
+              disabled={deletingCatalogItem}
+              onClick={() => {
+                if (deleteCatalogItem) void removeCatalogItem(deleteCatalogItem);
+              }}
+            >
+              {deletingCatalogItem ? 'Brišem…' : 'Izbriši'}
+            </Button>
+            <Button
+              type="button"
+              color="white"
+              appearance="outline"
+              disabled={deletingCatalogItem}
+              onClick={() => {
+                setDeleteCatalogItem(null);
+                setDeleteItemError('');
+              }}
+            >
+              Prekliči
+            </Button>
+          </>
+        }
+      >
+        {deleteItemError ? <p className="text-xs text-tomato-deep">{deleteItemError}</p> : null}
       </Dialog>
 
       {/* Delete confirmation dialog */}

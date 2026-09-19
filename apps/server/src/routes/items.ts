@@ -7,8 +7,10 @@ import sharp from "sharp";
 import { z } from "zod";
 
 import { sqlite } from "../db/client.js";
-import { buildItemSearchTokens, normalizeTitle } from "../domain/items.js";
+import { itemCategoryValues } from "../domain/item-category.js";
+import { buildItemSearchKey, buildItemSearchTokens, formatItemTitle, normalizeTitle, unitValues } from "../domain/items.js";
 import { requireAuth } from "../middleware/auth.js";
+import { parseId } from "../utils/ids.js";
 import { classifyCategory } from "../services/category-classifier.js";
 import { extractBingImageUrls } from "../services/image-search.js";
 
@@ -768,6 +770,104 @@ async function lookupImage(query: string): Promise<{ imageUrl: string; sourceUrl
   const candidates = await lookupImageCandidates(query);
   return candidates[0] ?? null;
 }
+
+type CategoryEnum = (typeof itemCategoryValues)[number];
+
+const updateItemSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  category: z.enum(itemCategoryValues as unknown as [CategoryEnum, ...CategoryEnum[]]).optional(),
+  imageUrl: z
+    .string()
+    .trim()
+    .max(1000)
+    .refine(
+      (value) => z.string().url().safeParse(value).success || value.startsWith("/api/item-images/") || value.startsWith("/item-images/"),
+      { message: "Invalid image URL" }
+    )
+    .nullable()
+    .optional(),
+  sourceUrl: z.string().trim().url().max(1000).nullable().optional(),
+  defaultQuantity: z.number().positive().max(9999).optional(),
+  defaultUnit: z.enum(unitValues).optional()
+});
+
+const catalogItemColumns =
+  "id, title, normalized_title AS normalizedTitle, image_url AS imageUrl, category, default_quantity AS defaultQuantity, default_unit AS defaultUnit";
+
+/** Edit a catalog item (name, category, picture, default amount). Affects every list using it. */
+itemsRouter.patch("/:itemId", requireAuth, (req, res) => {
+  const itemId = typeof req.params.itemId === "string" ? parseId(req.params.itemId) : null;
+  if (!itemId) return res.status(400).json({ error: "Invalid itemId" });
+
+  const parsed = updateItemSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+  const payload = parsed.data;
+
+  const existing = sqlite.prepare("SELECT id FROM items WHERE id = ?").get(itemId);
+  if (!existing) return res.status(404).json({ error: "Item not found" });
+
+  const segments: string[] = [];
+  const args: Array<string | number | null> = [];
+  if (payload.title !== undefined) {
+    const formattedTitle = formatItemTitle(payload.title);
+    segments.push("title = ?", "normalized_title = ?", "search_key = ?");
+    args.push(formattedTitle, normalizeTitle(formattedTitle), buildItemSearchKey(formattedTitle));
+  }
+  if (payload.category !== undefined) {
+    segments.push("category = ?");
+    args.push(payload.category);
+  }
+  if (payload.imageUrl !== undefined) {
+    segments.push("image_url = ?");
+    args.push(payload.imageUrl);
+  }
+  if (payload.sourceUrl !== undefined) {
+    segments.push("source_url = ?");
+    args.push(payload.sourceUrl);
+  }
+  if (payload.defaultQuantity !== undefined) {
+    segments.push("default_quantity = ?");
+    args.push(payload.defaultQuantity);
+  }
+  if (payload.defaultUnit !== undefined) {
+    segments.push("default_unit = ?");
+    args.push(payload.defaultUnit);
+  }
+  if (segments.length === 0) {
+    return res.status(400).json({ error: "At least one field to update is required" });
+  }
+
+  try {
+    sqlite.prepare(`UPDATE items SET ${segments.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...args, itemId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (message.includes("UNIQUE constraint failed: items.normalized_title")) {
+      return res.status(409).json({ error: "Izdelek s tem imenom že obstaja." });
+    }
+    return res.status(500).json({ error: message });
+  }
+
+  const item = sqlite.prepare(`SELECT ${catalogItemColumns} FROM items WHERE id = ?`).get(itemId);
+  return res.json({ item });
+});
+
+/** Remove a catalog item everywhere: its rows on every shopping list go with it. */
+itemsRouter.delete("/:itemId", requireAuth, (req, res) => {
+  const itemId = typeof req.params.itemId === "string" ? parseId(req.params.itemId) : null;
+  if (!itemId) return res.status(400).json({ error: "Invalid itemId" });
+
+  const existing = sqlite.prepare("SELECT id FROM items WHERE id = ?").get(itemId);
+  if (!existing) return res.status(404).json({ error: "Item not found" });
+
+  sqlite.transaction(() => {
+    sqlite.prepare("DELETE FROM list_items WHERE item_id = ?").run(itemId);
+    sqlite.prepare("DELETE FROM items WHERE id = ?").run(itemId);
+  })();
+
+  return res.status(204).send();
+});
 
 itemsRouter.get("/suggest", requireAuth, (req, res) => {
   const parsed = suggestQuerySchema.safeParse(req.query);
