@@ -20,6 +20,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_PATH=/app/data/shopping-list.db
+# Images must live on the persistent /app/data volume too; without these the server falls
+# back to a folder inside the container, which every update wipes.
+ENV RECIPE_IMAGES_PATH=/app/data/recipe-images
+ENV ITEM_IMAGES_PATH=/app/data/item-images
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json

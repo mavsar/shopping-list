@@ -983,9 +983,11 @@ async function rebuildRecipeImagesFromSource(sourceUrl: string): Promise<StoredR
 /**
  * On startup: repair recipes whose stored images are unusable — either still an external
  * URL (saved before local-only storage was enforced, or a previous download failed) or a
- * local path whose file no longer exists on disk. Re-fetches the source page and rebuilds
- * the image set from scratch, the same way a fresh save would. Runs silently in the
- * background so it never blocks server startup or requests.
+ * local path whose file no longer exists on disk. Re-fetches the source page and downloads
+ * its pictures again, the same way a fresh save would. Pictures that still exist are kept
+ * (including a cover the user picked), and a recipe is never left with fewer pictures than
+ * before: when nothing could be downloaded the row stays as is and is retried next boot.
+ * Runs in the background so it never blocks server startup or requests.
  */
 export async function healRecipeImages(): Promise<void> {
   let rows: Array<{ id: number; url: string; imageUrl: string | null; images: string }> = [];
@@ -1009,15 +1011,24 @@ export async function healRecipeImages(): Promise<void> {
   let healed = 0;
   for (const row of broken) {
     const rebuilt = await rebuildRecipeImagesFromSource(row.url);
-    if (!rebuilt) continue; // source unreachable right now — retry on next boot
+    if (!rebuilt || rebuilt.images.length === 0) continue; // nothing new — retry on next boot
+
+    const usable = parseStringArray(row.images).filter(localRecipeImageFileExists);
+    const coverUsable = row.imageUrl !== null && localRecipeImageFileExists(row.imageUrl);
+    const cover = coverUsable ? row.imageUrl! : rebuilt.imageUrl ?? rebuilt.images[0]!;
+    const gallery = Array.from(new Set([cover, ...usable, ...rebuilt.images])).slice(0, 30);
 
     sqlite
       .prepare("UPDATE recipes SET image_url = ?, images = ? WHERE id = ?")
-      .run(rebuilt.imageUrl, JSON.stringify(rebuilt.images), row.id);
-    if (rebuilt.imageUrl) healed += 1;
+      .run(cover, JSON.stringify(gallery), row.id);
+    healed += 1;
   }
   console.log(`[recipe-images] healed ${healed}/${broken.length} recipe(s).`);
 }
+
+/** Files younger than this are never pruned: they may belong to a recipe that is still being
+ *  added (a picked cover, photos cropped for an import waiting in review). */
+const PRUNE_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 async function pruneOrphanedRecipeImages(): Promise<void> {
   let referenced: Array<{ imageUrl: string | null; images: string | null }> = [];
@@ -1056,8 +1067,11 @@ async function pruneOrphanedRecipeImages(): Promise<void> {
       .filter((entry) => entry.isFile())
       .map(async (entry) => {
         if (keep.has(`${recipeImagesPublicPath}/${entry.name}`)) return;
+        const filePath = path.join(recipeImagesDirectoryPath, entry.name);
         try {
-          await fs.promises.unlink(path.join(recipeImagesDirectoryPath, entry.name));
+          const { mtimeMs } = await fs.promises.stat(filePath);
+          if (Date.now() - mtimeMs < PRUNE_MIN_AGE_MS) return;
+          await fs.promises.unlink(filePath);
         } catch {
           /* ignore */
         }
@@ -1942,6 +1956,10 @@ recipesRouter.post("/saved/:recipeId/refetch-images", requireAuth, async (req, r
   const rebuilt = await rebuildRecipeImagesFromSource(existing.url);
   if (!rebuilt) {
     return res.status(502).json({ error: "Failed to fetch the recipe's source page." });
+  }
+  // Keep the current pictures when none of the new ones could be downloaded.
+  if (rebuilt.images.length === 0) {
+    return res.status(502).json({ error: "No images could be downloaded from the source page." });
   }
 
   sqlite
