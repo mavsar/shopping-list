@@ -2,7 +2,9 @@ import { motion } from "motion/react";
 import { cva, cx } from "class-variance-authority";
 import { type ChangeEvent, type InputHTMLAttributes, type ReactNode, useEffect, useState } from "react";
 
-const checkboxRootClassName = cva("inline-flex items-center gap-2.5 text-sm text-ink", {
+// `relative` keeps the visually hidden (absolute) input inside the label: otherwise it is
+// placed against a far-away ancestor, and focusing it on click scrolls that ancestor.
+const checkboxRootClassName = cva("relative inline-flex items-center gap-2.5 text-sm text-ink", {
   variants: {
     disabled: {
       true: "cursor-default opacity-70",

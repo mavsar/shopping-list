@@ -2630,7 +2630,7 @@ function AddRecipesOverlay({
       {open && (
         <motion.div
           key="search-overlay"
-          className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain"
+          className="fixed inset-0 z-50 flex flex-col overflow-clip overscroll-contain"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
