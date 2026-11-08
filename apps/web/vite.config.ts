@@ -29,6 +29,10 @@ export default defineConfig({
           if (id.includes("motion")) {
             return "motion-vendor";
           }
+          // Only loaded when a PDF is imported — keep it out of the shared vendor chunk.
+          if (id.includes("pdfjs-dist")) {
+            return "pdf-vendor";
+          }
           if (id.includes("radix-ui") || id.includes("@radix-ui")) {
             return "radix-vendor";
           }

@@ -3,25 +3,10 @@ import { motion } from "motion/react";
 
 import { Edit, LogOut, Plus, Trash2 } from "../components/lordicon/icons";
 import { AppHeader } from "../components/AppHeader";
-import { RecipeLabelBadge, type RecipeLabel } from "../components/RecipeLabelBadge";
+import { RECIPE_LABEL_COLORS as LABEL_COLORS, RecipeLabelBadge, type RecipeLabel } from "../components/RecipeLabelBadge";
 import { Button, Card, Checkbox, Dialog, Input, Label, Loader, Select } from "../components/ui";
 import type { AuthUser, ManagedUser } from "../types/auth";
 import type { ShoppingList } from "../types/lists";
-
-const LABEL_COLORS = [
-  '#d9482b',
-  '#ef8a2c',
-  '#c9a227',
-  '#3b8f5e',
-  '#2f9aa8',
-  '#3f7fb8',
-  '#5b6abf',
-  '#8e4a8b',
-  '#d65a8e',
-  '#7a4f2a',
-  '#6f8f3a',
-  '#8b7c6d',
-];
 
 const DEFAULT_LIST_ID_KEY = 'shopping-list-default-list-id';
 

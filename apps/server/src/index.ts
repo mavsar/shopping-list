@@ -26,6 +26,9 @@ const app = express();
 const port = Number(process.env.PORT ?? 3100);
 
 app.use(cors());
+// Recipe import carries page images as base64; everything else keeps the small default.
+app.use("/api/recipes/import", express.json({ limit: "120mb" }));
+app.use("/api/recipes/saved/import", express.json({ limit: "5mb" }));
 app.use(express.json());
 
 app.use("/api/health", healthRouter);

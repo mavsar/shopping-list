@@ -1,13 +1,24 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from "@google/genai";
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 
 /** Shared Gemini client; null when GEMINI_API_KEY is not configured. */
 export const genai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
-export const GEMINI_MODEL = "gemini-2.5-flash";
-/** Faster, cheaper model for simple text tasks (translation, query rewriting). */
-export const GEMINI_LITE_MODEL = "gemini-2.5-flash-lite";
+/** Main model: grounded recipe search and reading recipes from uploaded pages. */
+export const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
+/** Faster, cheaper model for simple text tasks (translation, query rewriting, classification). */
+export const GEMINI_LITE_MODEL = process.env.GEMINI_LITE_MODEL?.trim() || "gemini-3.5-flash-lite";
+
+/**
+ * The least thinking a model allows. Gemini 2.x switches it off with a zero budget; Gemini 3+
+ * replaced budgets with levels, where Flash-Lite goes down to MINIMAL but Flash/Pro reject
+ * MINIMAL and start at LOW.
+ */
+export function fastThinking(model: string): ThinkingConfig {
+  if (/^gemini-[12]\./.test(model)) return { thinkingBudget: 0 };
+  return { thinkingLevel: /flash-lite/.test(model) ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW };
+}
 
 /** Strip ```json fences that Gemini sometimes wraps around JSON output. */
 export function stripJsonFences(text: string): string {
@@ -16,13 +27,14 @@ export function stripJsonFences(text: string): string {
 
 /**
  * Generation config for calls that must return JSON: structured output enforced by the
- * API (no prose, no fences) and no "thinking" — these are simple extraction tasks.
+ * API (no prose, no fences) and as little "thinking" as the model allows — these are
+ * simple extraction tasks.
  */
-export function jsonGenerationConfig(schema: Record<string, unknown>) {
+export function jsonGenerationConfig(schema: Record<string, unknown>, model: string = GEMINI_LITE_MODEL) {
   return {
     responseMimeType: "application/json",
     responseJsonSchema: schema,
-    thinkingConfig: { thinkingBudget: 0 }
+    thinkingConfig: fastThinking(model)
   };
 }
 

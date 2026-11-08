@@ -3,10 +3,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { AppHeader } from '../components/AppHeader';
-import { Fab } from '../components/Fab';
 import { AmbientBackground } from '../layouts/AppShell';
 import { RecipeLabelBadge, type RecipeLabel } from '../components/RecipeLabelBadge';
-import { Camera, Edit, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
+import { ArrowLeft, Camera, Edit, Folder, Minus, Plus, ReadyToEat, Sad, Search, Trash2, X } from '../components/lordicon/icons';
 import { Button } from '../components/ui/button';
 import { Dialog } from '../components/ui/dialog';
 import { Checkbox } from '../components/ui/fields/checkbox';
@@ -15,6 +14,10 @@ import { Select } from '../components/ui/fields/select';
 import { Textarea } from '../components/ui/fields/textarea';
 import type { AuthUser } from '../types/auth';
 import type { ShoppingList } from '../types/lists';
+import { BulkEditDialog, BulkLabelDialog, type BulkRecipeChanges } from './recipes/RecipeBulkDialogs';
+import { RecipeImportFlow, type ImportKind } from './recipes/RecipeImportFlow';
+import { groupHeadingLabel, ingredientLines, isGroupHeading, toGroupHeading } from './recipes/ingredient-groups';
+import { hasSourcePage, type ParsedRecipe, type SavedRecipe } from './recipes/types';
 
 const DEFAULT_LIST_ID_KEY = 'shopping-list-default-list-id';
 
@@ -33,27 +36,6 @@ interface RecipeSearchResult {
   sourceId: string;
   /** Title/description still in the source language; the server sends an update when translated. */
   translationPending?: boolean;
-}
-
-interface ParsedRecipe {
-  title: string;
-  description?: string;
-  imageUrl?: string;
-  prepTime?: string;
-  cookTime?: string;
-  totalTime?: string;
-  servings?: string;
-  ingredients: string[];
-  instructions: string[];
-  images?: string[];
-  url: string;
-  source: string;
-}
-
-interface SavedRecipe extends ParsedRecipe {
-  id: number;
-  createdAt: string;
-  labelIds: number[];
 }
 
 interface CheckIngredientResult {
@@ -1071,7 +1053,7 @@ function RecipeDetailModal({
 
   async function handleSaveContent() {
     if (!recipeId || savingContent) return;
-    const cleanIngredients = draftIngredients.map((s) => s.trim()).filter(Boolean);
+    const cleanIngredients = draftIngredients.map((s) => s.trim()).filter((s) => s && s !== ':');
     const cleanInstructions = draftInstructions.map((s) => s.trim()).filter(Boolean);
     setSavingContent(true);
     setContentError('');
@@ -1403,6 +1385,8 @@ function RecipeDetailModal({
   if (!recipe) return null;
 
   const hasMeta = recipe.prepTime || recipe.cookTime || recipe.totalTime || recipe.servings;
+  /** Ingredients that can be checked and sent to a list (group titles excluded). */
+  const addableIngredients = ingredientLines(recipe.ingredients);
   const galleryImages = (recipe.images ?? []).filter(Boolean);
 
   const footer = saved ? (
@@ -1476,7 +1460,7 @@ function RecipeDetailModal({
           </div>
 
           {recipe.description && (
-            <p className="text-sm leading-relaxed text-ink-soft">{recipe.description}</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-ink-soft">{recipe.description}</p>
           )}
 
           {saved && labels && labels.length > 0 && (
@@ -1489,7 +1473,7 @@ function RecipeDetailModal({
                   <span className="h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" />
                 )}
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-1">
                 {labels.map((label) => (
                   <RecipeLabelBadge
                     key={label.id}
@@ -1616,17 +1600,26 @@ function RecipeDetailModal({
                   Sestavine
                 </h4>
                 <div className="space-y-2">
-                  {draftIngredients.map((ing, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                  {draftIngredients.map((ing, i) => {
+                    // A freshly added group is just ":" until it gets a name.
+                    const heading = ing.trim().endsWith(':');
+                    return (
+                    <div key={i} className={cx('flex items-center gap-2', heading && i > 0 && 'pt-2')}>
                       <Input
-                        value={ing}
+                        value={heading ? groupHeadingLabel(ing) : ing}
                         onChange={(e) =>
                           setDraftIngredients((prev) =>
-                            prev.map((v, idx) => (idx === i ? e.target.value : v)),
+                            prev.map((v, idx) =>
+                              idx === i ? (heading ? toGroupHeading(e.target.value) : e.target.value) : v,
+                            ),
                           )
                         }
-                        placeholder="npr. 500 g mletega mesa"
-                        className="flex-1"
+                        placeholder={heading ? 'Ime skupine, npr. Omaka' : 'npr. 500 g mletega mesa'}
+                        aria-label={heading ? 'Ime skupine sestavin' : 'Sestavina'}
+                        className={cx(
+                          'flex-1',
+                          heading && 'border-basil/40 bg-basil-soft/40 font-semibold text-basil-deep',
+                        )}
                       />
                       <button
                         type="button"
@@ -1637,16 +1630,27 @@ function RecipeDetailModal({
                         <X size={12} />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDraftIngredients((prev) => [...prev, ''])}
-                  className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-basil-deep hover:underline"
-                >
-                  <Plus size={10} />
-                  Dodaj sestavino
-                </button>
+                <div className="mt-2.5 flex flex-wrap gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setDraftIngredients((prev) => [...prev, ''])}
+                    className="inline-flex items-center gap-1.5 text-xs text-basil-deep hover:underline"
+                  >
+                    <Plus size={10} />
+                    Dodaj sestavino
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftIngredients((prev) => [...prev, ':'])}
+                    className="inline-flex items-center gap-1.5 text-xs text-basil-deep hover:underline"
+                  >
+                    <Plus size={10} />
+                    Dodaj skupino (npr. omaka, priloga)
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -1726,17 +1730,17 @@ function RecipeDetailModal({
                       <h4 className="text-sm font-semibold uppercase tracking-widest text-ink-muted">
                         Sestavine
                       </h4>
-                      {!isAddBusy && recipe.ingredients.some((ing) => !addedItems.has(ing)) && (
+                      {!isAddBusy && addableIngredients.some((ing) => !addedItems.has(ing)) && (
                         <button
                           type="button"
                           onClick={() => {
-                            const available = recipe.ingredients.filter((ing) => !addedItems.has(ing));
+                            const available = addableIngredients.filter((ing) => !addedItems.has(ing));
                             const allChecked = available.every((ing) => checkedIngredients.has(ing));
                             setCheckedIngredients(allChecked ? new Set() : new Set(available));
                           }}
                           className="text-[11px] text-ink-muted underline-offset-2 hover:text-ink hover:underline"
                         >
-                          {recipe.ingredients
+                          {addableIngredients
                             .filter((ing) => !addedItems.has(ing))
                             .every((ing) => checkedIngredients.has(ing))
                             ? 'Odznači vse'
@@ -1770,6 +1774,19 @@ function RecipeDetailModal({
                   </div>
                   <ul className="space-y-1">
                     {recipe.ingredients.map((ing, i) => {
+                      if (isGroupHeading(ing)) {
+                        return (
+                          <li
+                            key={i}
+                            className={cx(
+                              'list-none px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-basil-deep',
+                              i === 0 ? 'pt-0' : 'pt-3',
+                            )}
+                          >
+                            {groupHeadingLabel(ing)}
+                          </li>
+                        );
+                      }
                       const displayText = scale !== 1 ? scaleIngredientText(ing, scale) : ing;
                       const isAdded = addedItems.has(ing);
                       const isCurrent =
@@ -1846,21 +1863,44 @@ function RecipeDetailModal({
                     Postopek
                   </h4>
                   <ol className="space-y-3">
-                    {recipe.instructions.map((step, i) => (
-                      <li key={i} className="flex gap-3 text-sm text-ink-soft">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-basil-soft text-[10px] font-bold text-basil-deep">
-                          {i + 1}
-                        </span>
-                        <span className="leading-relaxed">{step}</span>
-                      </li>
-                    ))}
+                    {(() => {
+                      // Step numbers skip group titles ("Omaka:") and restart in each group.
+                      let number = 0;
+                      return recipe.instructions.map((step, i) => {
+                        if (isGroupHeading(step)) {
+                          number = 0;
+                          return (
+                            <li
+                              key={i}
+                              className={cx(
+                                'list-none text-xs font-semibold uppercase tracking-wider text-basil-deep',
+                                i > 0 && 'pt-2',
+                              )}
+                            >
+                              {groupHeadingLabel(step)}
+                            </li>
+                          );
+                        }
+                        number += 1;
+                        return (
+                          <li key={i} className="flex gap-3 text-sm text-ink-soft">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-basil-soft text-[10px] font-bold text-basil-deep">
+                              {number}
+                            </span>
+                            <span className="leading-relaxed">{step}</span>
+                          </li>
+                        );
+                      });
+                    })()}
                   </ol>
                 </section>
               )}
 
               {recipe.ingredients.length === 0 && recipe.instructions.length === 0 && (
                 <div className="rounded-xl border border-line bg-surface p-4 text-center text-sm text-ink-muted">
-                  Podrobnosti recepta niso na voljo. Odpri originalno stran za celoten recept.
+                  {hasSourcePage(recipe)
+                    ? 'Podrobnosti recepta niso na voljo. Odpri originalno stran za celoten recept.'
+                    : 'Recept nima sestavin ne postopka.'}
                 </div>
               )}
             </>
@@ -1896,6 +1936,7 @@ function RecipeDetailModal({
             </section>
           )}
 
+          {hasSourcePage(recipe) ? (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <a
               href={recipe.url}
@@ -1933,6 +1974,9 @@ function RecipeDetailModal({
               </button>
             )}
           </div>
+          ) : (
+            recipe.source && <p className="pt-1 text-xs text-ink-muted">Vir: {recipe.source}</p>
+          )}
           {refetchError && <p className="text-xs text-red-400">{refetchError}</p>}
         </div>
         <ImageLightbox src={expandedImage} onClose={() => setExpandedImage(null)} />
@@ -2262,25 +2306,69 @@ function RecipeSourcePicker({
   );
 }
 
-// ---------- Search overlay ----------
+// ---------- Add-recipes overlay (choose a way, then search online or import) ----------
 
-function SearchOverlay({
+type AddMode = 'choose' | 'search' | 'import';
+
+function AddMethodCard({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full cursor-pointer items-center gap-4 rounded-3xl border border-line bg-surface p-4 text-left shadow-card transition-all duration-200 hover:border-basil/50 hover:bg-basil-soft/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40 sm:flex-col sm:items-start sm:p-5"
+    >
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-paper-deep transition-colors group-hover:bg-basil-soft">
+        {icon}
+      </span>
+      <span className="min-w-0 space-y-1">
+        <span className="block text-base font-semibold tracking-tight text-ink">{title}</span>
+        <span className="block text-xs leading-relaxed text-ink-muted">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+function AddRecipesOverlay({
   open,
   onClose,
   token,
   savedByUrl,
+  labels,
   onAddRecipe,
   onRemoveRecipe,
   onSavedImagesChanged,
+  onLabelCreated,
+  onImported,
 }: {
   open: boolean;
   onClose: () => void;
   token: string;
   savedByUrl: Map<string, SavedRecipe>;
+  labels: RecipeLabel[];
   onAddRecipe: (recipe: ParsedRecipe) => Promise<void>;
   onRemoveRecipe: (id: number) => Promise<void>;
   onSavedImagesChanged: (recipeId: number, imageUrl: string | undefined, images: string[]) => void;
+  onLabelCreated: (label: RecipeLabel) => void;
+  onImported: (recipes: SavedRecipe[]) => void;
 }) {
+  const [mode, setMode] = useState<AddMode>('choose');
+  const [importKind, setImportKind] = useState<ImportKind>('file');
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  /** Bumped per import so a new pick always starts a fresh flow. */
+  const [importRun, setImportRun] = useState(0);
+  const [importDirty, setImportDirty] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<RecipeSearchResult[]>([]);
   /** Request in flight and nothing shown yet. */
@@ -2332,12 +2420,14 @@ function SearchOverlay({
 
   useEffect(() => {
     if (open) {
+      setMode('choose');
+      setImportFiles([]);
+      setImportDirty(false);
       setQuery('');
       setResults([]);
       setSearched(false);
       setError('');
       setPickerOpen(false);
-      setTimeout(() => inputRef.current?.focus(), 80);
     } else {
       cancelSearch();
       setSearching(false);
@@ -2372,15 +2462,52 @@ function SearchOverlay({
   }, []);
 
   useEffect(() => {
+    if (open && mode === 'search') {
+      const timeoutId = window.setTimeout(() => inputRef.current?.focus(), 80);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [open, mode]);
+
+  /** Leaving an import with read recipes (or one still reading) throws that work away. */
+  const confirmDiscardImport = useCallback(
+    () => mode !== 'import' || !importDirty || window.confirm('Prebrani recepti še niso shranjeni. Jih zavržem?'),
+    [mode, importDirty],
+  );
+
+  const requestClose = useCallback(() => {
+    if (confirmDiscardImport()) onClose();
+  }, [confirmDiscardImport, onClose]);
+
+  const goBack = useCallback(() => {
+    if (!confirmDiscardImport()) return;
+    cancelSearch();
+    setSearching(false);
+    setStreaming(false);
+    setPickerOpen(false);
+    setImportDirty(false);
+    setMode('choose');
+  }, [confirmDiscardImport, cancelSearch]);
+
+  const startImport = useCallback((kind: ImportKind, files: File[]) => {
+    if (files.length === 0) return;
+    setImportKind(kind);
+    setImportFiles(files);
+    setImportRun((run) => run + 1);
+    setMode('import');
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     function handleKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
+      // Dialogs opened from the import review handle their own Escape.
+      if (document.querySelector('[role="dialog"]')) return;
       if (pickerOpen) setPickerOpen(false);
-      else onClose();
+      else requestClose();
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [open, pickerOpen, onClose]);
+  }, [open, pickerOpen, requestClose]);
 
   // The site picker floats over the results; a click anywhere else dismisses it.
   useEffect(() => {
@@ -2529,10 +2656,23 @@ function SearchOverlay({
             iconOnly
             size="sm"
             type="button"
-            aria-label="Zapri iskanje"
+            aria-label="Zapri"
             className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20"
-            onClick={onClose}
+            onClick={requestClose}
           />
+          {mode !== 'choose' && (
+            <Button
+              color="white"
+              appearance="transparent"
+              icon={<ArrowLeft />}
+              iconOnly
+              size="sm"
+              type="button"
+              aria-label="Nazaj na izbiro"
+              className="absolute left-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20"
+              onClick={goBack}
+            />
+          )}
 
           {/* content */}
           <motion.div
@@ -2542,6 +2682,83 @@ function SearchOverlay({
             exit={{ opacity: 0, y: 10 }}
             transition={{ type: 'spring', stiffness: 270, damping: 24 }}
           >
+            {mode === 'choose' && (
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:px-8">
+                <div className="mx-auto max-w-2xl space-y-5">
+                  <div className="space-y-1">
+                    <h2 className="m-0 text-xl font-semibold tracking-tight text-ink">Dodaj recepte</h2>
+                    <p className="m-0 text-sm text-ink-muted">Kako želiš dodati nove recepte?</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <AddMethodCard
+                      icon={<Search size={30} animateOnHover />}
+                      title="Išči po spletu"
+                      description="Poišči recept na slovenskih in tujih receptnih straneh."
+                      onClick={() => setMode('search')}
+                    />
+                    <AddMethodCard
+                      icon={<Folder size={30} animateOnHover />}
+                      title="Naloži datoteko"
+                      description="PDF ali slike. Ena datoteka ima lahko več receptov."
+                      onClick={() => fileInputRef.current?.click()}
+                    />
+                    <AddMethodCard
+                      icon={<Camera size={30} animateOnHover />}
+                      title="Fotografiraj"
+                      description="Fotografiraj stran kuharske knjige ali listek z recepti."
+                      onClick={() => cameraInputRef.current?.click()}
+                    />
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf,image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+                      startImport('file', files);
+                    }}
+                  />
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+                      startImport('camera', files);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === 'import' && (
+              <div className="flex min-h-0 flex-1 flex-col pt-[calc(env(safe-area-inset-top)+3.5rem)]">
+                <RecipeImportFlow
+                  key={importRun}
+                  token={token}
+                  kind={importKind}
+                  initialFiles={importFiles}
+                  labels={labels}
+                  onLabelCreated={onLabelCreated}
+                  onDirtyChange={setImportDirty}
+                  onRestart={goBack}
+                  onSaved={(recipes) => {
+                    setImportDirty(false);
+                    onImported(recipes);
+                    onClose();
+                  }}
+                />
+              </div>
+            )}
+
+            {mode === 'search' && (
+            <>
             {/* search bar area */}
             <div className="shrink-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+3.5rem)] md:px-8">
               <form onSubmit={handleSearch} className="mx-auto max-w-2xl">
@@ -2688,6 +2905,8 @@ function SearchOverlay({
                 )}
               </div>
             </div>
+            </>
+            )}
           </motion.div>
         </motion.div>
       )}
@@ -2750,10 +2969,15 @@ function SavedRecipeCard({
   recipe,
   labels,
   onClick,
+  selecting = false,
+  selected = false,
 }: {
   recipe: SavedRecipe;
   labels: RecipeLabel[];
   onClick: () => void;
+  /** In selection mode a tap toggles the recipe instead of opening it. */
+  selecting?: boolean;
+  selected?: boolean;
 }) {
   const recipeLabels = recipe.labelIds
     .map((id) => labels.find((l) => l.id === id))
@@ -2765,9 +2989,26 @@ function SavedRecipeCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface text-left transition-all duration-200 hover:border-basil/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40"
+      aria-pressed={selecting ? selected : undefined}
+      className={cx(
+        'group relative flex flex-col overflow-hidden rounded-2xl border bg-surface text-left transition-all duration-200 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-basil/40',
+        selected ? 'border-basil ring-2 ring-basil/50' : 'border-line hover:border-basil/50',
+      )}
     >
-      <div className="aspect-[4/3] w-full overflow-hidden bg-paper-deep">
+      {selecting && (
+        <span
+          aria-hidden
+          className={cx(
+            'absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-md border shadow-card transition',
+            selected ? 'border-basil bg-basil text-white' : 'border-line-strong bg-surface/90 text-transparent',
+          )}
+        >
+          <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7.2L5.6 9.6L11 4.3" />
+          </svg>
+        </span>
+      )}
+      <div className={cx('aspect-[4/3] w-full overflow-hidden bg-paper-deep transition-opacity', selecting && !selected && 'opacity-80')}>
         {recipe.imageUrl && !imgBroken ? (
           <img
             src={recipe.imageUrl}
@@ -2799,8 +3040,14 @@ function SavedRecipeCard({
   );
 }
 
+/** Lowercase without diacritics, so "cicerika" finds "čičerika". */
+function normalizeForSearch(value: string): string {
+  return value.toLocaleLowerCase('sl-SI').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [listQuery, setListQuery] = useState('');
   const [savedRecipes, setSavedRecipes] = useState<SavedRecipe[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(true);
   const [selectedSaved, setSelectedSaved] = useState<SavedRecipe | null>(null);
@@ -2808,6 +3055,11 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
   const [savedBusy, setSavedBusy] = useState(false);
   const [labels, setLabels] = useState<RecipeLabel[]>([]);
   const [filterLabelId, setFilterLabelId] = useState<number | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDialog, setBulkDialog] = useState<'labels' | 'edit' | 'delete' | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   const savedByUrl = useMemo(() => {
     const map = new Map<string, SavedRecipe>();
@@ -2942,14 +3194,191 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
     [],
   );
 
+  const handleImported = useCallback((recipes: SavedRecipe[]) => {
+    const ids = new Set(recipes.map((r) => r.id));
+    setSavedRecipes((prev) => [...recipes, ...prev.filter((r) => !ids.has(r.id))]);
+  }, []);
+
+  const handleLabelCreated = useCallback((label: RecipeLabel) => {
+    setLabels((prev) =>
+      [...prev.filter((l) => l.id !== label.id), label].sort((a, b) => a.name.localeCompare(b.name, 'sl')),
+    );
+  }, []);
+
+  // Every word of the query must appear in the title, description, source, labels or ingredients.
+  const searchIndex = useMemo(() => {
+    const labelNames = new Map(labels.map((l) => [l.id, l.name]));
+    return new Map(
+      savedRecipes.map((r) => [
+        r.id,
+        normalizeForSearch(
+          [
+            r.title,
+            r.description ?? '',
+            r.source,
+            ...r.labelIds.map((id) => labelNames.get(id) ?? ''),
+            ...r.ingredients,
+          ].join(' \n '),
+        ),
+      ]),
+    );
+  }, [savedRecipes, labels]);
+
   const filteredRecipes = useMemo(() => {
-    if (!filterLabelId) return savedRecipes;
-    return savedRecipes.filter((r) => r.labelIds.includes(filterLabelId));
-  }, [savedRecipes, filterLabelId]);
+    const words = normalizeForSearch(listQuery).split(/\s+/).filter(Boolean);
+    return savedRecipes.filter((r) => {
+      if (filterLabelId && !r.labelIds.includes(filterLabelId)) return false;
+      if (words.length === 0) return true;
+      const haystack = searchIndex.get(r.id) ?? '';
+      return words.every((word) => haystack.includes(word));
+    });
+  }, [savedRecipes, filterLabelId, listQuery, searchIndex]);
+
+  const orderedRecipes = useMemo(() => {
+    // Recipes whose title matches come first; the rest matched on ingredients or description.
+    const words = normalizeForSearch(listQuery).split(/\s+/).filter(Boolean);
+    if (words.length === 0) return filteredRecipes;
+    const byTitle = (r: SavedRecipe) => words.every((w) => normalizeForSearch(r.title).includes(w));
+    return [...filteredRecipes.filter(byTitle), ...filteredRecipes.filter((r) => !byTitle(r))];
+  }, [filteredRecipes, listQuery]);
+
+  // ----- mass selection -----
+
+  const selectedRecipes = useMemo(
+    () => savedRecipes.filter((r) => selectedIds.has(r.id)),
+    [savedRecipes, selectedIds],
+  );
+  const allVisibleSelected =
+    filteredRecipes.length > 0 && filteredRecipes.every((r) => selectedIds.has(r.id));
+
+  /** Selects exactly what the current search and label filter show. */
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelecting(true);
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(filteredRecipes.map((r) => r.id)));
+  }, [allVisibleSelected, filteredRecipes]);
+
+  // Recipes hidden by a changed search or filter leave the selection, so bulk actions only
+  // ever touch what is on screen.
+  useEffect(() => {
+    if (!selecting) return;
+    const visible = new Set(filteredRecipes.map((r) => r.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selecting, filteredRecipes]);
+
+  const exitSelection = useCallback(() => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+    setBulkDialog(null);
+    setBulkError('');
+  }, []);
+
+  useEffect(() => {
+    if (!selecting) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) exitSelection();
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [selecting, exitSelection]);
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const runBulkUpdate = useCallback(
+    async (body: { set?: BulkRecipeChanges; addLabelIds?: number[]; removeLabelIds?: number[] }) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      setBulkBusy(true);
+      setBulkError('');
+      try {
+        const response = await fetch('/api/recipes/saved/bulk', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, ...body }),
+        });
+        if (!response.ok) throw new Error(`Napaka ${response.status}`);
+        const data = (await response.json()) as { recipes: SavedRecipe[] };
+        const byId = new Map(data.recipes.map((r) => [r.id, r]));
+        setSavedRecipes((prev) => prev.map((r) => byId.get(r.id) ?? r));
+      } catch {
+        setBulkError('Shranjevanje sprememb ni uspelo.');
+      } finally {
+        setBulkBusy(false);
+      }
+    },
+    [selectedIds, token],
+  );
+
+  const handleBulkLabelToggle = useCallback(
+    (labelId: number, add: boolean) => {
+      // Optimistic: the dialog shows the new state right away.
+      setSavedRecipes((prev) =>
+        prev.map((r) => {
+          if (!selectedIds.has(r.id)) return r;
+          const has = r.labelIds.includes(labelId);
+          if (add && !has) return { ...r, labelIds: [...r.labelIds, labelId] };
+          if (!add && has) return { ...r, labelIds: r.labelIds.filter((id) => id !== labelId) };
+          return r;
+        }),
+      );
+      void runBulkUpdate(add ? { addLabelIds: [labelId] } : { removeLabelIds: [labelId] });
+    },
+    [selectedIds, runBulkUpdate],
+  );
+
+  const handleBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    setBulkError('');
+    try {
+      const response = await fetch('/api/recipes/saved/bulk-delete', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!response.ok) throw new Error(`Napaka ${response.status}`);
+      const data = (await response.json()) as { deletedIds: number[] };
+      const deleted = new Set(data.deletedIds);
+      setSavedRecipes((prev) => prev.filter((r) => !deleted.has(r.id)));
+      exitSelection();
+    } catch {
+      setBulkError('Brisanje ni uspelo.');
+      setBulkDialog(null);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [selectedIds, token, exitSelection]);
 
   return (
     <>
-      <AppHeader title="Recepti" authUser={authUser} onLogout={onLogout} />
+      <AppHeader
+        title="Recepti"
+        authUser={authUser}
+        onLogout={onLogout}
+        actions={
+          <Button
+            color="white"
+            appearance="transparent"
+            size="md"
+            type="button"
+            icon={<Plus />}
+            iconOnly
+            aria-label="Dodaj recepte"
+            title="Dodaj recepte"
+            onClick={() => setAddOpen(true)}
+          />
+        }
+      />
 
       {loadingSaved ? (
         <div className="flex min-h-[40vh] items-center justify-center">
@@ -2959,11 +3388,38 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
         <section className="flex flex-col gap-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="m-0 text-base font-semibold tracking-tight text-ink">
-              Moji recepti <span className="font-normal text-ink-muted">{savedRecipes.length}</span>
+              Moji recepti{' '}
+              <span className="font-normal text-ink-muted">
+                {filteredRecipes.length !== savedRecipes.length
+                  ? `${filteredRecipes.length} od ${savedRecipes.length}`
+                  : savedRecipes.length}
+              </span>
             </h2>
+            <Button
+              type="button"
+              size="sm"
+              color={selecting ? 'gradient' : 'white'}
+              appearance={selecting ? 'full' : 'outline'}
+              onClick={() => (selecting ? exitSelection() : setSelecting(true))}
+            >
+              {selecting ? 'Končaj' : 'Izberi'}
+            </Button>
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+              <Search size={18} colors="primary:#8b7c6d,secondary:#8b7c6d" />
+            </span>
+            <Input
+              type="search"
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Išči med mojimi recepti…"
+              aria-label="Išči med mojimi recepti"
+              className="pl-10"
+            />
           </div>
           {labels.length > 0 && (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0">
+            <div className="-mx-4 flex gap-0.5 overflow-x-auto px-3 [scrollbar-width:none] md:-mx-1 md:flex-wrap md:px-0">
               {labels.map((label) => (
                 <RecipeLabelBadge
                   key={label.id}
@@ -2977,25 +3433,36 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
               ))}
             </div>
           )}
-          {filterLabelId && filteredRecipes.length === 0 && (
+          {filteredRecipes.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <Sad size={72} animate colors="primary:#8b7c6d,secondary:#8b7c6d" />
-              <p className="m-0 text-sm text-ink-muted">Ni receptov z izbrano oznako.</p>
+              <p className="m-0 text-sm text-ink-muted">
+                {listQuery.trim()
+                  ? `Ni receptov za »${listQuery.trim()}«${filterLabelId ? ' z izbrano oznako' : ''}.`
+                  : 'Ni receptov z izbrano oznako.'}
+              </p>
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {filteredRecipes.map((recipe) => (
+            {orderedRecipes.map((recipe) => (
               <SavedRecipeCard
                 key={recipe.id}
                 recipe={recipe}
                 labels={labels}
+                selecting={selecting}
+                selected={selectedIds.has(recipe.id)}
                 onClick={() => {
+                  if (selecting) {
+                    toggleSelected(recipe.id);
+                    return;
+                  }
                   setSelectedSaved(recipe);
                   setSavedModalOpen(true);
                 }}
               />
             ))}
           </div>
+          {selecting && <div aria-hidden className="h-20" />}
         </section>
       ) : (
         <section className="mt-4 flex flex-col items-center gap-4 rounded-3xl border border-dashed border-line-strong bg-surface/60 px-6 py-14 text-center">
@@ -3003,26 +3470,134 @@ export function RecipesPage({ token, authUser, onLogout }: RecipesPageProps) {
           <div className="space-y-2">
             <h2 className="m-0 text-lg font-semibold tracking-tight text-ink">Tvoja kuharska knjiga je prazna</h2>
             <p className="m-0 max-w-xs text-sm text-ink-muted">
-              Poišči recepte na slovenskih in svetovnih straneh, shrani najboljše in sestavine pošlji na
+              Poišči recepte na spletu, naloži PDF ali fotografiraj kuharsko knjigo. Sestavine nato pošlji na
               nakupovalni seznam.
             </p>
           </div>
-          <Button size="md" icon={<Search />} onClick={() => setSearchOpen(true)}>
-            Poišči recept
+          <Button size="md" icon={<Plus />} onClick={() => setAddOpen(true)}>
+            Dodaj recepte
           </Button>
         </section>
       )}
 
-      <Fab icon={<Search animateOnHover />} label="Išči recepte" extended onClick={() => setSearchOpen(true)} />
+      <AnimatePresence>
+        {selecting && (
+          <motion.div
+            key="bulk-bar"
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+            className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]"
+          >
+            <div className="mx-auto max-w-3xl space-y-1.5 rounded-3xl border border-line bg-surface/95 p-2.5 shadow-float backdrop-blur-xl md:px-4">
+              {bulkError && <p className="m-0 px-1 text-xs text-tomato-deep">{bulkError}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllVisible}
+                  className="px-1 text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+                >
+                  {allVisibleSelected ? 'Odznači vse' : 'Izberi vse'}
+                </button>
+                <span className="text-xs text-ink-muted">Izbranih {selectedIds.size}</span>
+                {bulkBusy && (
+                  <span className="h-3 w-3 animate-spin rounded-full border border-ink-faint border-t-basil" aria-hidden />
+                )}
+                <div className="ml-auto flex gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    color="white"
+                    appearance="outline"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => setBulkDialog('labels')}
+                  >
+                    Oznake
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    color="white"
+                    appearance="outline"
+                    disabled={selectedIds.size === 0 || bulkBusy}
+                    onClick={() => setBulkDialog('edit')}
+                  >
+                    Uredi
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    color="danger"
+                    appearance="outline"
+                    icon={<Trash2 />}
+                    disabled={selectedIds.size === 0 || bulkBusy}
+                    onClick={() => setBulkDialog('delete')}
+                  >
+                    Izbriši
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <SearchOverlay
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
+      <BulkLabelDialog
+        open={bulkDialog === 'labels'}
+        onClose={() => setBulkDialog(null)}
+        token={token}
+        labels={labels}
+        selected={selectedRecipes}
+        onLabelCreated={handleLabelCreated}
+        onToggle={handleBulkLabelToggle}
+      />
+      <BulkEditDialog
+        open={bulkDialog === 'edit'}
+        onClose={() => setBulkDialog(null)}
+        count={selectedIds.size}
+        onApply={(changes) => void runBulkUpdate({ set: changes })}
+      />
+      <Dialog
+        open={bulkDialog === 'delete'}
+        onOpenChange={(v) => {
+          if (!v && !bulkBusy) setBulkDialog(null);
+        }}
+        title={`Izbrišem ${selectedIds.size} ${selectedIds.size === 1 ? 'recept' : selectedIds.size === 2 ? 'recepta' : selectedIds.size <= 4 ? 'recepte' : 'receptov'}?`}
+        description="Recepti in njihove slike bodo trajno odstranjeni. Tega ni mogoče razveljaviti."
+        size="sm"
+        footer={
+          <>
+            <Button type="button" color="white" appearance="outline" size="md" disabled={bulkBusy} onClick={() => setBulkDialog(null)}>
+              Prekliči
+            </Button>
+            <Button
+              type="button"
+              color="danger"
+              appearance="full"
+              size="md"
+              className="flex-1"
+              icon={<Trash2 />}
+              disabled={bulkBusy}
+              onClick={() => void handleBulkDelete()}
+            >
+              {bulkBusy ? 'Brišem…' : 'Izbriši'}
+            </Button>
+          </>
+        }
+      />
+
+      <AddRecipesOverlay
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
         token={token}
         savedByUrl={savedByUrl}
+        labels={labels}
         onAddRecipe={addRecipe}
         onRemoveRecipe={removeRecipe}
         onSavedImagesChanged={handleImagesRefetched}
+        onLabelCreated={handleLabelCreated}
+        onImported={handleImported}
       />
 
       <RecipeDetailModal

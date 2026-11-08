@@ -30,7 +30,14 @@ import {
   stripQueryAndFragment,
   stripSiteSuffix
 } from "../utils/html.js";
-import { GEMINI_LITE_MODEL, GEMINI_MODEL, genai, jsonGenerationConfig, SLOVENIAN_TRANSLATION_RULES } from "./genai.js";
+import {
+  fastThinking,
+  GEMINI_LITE_MODEL,
+  GEMINI_MODEL,
+  genai,
+  jsonGenerationConfig,
+  SLOVENIAN_TRANSLATION_RULES
+} from "./genai.js";
 
 export interface RecipeSearchResult {
   title: string;
@@ -83,7 +90,7 @@ const debug = (message: string) => {
   if (debugEnabled) console.debug(`[recipe-search] ${message}`);
 };
 
-const noThinking = { thinkingConfig: { thinkingBudget: 0 } };
+const noThinking = { thinkingConfig: fastThinking(GEMINI_MODEL) };
 
 // ---------- Query expansion ----------
 

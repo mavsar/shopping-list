@@ -23,6 +23,15 @@ import {
   unproxyImageUrl,
   verifyImageProxyParams
 } from "../services/image-proxy.js";
+import {
+  applyIngredientGroups,
+  detectIngredientGroupsWithGemini,
+  detectMarkedUpIngredientGroups,
+  isIngredientHeading,
+  toIngredientHeading,
+  type IngredientGroupPlan
+} from "../services/ingredient-groups.js";
+import { cropPagePhoto, extractRecipesFromPages, type ImportPage } from "../services/recipe-import.js";
 import { runRecipeSearch } from "../services/recipe-search.js";
 import {
   absoluteUrl,
@@ -38,8 +47,8 @@ import {
   stripSiteSuffix
 } from "../utils/html.js";
 
-// Simple extraction/translation tasks: the small model without "thinking" is 3-5× faster.
-const fastGeminiConfig = { model: GEMINI_LITE_MODEL, thinking: { thinkingConfig: { thinkingBudget: 0 } } };
+// Simple extraction/translation tasks: the small model with minimal "thinking" is 3-5× faster.
+const fastGeminiConfig = { model: GEMINI_LITE_MODEL };
 
 export const recipesRouter = Router();
 
@@ -446,6 +455,7 @@ async function parseRecipeWithGemini(html: string, url: string): Promise<Partial
 Return ONLY valid JSON (no markdown) with these fields (omit missing ones):
 {"title":"","description":"","ingredients":["..."],"instructions":["..."],"prepTime":"","cookTime":"","totalTime":"","servings":""}
 
+Ingredients: one entry per line with quantity and unit. When the page divides the ingredients into named parts of the dish (e.g. "For the sauce", "Filling", "Za omako"), put each part's title as its own entry ending with a colon (e.g. "For the sauce:") right before that part's ingredients.
 Keep content in its original language. Webpage text:
 ${text}`;
 
@@ -482,6 +492,8 @@ ${text}`;
 async function parseRecipePagePhased(url: string): Promise<{
   text: Omit<ParsedRecipe, "imageUrl" | "images">;
   images: Promise<{ imageUrl?: string; images: string[] }>;
+  /** Ask the model for ingredient groups, against `text.ingredients` (null when none). */
+  detectGroups: (signal?: AbortSignal) => Promise<IngredientGroupPlan | null>;
 } | null> {
   let html: string;
   try {
@@ -581,6 +593,10 @@ async function parseRecipePagePhased(url: string): Promise<{
     }
   }
 
+  // Groups the page marks up go in right away (and get translated with the other lines);
+  // otherwise the model looks for printed group titles while translation runs.
+  ingredients = applyIngredientGroups(ingredients, detectMarkedUpIngredientGroups(html, ingredients));
+
   if (!title) title = stripSiteSuffix(extractOgMeta(html, "title") || extractPageTitle(html));
   if (!description) {
     const d = extractOgMeta(html, "description");
@@ -588,6 +604,7 @@ async function parseRecipePagePhased(url: string): Promise<{
   }
 
   const resolvedTitle = title;
+  const resolvedIngredients = ingredients;
   const coverPriority = dedupeImageUrls([imageUrl, ogImage, ...jsonLdImages].map((u) => (u ? absoluteUrl(u, url) : u)));
 
   const images = largeImageSetPromise.then(async (largeImageSet) => {
@@ -616,6 +633,7 @@ async function parseRecipePagePhased(url: string): Promise<{
       source,
     },
     images,
+    detectGroups: (signal) => detectIngredientGroupsWithGemini(stripHtmlToText(html), resolvedIngredients, signal),
   };
 }
 
@@ -688,7 +706,10 @@ async function translateRecipeToSlovenian<T extends RecipeText>(recipe: T): Prom
     const translated = {
       title: translatedHead[0] || recipe.title,
       description: recipe.description ? translatedHead[1] || recipe.description : recipe.description,
-      ingredients: translatedHead.slice(headCount),
+      // Group titles stay titles even if the translation dropped their colon.
+      ingredients: translatedHead
+        .slice(headCount)
+        .map((line, i) => (isIngredientHeading(recipe.ingredients[i] ?? "") ? toIngredientHeading(line) : line)),
       instructions: translatedChunks.flat()
     };
     translatedRecipeCache.set(cacheKey, { at: Date.now(), value: translated });
@@ -770,8 +791,14 @@ recipesRouter.get("/fetch", requireAuth, async (req, res) => {
     return res.status(502).json({ error: "Failed to fetch or parse recipe." });
   }
 
-  // Translation and image probing/curation run side by side.
-  const [text, images] = await Promise.all([translateRecipeToSlovenian(phased.text), phased.images]);
+  // Translation, group detection and image probing/curation run side by side. Group titles
+  // come back in Slovenian and are placed by index, so they fit the translated lines too.
+  const [translated, images, groups] = await Promise.all([
+    translateRecipeToSlovenian(phased.text),
+    phased.images,
+    phased.detectGroups()
+  ]);
+  const text = { ...translated, ingredients: applyIngredientGroups(translated.ingredients, groups) };
 
   // Remote images are served through the signed proxy so the browser can actually show
   // them; saving maps them back to the source URLs.
@@ -869,6 +896,31 @@ async function saveRecipeImageLocally(sourceImageUrl: string): Promise<string | 
   }
 }
 
+/** Store image bytes we already have (e.g. a photo cropped from an uploaded page) as webp. */
+async function storeRecipeImageBuffer(buffer: Buffer): Promise<string | null> {
+  const hash = crypto.createHash("sha1").update(buffer).digest("hex").slice(0, 16);
+  const fileName = `${hash}.webp`;
+  const absPath = path.join(recipeImagesDirectoryPath, fileName);
+  const publicUrl = `${recipeImagesPublicPath}/${fileName}`;
+  if (fs.existsSync(absPath)) return publicUrl;
+  try {
+    const processed = await sharp(buffer)
+      .resize(1280, 1280, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer();
+    await fs.promises.writeFile(absPath, processed);
+    return publicUrl;
+  } catch (error) {
+    console.warn("[recipe-images] failed to store cropped image:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/** Recipes imported from a file or photo have no web page behind them. */
+function hasSourcePage(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
 function isLocalRecipeImageUrl(value: string): boolean {
   return value.startsWith(`${recipeImagesPublicPath}/`);
 }
@@ -946,6 +998,7 @@ export async function healRecipeImages(): Promise<void> {
   }
 
   const broken = rows.filter((row) => {
+    if (!hasSourcePage(row.url)) return false; // imported recipes can't be re-fetched
     const gallery = parseStringArray(row.images);
     const mainBroken = row.imageUrl !== null && !localRecipeImageFileExists(row.imageUrl);
     return mainBroken || gallery.some((entry) => !localRecipeImageFileExists(entry));
@@ -1293,6 +1346,286 @@ recipesRouter.post("/saved", requireAuth, async (req, res) => {
   return res.status(201).json({ recipe: mapSavedRecipeRow(row) });
 });
 
+// ---------- Import recipes from an uploaded file or photo ----------
+
+const importPagesSchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        // base64; a 2000px JPEG page stays well below this
+        data: z.string().min(100).max(15_000_000),
+        text: z.string().max(30_000).optional()
+      })
+    )
+    .min(1)
+    .max(60)
+});
+
+/**
+ * Read recipes from page images (rendered PDF pages or photos). Streams NDJSON:
+ * `progress`, then one `recipes` message per processed chunk of pages, then `done`.
+ * Photos are cropped from the pages and stored locally right away.
+ */
+recipesRouter.post("/import", requireAuth, async (req, res) => {
+  const parsed = importPagesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+  if (!genai) {
+    return res.status(503).json({ error: "Branje receptov ni nastavljeno (manjka GEMINI_API_KEY)." });
+  }
+
+  const pages: ImportPage[] = parsed.data.pages.map((page) => ({
+    mimeType: page.mimeType,
+    data: Buffer.from(page.data, "base64"),
+    text: page.text
+  }));
+  const totalPages = pages.length;
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const emit = (data: object) => {
+    if (!res.writableEnded) {
+      res.write(JSON.stringify(data) + "\n");
+      const r = res as unknown as { flush?: () => void };
+      if (typeof r.flush === "function") r.flush();
+    }
+  };
+
+  const abort = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) abort.abort();
+  });
+
+  emit({ type: "progress", processedPages: 0, totalPages });
+
+  let documentTitle: string | undefined;
+  let recipeCount = 0;
+  const pending: Array<Promise<void>> = [];
+
+  const outcome = await extractRecipesFromPages(pages, abort.signal, (chunk) => {
+    documentTitle ??= chunk.documentTitle;
+    pending.push(
+      (async () => {
+        const recipes = await Promise.all(
+          chunk.recipes.map(async (recipe) => {
+            const images: string[] = [];
+            for (const photo of recipe.photos) {
+              const crop = await cropPagePhoto(pages[photo.page]!, photo.box);
+              const stored = crop ? await storeRecipeImageBuffer(crop) : null;
+              if (stored && !images.includes(stored)) images.push(stored);
+            }
+            const { photos: _photos, ...text } = recipe;
+            return { ...text, imageUrl: images[0], images };
+          })
+        );
+        recipeCount += recipes.length;
+        emit({ type: "recipes", recipes, processedPages: chunk.processedPages, totalPages });
+      })()
+    );
+  });
+  await Promise.all(pending);
+
+  if (abort.signal.aborted) return res.end();
+  if (recipeCount === 0 && outcome.failedChunks > 0) {
+    emit({ type: "error", error: "Branje datoteke ni uspelo. Poskusi znova." });
+  } else if (outcome.failedChunks > 0) {
+    emit({
+      type: "warning",
+      warning: `Dela strani (${outcome.failedChunks} od ${outcome.totalChunks} skupin) ni bilo mogoče prebrati.`
+    });
+  }
+  emit({ type: "done", documentTitle });
+  return res.end();
+});
+
+const importedRecipeSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  source: z.string().trim().max(200).optional(),
+  description: z.string().trim().max(4000).optional(),
+  imageUrl: z.string().trim().max(2000).optional(),
+  prepTime: z.string().trim().max(100).optional(),
+  cookTime: z.string().trim().max(100).optional(),
+  totalTime: z.string().trim().max(100).optional(),
+  servings: z.string().trim().max(100).optional(),
+  ingredients: z.array(z.string().trim().max(1000)).max(200).default([]),
+  instructions: z.array(z.string().trim().max(5000)).max(200).default([]),
+  images: z.array(z.string().trim().max(2000)).max(30).default([]),
+  labelIds: z.array(z.number().int().positive()).max(20).default([])
+});
+
+const saveImportedRecipesSchema = z.object({
+  recipes: z.array(importedRecipeSchema).min(1).max(100)
+});
+
+/** Save reviewed imported recipes (with their labels) in one transaction. */
+recipesRouter.post("/saved/import", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const parsed = saveImportedRecipesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const ownLabelIds = new Set(
+    (sqlite.prepare("SELECT id FROM recipe_labels WHERE user_id = ?").all(authUser.id) as Array<{ id: number }>).map(
+      (row) => row.id
+    )
+  );
+
+  const insertRecipe = sqlite.prepare(
+    `INSERT INTO recipes (
+       user_id, url, source, title, description, image_url,
+       prep_time, cook_time, total_time, servings,
+       ingredients, instructions, images
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertLabel = sqlite.prepare(
+    "INSERT OR IGNORE INTO recipe_label_assignments (recipe_id, label_id) VALUES (?, ?)"
+  );
+
+  const insertAll = sqlite.transaction(() =>
+    parsed.data.recipes.map((recipe) => {
+      // Only pictures already stored by the import are accepted — nothing remote here.
+      const images = Array.from(new Set(recipe.images.filter(localRecipeImageFileExists)));
+      const cover = recipe.imageUrl && localRecipeImageFileExists(recipe.imageUrl) ? recipe.imageUrl : images[0] ?? null;
+      const gallery = cover && !images.includes(cover) ? [cover, ...images] : images;
+      const result = insertRecipe.run(
+        authUser.id,
+        `import:${crypto.randomUUID()}`,
+        recipe.source || null,
+        recipe.title,
+        recipe.description || null,
+        cover,
+        recipe.prepTime || null,
+        recipe.cookTime || null,
+        recipe.totalTime || null,
+        recipe.servings || null,
+        JSON.stringify(recipe.ingredients.filter(Boolean)),
+        JSON.stringify(recipe.instructions.filter(Boolean)),
+        JSON.stringify(gallery)
+      );
+      const recipeId = Number(result.lastInsertRowid);
+      for (const labelId of recipe.labelIds) {
+        if (ownLabelIds.has(labelId)) insertLabel.run(recipeId, labelId);
+      }
+      return recipeId;
+    })
+  );
+  const ids = insertAll();
+
+  const select = sqlite.prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ?`);
+  const recipes = ids.map((id) => mapSavedRecipeRow(select.get(id) as SavedRecipeRow));
+  return res.status(201).json({ recipes });
+});
+
+// ---------- Bulk changes on saved recipes ----------
+
+const bulkIdsSchema = z.array(z.number().int().positive()).min(1).max(500);
+
+const bulkUpdateSchema = z.object({
+  ids: bulkIdsSchema,
+  // Only the fields that are present get set; an empty string clears a field.
+  set: z
+    .object({
+      servings: z.string().trim().max(100),
+      source: z.string().trim().max(200),
+      prepTime: z.string().trim().max(100),
+      cookTime: z.string().trim().max(100),
+      totalTime: z.string().trim().max(100)
+    })
+    .partial()
+    .default({}),
+  addLabelIds: z.array(z.number().int().positive()).max(20).default([]),
+  removeLabelIds: z.array(z.number().int().positive()).max(20).default([])
+});
+
+const bulkColumns = {
+  servings: "servings",
+  source: "source",
+  prepTime: "prep_time",
+  cookTime: "cook_time",
+  totalTime: "total_time"
+} as const;
+
+/** Only ids of recipes the user owns survive. */
+function ownedRecipeIds(userId: number, ids: number[]): number[] {
+  const unique = Array.from(new Set(ids));
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = sqlite
+    .prepare(`SELECT id FROM recipes WHERE user_id = ? AND id IN (${placeholders})`)
+    .all(userId, ...unique) as Array<{ id: number }>;
+  return rows.map((row) => row.id);
+}
+
+/** Set fields and add/remove labels on many recipes in one transaction. */
+recipesRouter.post("/saved/bulk", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const parsed = bulkUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+  const { set, addLabelIds, removeLabelIds } = parsed.data;
+
+  const ids = ownedRecipeIds(authUser.id, parsed.data.ids);
+  if (ids.length === 0) return res.status(404).json({ error: "Recipes not found" });
+
+  const ownLabelIds = new Set(
+    (sqlite.prepare("SELECT id FROM recipe_labels WHERE user_id = ?").all(authUser.id) as Array<{ id: number }>).map(
+      (row) => row.id
+    )
+  );
+  if ([...addLabelIds, ...removeLabelIds].some((id) => !ownLabelIds.has(id))) {
+    return res.status(400).json({ error: "Unknown label" });
+  }
+
+  const fields = (Object.keys(bulkColumns) as Array<keyof typeof bulkColumns>).filter((key) => set[key] !== undefined);
+  const update =
+    fields.length > 0
+      ? sqlite.prepare(
+          `UPDATE recipes SET ${fields.map((key) => `${bulkColumns[key]} = ?`).join(", ")} WHERE id = ?`
+        )
+      : null;
+  const addLabel = sqlite.prepare("INSERT OR IGNORE INTO recipe_label_assignments (recipe_id, label_id) VALUES (?, ?)");
+  const removeLabel = sqlite.prepare("DELETE FROM recipe_label_assignments WHERE recipe_id = ? AND label_id = ?");
+
+  sqlite.transaction(() => {
+    for (const id of ids) {
+      if (update) update.run(...fields.map((key) => set[key] || null), id);
+      for (const labelId of addLabelIds) addLabel.run(id, labelId);
+      for (const labelId of removeLabelIds) removeLabel.run(id, labelId);
+    }
+  })();
+
+  const select = sqlite.prepare(`SELECT ${savedRecipeColumns} FROM recipes WHERE id = ?`);
+  return res.json({ recipes: ids.map((id) => mapSavedRecipeRow(select.get(id) as SavedRecipeRow)) });
+});
+
+recipesRouter.post("/saved/bulk-delete", requireAuth, (req, res) => {
+  const authUser = getAuthUser(res);
+  if (!authUser) return res.status(401).json({ error: "Authentication required" });
+
+  const parsed = z.object({ ids: bulkIdsSchema }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const ids = ownedRecipeIds(authUser.id, parsed.data.ids);
+  const remove = sqlite.prepare("DELETE FROM recipes WHERE id = ? AND user_id = ?");
+  sqlite.transaction(() => {
+    for (const id of ids) remove.run(id, authUser.id);
+  })();
+  if (ids.length > 0) void pruneOrphanedRecipeImages();
+  return res.json({ deletedIds: ids });
+});
+
 // ---------- Check ingredient against a shopping list (parse + smart dedup) ----------
 
 const VALID_UNITS = [
@@ -1601,6 +1934,9 @@ recipesRouter.post("/saved/:recipeId/refetch-images", requireAuth, async (req, r
     .get(recipeId, authUser.id) as { id: number; url: string } | undefined;
   if (!existing) {
     return res.status(404).json({ error: "Recipe not found" });
+  }
+  if (!hasSourcePage(existing.url)) {
+    return res.status(400).json({ error: "Recipe has no source page." });
   }
 
   const rebuilt = await rebuildRecipeImagesFromSource(existing.url);

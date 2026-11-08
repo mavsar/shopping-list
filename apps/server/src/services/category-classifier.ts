@@ -4,7 +4,7 @@ import {
   itemCategoryValues,
 } from "../domain/item-category.js";
 import type { ItemCategory } from "../domain/item-category.js";
-import { GEMINI_LITE_MODEL, genai } from "./genai.js";
+import { fastThinking, GEMINI_LITE_MODEL, genai } from "./genai.js";
 
 if (genai) {
   console.log("[category-classifier] Gemini API key detected — LLM classification active");
@@ -44,7 +44,7 @@ export async function classifyCategory(title: string): Promise<ItemCategory> {
     const response = await genai.models.generateContent({
       model: GEMINI_LITE_MODEL,
       contents: `${PROMPT}\n\nProduct: "${title}"`,
-      config: { thinkingConfig: { thinkingBudget: 0 } },
+      config: { thinkingConfig: fastThinking(GEMINI_LITE_MODEL) },
     });
 
     const raw = response.text?.trim() ?? "";

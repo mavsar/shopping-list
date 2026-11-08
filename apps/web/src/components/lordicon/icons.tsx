@@ -103,6 +103,10 @@ export function Camera(props: IconProps) {
   return <LordIcon src="/lordicon/camera.json" {...props} />;
 }
 
+export function Folder(props: IconProps) {
+  return <LordIcon src="/lordicon/folder.json" {...props} />;
+}
+
 export function Copy(props: IconProps) {
   return <LordIcon src="/lordicon/copy.json" {...props} />;
 }
